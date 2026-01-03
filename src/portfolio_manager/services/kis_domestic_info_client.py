@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import httpx
+
+
+@dataclass(frozen=True)
+class DomesticStockInfo:
+    pdno: str
+    prdt_type_cd: str
+    market_id: str
+    name: str
+
+
+@dataclass(frozen=True)
+class KisDomesticInfoClient:
+    client: httpx.Client
+    app_key: str
+    app_secret: str
+    access_token: str
+    tr_id: str
+    cust_type: str
+
+    def fetch_basic_info(self, prdt_type_cd: str, pdno: str) -> DomesticStockInfo:
+        response = self.client.get(
+            "/uapi/domestic-stock/v1/quotations/search-stock-info",
+            params={
+                "PRDT_TYPE_CD": prdt_type_cd,
+                "PDNO": pdno,
+            },
+            headers={
+                "content-type": "application/json",
+                "authorization": f"Bearer {self.access_token}",
+                "appkey": self.app_key,
+                "appsecret": self.app_secret,
+                "tr_id": self.tr_id,
+                "custtype": self.cust_type,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        output = data["output"]
+        return DomesticStockInfo(
+            pdno=output["pdno"],
+            prdt_type_cd=output["prdt_type_cd"],
+            market_id=output["mket_id_cd"],
+            name=output["prdt_name"],
+        )
