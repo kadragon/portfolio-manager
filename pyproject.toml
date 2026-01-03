@@ -1,7 +1,7 @@
 [project]
 name = "portfolio-manager"
 version = "0.1.0"
-description = "Terminal UI portfolio manager using Textual and KIS API."
+description = "Terminal portfolio manager using Rich and KIS API."
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "Proprietary" }
@@ -9,7 +9,6 @@ authors = [
   { name = "kadragon" },
 ]
 dependencies = [
-  "textual>=6.12.0",
   "rich>=14.2.0",
   "httpx>=0.28.1",
   "supabase>=2.11.0",
