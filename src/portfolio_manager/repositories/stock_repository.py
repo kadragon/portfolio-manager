@@ -82,3 +82,85 @@ class StockRepository:
             stock_id: ID of the stock to delete.
         """
         self.client.table("stocks").delete().eq("id", str(stock_id)).execute()
+
+    def update(self, stock_id: UUID, ticker: str) -> Stock:
+        """Update a stock ticker by ID.
+
+        Args:
+            stock_id: ID of the stock to update.
+            ticker: Updated ticker.
+
+        Returns:
+            Updated Stock instance.
+        """
+        response = (
+            self.client.table("stocks")
+            .update({"ticker": ticker})
+            .eq("id", str(stock_id))
+            .execute()
+        )
+        if not response.data:
+            raise ValueError("Failed to update stock")
+        item = cast(dict[str, Any], response.data[0])
+        return Stock(
+            id=UUID(str(item["id"])),
+            ticker=str(item["ticker"]),
+            group_id=UUID(str(item["group_id"])),
+            created_at=datetime.fromisoformat(str(item["created_at"])),
+            updated_at=datetime.fromisoformat(str(item["updated_at"])),
+        )
+
+    def get_by_id(self, stock_id: UUID) -> Stock | None:
+        """Get a stock by ID.
+
+        Args:
+            stock_id: ID of the stock to fetch.
+        """
+        response = (
+            self.client.table("stocks").select("*").eq("id", str(stock_id)).execute()
+        )
+        if not response.data:
+            return None
+        item = cast(dict[str, Any], response.data[0])
+        return Stock(
+            id=UUID(str(item["id"])),
+            ticker=str(item["ticker"]),
+            group_id=UUID(str(item["group_id"])),
+            created_at=datetime.fromisoformat(str(item["created_at"])),
+            updated_at=datetime.fromisoformat(str(item["updated_at"])),
+        )
+
+    def get_by_ticker(self, ticker: str) -> Stock | None:
+        """Get a stock by ticker."""
+        response = (
+            self.client.table("stocks").select("*").eq("ticker", ticker).execute()
+        )
+        if not response.data:
+            return None
+        item = cast(dict[str, Any], response.data[0])
+        return Stock(
+            id=UUID(str(item["id"])),
+            ticker=str(item["ticker"]),
+            group_id=UUID(str(item["group_id"])),
+            created_at=datetime.fromisoformat(str(item["created_at"])),
+            updated_at=datetime.fromisoformat(str(item["updated_at"])),
+        )
+
+    def update_group(self, stock_id: UUID, group_id: UUID) -> Stock:
+        """Update a stock's group by ID."""
+        response = (
+            self.client.table("stocks")
+            .update({"group_id": str(group_id)})
+            .eq("id", str(stock_id))
+            .execute()
+        )
+        if not response.data:
+            raise ValueError("Failed to move stock")
+        item = cast(dict[str, Any], response.data[0])
+        return Stock(
+            id=UUID(str(item["id"])),
+            ticker=str(item["ticker"]),
+            group_id=UUID(str(item["group_id"])),
+            created_at=datetime.fromisoformat(str(item["created_at"])),
+            updated_at=datetime.fromisoformat(str(item["updated_at"])),
+        )

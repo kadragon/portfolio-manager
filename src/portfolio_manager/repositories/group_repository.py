@@ -67,3 +67,30 @@ class GroupRepository:
             group_id: ID of the group to delete.
         """
         self.client.table("groups").delete().eq("id", str(group_id)).execute()
+
+    def update(self, group_id: UUID, name: str) -> Group:
+        """Update a group name by ID.
+
+        Args:
+            group_id: ID of the group to update.
+            name: Updated name.
+
+        Returns:
+            Updated Group instance.
+        """
+        response = (
+            self.client.table("groups")
+            .update({"name": name})
+            .eq("id", str(group_id))
+            .execute()
+        )
+        if not response.data or len(response.data) == 0:
+            raise ValueError("Failed to update group")
+        data = cast(dict[str, Any], response.data[0])
+
+        return Group(
+            id=UUID(str(data["id"])),
+            name=str(data["name"]),
+            created_at=datetime.fromisoformat(str(data["created_at"])),
+            updated_at=datetime.fromisoformat(str(data["updated_at"])),
+        )

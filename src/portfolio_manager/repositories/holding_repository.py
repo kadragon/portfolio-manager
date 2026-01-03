@@ -69,3 +69,27 @@ class HoldingRepository:
         self.client.table("holdings").delete().eq(
             "account_id", str(account_id)
         ).execute()
+
+    def delete(self, holding_id: UUID) -> None:
+        """Delete a holding by ID."""
+        self.client.table("holdings").delete().eq("id", str(holding_id)).execute()
+
+    def update(self, holding_id: UUID, quantity: Decimal) -> Holding:
+        """Update a holding quantity by ID."""
+        response = (
+            self.client.table("holdings")
+            .update({"quantity": str(quantity)})
+            .eq("id", str(holding_id))
+            .execute()
+        )
+        if not response.data:
+            raise ValueError("Failed to update holding")
+        data = cast(dict[str, Any], response.data[0])
+        return Holding(
+            id=UUID(str(data["id"])),
+            account_id=UUID(str(data["account_id"])),
+            stock_id=UUID(str(data["stock_id"])),
+            quantity=Decimal(str(data["quantity"])),
+            created_at=datetime.fromisoformat(str(data["created_at"])),
+            updated_at=datetime.fromisoformat(str(data["updated_at"])),
+        )

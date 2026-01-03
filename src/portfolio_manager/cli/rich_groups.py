@@ -32,6 +32,19 @@ def add_group_flow(
     console.print(f"Added group: {group.name}")
 
 
+def update_group_flow(
+    console: Console,
+    repository,
+    group: Group,
+    prompt: Callable[[], str] | None = None,
+) -> None:
+    """Update a group name via prompt and render confirmation."""
+    prompt_func = prompt or (lambda: Prompt.ask("New group name"))
+    name = prompt_func()
+    updated = repository.update(group.id, name)
+    console.print(f"Updated group: {updated.name}")
+
+
 def delete_group_flow(
     console: Console,
     repository,

@@ -55,3 +55,22 @@ class AccountRepository:
         """Delete an account and its holdings."""
         holding_repository.delete_by_account(account_id)
         self.client.table("accounts").delete().eq("id", str(account_id)).execute()
+
+    def update(self, account_id: UUID, name: str, cash_balance: Decimal) -> Account:
+        """Update an account name and cash balance."""
+        response = (
+            self.client.table("accounts")
+            .update({"name": name, "cash_balance": str(cash_balance)})
+            .eq("id", str(account_id))
+            .execute()
+        )
+        if not response.data:
+            raise ValueError("Failed to update account")
+        data = cast(dict[str, Any], response.data[0])
+        return Account(
+            id=UUID(str(data["id"])),
+            name=str(data["name"]),
+            cash_balance=Decimal(str(data["cash_balance"])),
+            created_at=datetime.fromisoformat(str(data["created_at"])),
+            updated_at=datetime.fromisoformat(str(data["updated_at"])),
+        )

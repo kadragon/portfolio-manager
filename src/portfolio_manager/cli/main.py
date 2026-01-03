@@ -7,18 +7,28 @@ from typing import Iterable
 
 from dotenv import load_dotenv
 from rich.console import Console
+from rich import box
+from rich.panel import Panel
 from rich.prompt import Prompt
 
-from portfolio_manager.cli.rich_app import render_main_menu, select_main_menu_option
+from portfolio_manager.cli.rich_app import render_main_menu
 from portfolio_manager.cli.rich_groups import (
     add_group_flow,
     delete_group_flow,
     render_group_list,
-    select_group_menu_option,
+    update_group_flow,
 )
+from portfolio_manager.cli.prompt_select import (
+    choose_group_from_list,
+    choose_group_menu,
+    choose_main_menu,
+)
+from portfolio_manager.cli.rich_accounts import run_account_menu
 from portfolio_manager.cli.rich_stocks import run_stock_menu
 from portfolio_manager.models import Group
+from portfolio_manager.repositories.account_repository import AccountRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
+from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
 from portfolio_manager.services.supabase_client import get_supabase_client
 
@@ -45,38 +55,71 @@ def _select_group_by_index(groups: Iterable[Group], index: int) -> Group | None:
     return group_list[index - 1]
 
 
+def _select_group_by_id(groups: Iterable[Group], group_id) -> Group | None:
+    for group in groups:
+        if group.id == group_id:
+            return group
+    return None
+
+
 def run_group_menu(console: Console) -> None:
     """Run the group management menu loop."""
+    selected_group: Group | None = None
     while True:
         groups = _load_groups()
         render_group_list(console, groups)
-        console.print("[bold]Options:[/bold] a=add, d=delete, b=back, <number>=select")
-        choice = Prompt.ask("Group menu")
-        action = select_group_menu_option(choice)
+        if selected_group is not None:
+            console.print(
+                Panel.fit(
+                    f"[bold]{selected_group.name}[/bold]",
+                    title="🗂 Current Group",
+                    border_style="cyan",
+                    box=box.ROUNDED,
+                    padding=(0, 2),
+                )
+            )
+        action = choose_group_menu()
         if action == "back":
             return
-        if choice.strip().lower() == "a":
+        if action == "add":
             client = get_supabase_client()
             repo = GroupRepository(client)
             add_group_flow(console, repo)
             continue
-        if choice.strip().lower() == "d":
-            index_text = Prompt.ask("Group number to delete")
-            if index_text.isdigit():
-                group = _select_group_by_index(groups, int(index_text))
+        if action == "edit":
+            group_id = choose_group_from_list(groups)
+            if group_id is not None:
+                group = _select_group_by_id(groups, group_id)
+                if group is not None:
+                    client = get_supabase_client()
+                    repo = GroupRepository(client)
+                    update_group_flow(console, repo, group)
+            continue
+        if action == "delete":
+            group_id = choose_group_from_list(groups)
+            if group_id is not None:
+                group = _select_group_by_id(groups, group_id)
                 if group is not None:
                     client = get_supabase_client()
                     repo = GroupRepository(client)
                     delete_group_flow(console, repo, group)
             continue
-        if choice.strip().isdigit():
-            group = _select_group_by_index(groups, int(choice.strip()))
-            if group is not None:
-                client = get_supabase_client()
-                repo = StockRepository(client)
-                run_stock_menu(
-                    console, repo, group, prompt=lambda: Prompt.ask("Stock menu")
-                )
+        if action == "select":
+            group_id = choose_group_from_list(groups)
+            if group_id is not None:
+                group = _select_group_by_id(groups, group_id)
+                if group is not None:
+                    selected_group = group
+                    client = get_supabase_client()
+                    repo = StockRepository(client)
+                    group_repo = GroupRepository(client)
+                    run_stock_menu(
+                        console,
+                        repo,
+                        group,
+                        prompt=lambda: Prompt.ask("Stock menu"),
+                        group_repository=group_repo,
+                    )
             continue
 
 
@@ -86,11 +129,24 @@ def main() -> None:
     console = Console()
     while True:
         render_main_menu(console)
-        console.print("[bold]Options:[/bold] g=groups, q=quit")
-        choice = Prompt.ask("Select")
-        action = select_main_menu_option(choice)
+        action = choose_main_menu()
         if action == "groups":
             run_group_menu(console)
             continue
-        if choice.strip().lower() == "q":
+        if action == "accounts":
+            client = get_supabase_client()
+            account_repo = AccountRepository(client)
+            holding_repo = HoldingRepository(client)
+            stock_repo = StockRepository(client)
+            group_repo = GroupRepository(client)
+            run_account_menu(
+                console,
+                account_repo,
+                holding_repo,
+                prompt=lambda: Prompt.ask("Accounts menu"),
+                stock_repository=stock_repo,
+                group_repository=group_repo,
+            )
+            continue
+        if action == "quit":
             return

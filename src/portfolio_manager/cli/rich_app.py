@@ -13,6 +13,8 @@ def select_main_menu_option(choice: str) -> str | None:
     normalized = choice.strip().lower()
     if normalized == "g":
         return "groups"
+    if normalized == "a":
+        return "accounts"
     return None
 
 
