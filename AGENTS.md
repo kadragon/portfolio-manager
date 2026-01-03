@@ -7,3 +7,17 @@
 - Local verification script: `scripts/check_kis_overseas_price.py` (loads `.env`, fetches token if needed, calls overseas price API; use `.venv/bin/python`).
 - `KIS_ENV` accepts `real/prod` and `demo/vps/paper` (also tolerates `real/prod` form and whitespace).
 - Overseas current price endpoint: `/uapi/overseas-price/v1/quotations/price` with TR ID `HHDFS00000300`.
+
+## Supabase Integration
+- Supabase credentials stored in `.env`: `SUPABASE_URL` and `SUPABASE_KEY`.
+- Database schema:
+  - `groups` table: stores stock groups (id, name, created_at, updated_at)
+  - `stocks` table: stores stock tickers (id, ticker, group_id, created_at, updated_at)
+  - Relationship: groups 1:N stocks
+- Migration file: `supabase/migrations/20260103000000_create_groups_and_stocks.sql`
+- Repositories implemented:
+  - `GroupRepository`: create(), list_all()
+  - `StockRepository`: create(), list_by_group()
+- Supabase client factory: `src/portfolio_manager/services/supabase_client.py`
+- Data models: `src/portfolio_manager/models/group.py`, `src/portfolio_manager/models/stock.py`
+- Test coverage: `tests/test_group_repository.py`, `tests/test_stock_repository.py`
