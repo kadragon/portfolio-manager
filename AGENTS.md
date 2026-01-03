@@ -14,18 +14,25 @@
   - `groups` table: stores stock groups (id, name, created_at, updated_at)
   - `stocks` table: stores stock tickers (id, ticker, group_id, created_at, updated_at)
   - Relationship: groups 1:N stocks
-- Migration file: `supabase/migrations/20260103000000_create_groups_and_stocks.sql`
+- `accounts` table: stores brokerage accounts (id, name, cash_balance, created_at, updated_at)
+- `holdings` table: stores account holdings (id, account_id, stock_id, quantity, created_at, updated_at)
+- Relationship: accounts 1:N holdings, stocks 1:N holdings
+- Migration files:
+  - `supabase/migrations/20260103000000_create_groups_and_stocks.sql`
+  - `supabase/migrations/20260103010000_create_accounts_and_holdings.sql`
 - Repositories implemented:
   - `GroupRepository`: create(), list_all()
   - `StockRepository`: create(), list_by_group()
+  - `AccountRepository`: create(), list_all(), delete_with_holdings()
+  - `HoldingRepository`: create(), list_by_account(), delete_by_account()
 - Supabase client factory: `src/portfolio_manager/services/supabase_client.py`
-- Data models: `src/portfolio_manager/models/group.py`, `src/portfolio_manager/models/stock.py`
-- Test coverage: `tests/test_group_repository.py`, `tests/test_stock_repository.py`
+- Data models: `src/portfolio_manager/models/group.py`, `src/portfolio_manager/models/stock.py`, `src/portfolio_manager/models/account.py`, `src/portfolio_manager/models/holding.py`
+- Test coverage: `tests/test_group_repository.py`, `tests/test_stock_repository.py`, `tests/test_account_repository.py`, `tests/test_account_delete_cascade.py`, `tests/test_holding_repository.py`, `tests/test_holding_quantity_decimal.py`
 
 ## Strategic Insights
-- TUI flows now split into `GroupListScreen` and `StockListScreen`; screens load data on mount and handle add/delete actions via Supabase repositories.
-- Group selection in the TUI drives stock list context by passing the selected group ID into the stock screen.
+- Rich-only CLI replaces Textual screens; menu navigation and prompts drive group/stock flows.
+- Group selection now leads to a stock menu loop with table-based rendering and back navigation.
 
 ## Governance Updates
 - Authentication clients now share the `AuthClient` interface to decouple token management from a concrete provider.
-- TUI, repository, and KIS client behaviors are covered by dedicated tests to enforce UI flows and API parsing expectations.
+- Rich CLI flows and account/holding repositories are test-backed to lock in prompt/flow behavior and data parsing.
