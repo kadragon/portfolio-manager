@@ -32,7 +32,9 @@
 ## Strategic Insights
 - Rich-only CLI replaces Textual screens; menu navigation and prompts drive group/stock flows.
 - Group selection now leads to a stock menu loop with table-based rendering and back navigation.
+- List selections for groups/stocks/accounts/holdings use prompt_toolkit choice (arrow-key) instead of numeric input.
 
 ## Governance Updates
 - Authentication clients now share the `AuthClient` interface to decouple token management from a concrete provider.
 - Rich CLI flows and account/holding repositories are test-backed to lock in prompt/flow behavior and data parsing.
+- Choice-based selection helpers cover group/account/stock/holding lists to standardize CLI selection inputs.
