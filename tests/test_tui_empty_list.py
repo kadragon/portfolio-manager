@@ -8,7 +8,7 @@ from portfolio_manager.tui.app import PortfolioApp
 async def test_empty_list_view_shows_placeholder():
     app = PortfolioApp()
 
-    async with app.run_test() as pilot:
+    async with app.run_test():
         empty_state = app.query_one("#empty-state", Static)
         assert empty_state is not None
-        assert "no symbols" in empty_state.render().plain.lower()
+        assert "group" in empty_state.render().plain.lower()  # type: ignore

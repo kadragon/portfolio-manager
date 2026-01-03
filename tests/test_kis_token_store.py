@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from portfolio_manager.services.kis_token_store import TokenStore
+from portfolio_manager.services.kis_token_store import MemoryTokenStore
 
 
 def test_token_store_roundtrip():
@@ -8,7 +8,7 @@ def test_token_store_roundtrip():
     token = "access-token"
     expires_at = now + timedelta(hours=1)
 
-    store = TokenStore()
+    store = MemoryTokenStore()
     store.save(token, expires_at)
 
     loaded = store.load()

@@ -23,7 +23,9 @@ def test_access_token_request_posts_client_credentials():
         )
 
     transport = httpx.MockTransport(handler)
-    client = httpx.Client(transport=transport, base_url="https://openapi.koreainvestment.com:9443")
+    client = httpx.Client(
+        transport=transport, base_url="https://openapi.koreainvestment.com:9443"
+    )
 
     auth = KisAuthClient(client=client, app_key="app-key", app_secret="app-secret")
     token = auth.request_access_token()

@@ -1,5 +1,3 @@
-import json
-
 import httpx
 
 from portfolio_manager.services.kis_domestic_info_client import (
@@ -32,7 +30,9 @@ def test_domestic_info_request_uses_headers_and_params():
         )
 
     transport = httpx.MockTransport(handler)
-    client = httpx.Client(transport=transport, base_url="https://openapi.koreainvestment.com:9443")
+    client = httpx.Client(
+        transport=transport, base_url="https://openapi.koreainvestment.com:9443"
+    )
 
     kis = KisDomesticInfoClient(
         client=client,

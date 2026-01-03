@@ -1,5 +1,6 @@
 """Stock repository for database operations."""
 
+from typing import Any, cast
 from uuid import UUID
 from datetime import datetime
 from supabase import Client
@@ -35,7 +36,7 @@ class StockRepository:
         )
         if not response.data or len(response.data) == 0:
             raise ValueError("Failed to create stock")
-        data = response.data[0]
+        data = cast(dict[str, Any], response.data[0])
 
         return Stock(
             id=UUID(str(data["id"])),
@@ -71,5 +72,13 @@ class StockRepository:
                 created_at=datetime.fromisoformat(str(item["created_at"])),
                 updated_at=datetime.fromisoformat(str(item["updated_at"])),
             )
-            for item in response.data
+            for item in cast(list[dict[str, Any]], response.data)
         ]
+
+    def delete(self, stock_id: UUID) -> None:
+        """Delete a stock by ID.
+
+        Args:
+            stock_id: ID of the stock to delete.
+        """
+        self.client.table("stocks").delete().eq("id", str(stock_id)).execute()

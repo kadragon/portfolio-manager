@@ -5,7 +5,9 @@ from pathlib import Path
 
 
 def test_overseas_price_script_runs():
-    script = Path(__file__).resolve().parents[1] / "scripts" / "check_kis_overseas_price.py"
+    script = (
+        Path(__file__).resolve().parents[1] / "scripts" / "check_kis_overseas_price.py"
+    )
     env = {
         **os.environ,
         "KIS_OVERSEAS_EXCD": "NAS",

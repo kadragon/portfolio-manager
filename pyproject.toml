@@ -13,6 +13,7 @@ dependencies = [
   "rich>=14.2.0",
   "httpx>=0.28.1",
   "supabase>=2.11.0",
+  "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +25,18 @@ dev = [
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+filterwarnings = [
+  "ignore::DeprecationWarning:pyiceberg.*",
+  "ignore::pydantic.warnings.PydanticDeprecatedSince212:pyiceberg.*",
+]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101", "B105", "B106", "B404", "B603"]
 
 [tool.uv]
-package = false
+package = true

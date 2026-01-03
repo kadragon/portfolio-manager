@@ -3,13 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from portfolio_manager.services.auth_client import AuthClient
 from portfolio_manager.services.kis_token_store import TokenStore
 
 
 @dataclass(frozen=True)
 class TokenManager:
     store: TokenStore
-    auth_client: object
+    auth_client: AuthClient
     refresh_skew: timedelta = timedelta(minutes=1)
 
     def get_token(self) -> str:

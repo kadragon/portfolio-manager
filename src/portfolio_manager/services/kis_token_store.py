@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +13,17 @@ class TokenData:
     expires_at: datetime
 
 
-class TokenStore:
+class TokenStore(ABC):
+    @abstractmethod
+    def save(self, token: str, expires_at: datetime) -> None:
+        """Save a token with expiration time."""
+
+    @abstractmethod
+    def load(self) -> TokenData | None:
+        """Load a token if available."""
+
+
+class MemoryTokenStore(TokenStore):
     def __init__(self) -> None:
         self._data: TokenData | None = None
 
@@ -23,7 +34,7 @@ class TokenStore:
         return self._data
 
 
-class FileTokenStore:
+class FileTokenStore(TokenStore):
     def __init__(self, path: Path) -> None:
         self._path = path
 

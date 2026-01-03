@@ -7,7 +7,7 @@ from dataclasses import dataclass
 class PriceQuote:
     symbol: str
     name: str
-    price: int
+    price: float
     market: str
 
 

@@ -28,7 +28,9 @@ def test_domestic_price_request_uses_headers_and_params():
         )
 
     transport = httpx.MockTransport(handler)
-    client = httpx.Client(transport=transport, base_url="https://openapi.koreainvestment.com:9443")
+    client = httpx.Client(
+        transport=transport, base_url="https://openapi.koreainvestment.com:9443"
+    )
 
     kis = KisDomesticPriceClient(
         client=client,
@@ -39,7 +41,9 @@ def test_domestic_price_request_uses_headers_and_params():
         env="real",
     )
 
-    result = kis.fetch_current_price(fid_cond_mrkt_div_code="J", fid_input_iscd="005930")
+    result = kis.fetch_current_price(
+        fid_cond_mrkt_div_code="J", fid_input_iscd="005930"
+    )
 
     assert captured["method"] == "GET"
     assert captured["path"] == "/uapi/domestic-stock/v1/quotations/inquire-price"

@@ -4,15 +4,17 @@ import os
 import sys
 from pathlib import Path
 
+import httpx
+
 SRC_PATH = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC_PATH))
 
-import httpx
-
-from portfolio_manager.services.kis_auth_client import KisAuthClient
-from portfolio_manager.services.kis_overseas_price_client import KisOverseasPriceClient
-from portfolio_manager.services.kis_token_manager import TokenManager
-from portfolio_manager.services.kis_token_store import FileTokenStore
+from portfolio_manager.services.kis_auth_client import KisAuthClient  # noqa: E402
+from portfolio_manager.services.kis_overseas_price_client import (  # noqa: E402
+    KisOverseasPriceClient,
+)
+from portfolio_manager.services.kis_token_manager import TokenManager  # noqa: E402
+from portfolio_manager.services.kis_token_store import FileTokenStore  # noqa: E402
 
 
 def load_dotenv(path: Path) -> None:
@@ -52,7 +54,9 @@ def main() -> int:
         base_url = "https://openapivts.koreainvestment.com:29443"
 
     with httpx.Client(base_url=base_url) as client:
-        auth_client = KisAuthClient(client=client, app_key=app_key, app_secret=app_secret)
+        auth_client = KisAuthClient(
+            client=client, app_key=app_key, app_secret=app_secret
+        )
         store = FileTokenStore(Path(".data/kis_token.json"))
         manager = TokenManager(store=store, auth_client=auth_client)
         try:

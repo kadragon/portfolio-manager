@@ -5,11 +5,12 @@ from datetime import datetime, timedelta
 
 import httpx
 
+from portfolio_manager.services.auth_client import AuthClient
 from portfolio_manager.services.kis_token_store import TokenData
 
 
 @dataclass(frozen=True)
-class KisAuthClient:
+class KisAuthClient(AuthClient):
     client: httpx.Client
     app_key: str
     app_secret: str

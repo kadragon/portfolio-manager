@@ -1,5 +1,6 @@
 """Group repository for database operations."""
 
+from typing import Any, cast
 from uuid import UUID
 from datetime import datetime
 from supabase import Client
@@ -30,7 +31,7 @@ class GroupRepository:
         response = self.client.table("groups").insert({"name": name}).execute()
         if not response.data or len(response.data) == 0:
             raise ValueError("Failed to create group")
-        data = response.data[0]
+        data = cast(dict[str, Any], response.data[0])
 
         return Group(
             id=UUID(str(data["id"])),
@@ -56,5 +57,13 @@ class GroupRepository:
                 created_at=datetime.fromisoformat(str(item["created_at"])),
                 updated_at=datetime.fromisoformat(str(item["updated_at"])),
             )
-            for item in response.data
+            for item in cast(list[dict[str, Any]], response.data)
         ]
+
+    def delete(self, group_id: UUID) -> None:
+        """Delete a group by ID.
+
+        Args:
+            group_id: ID of the group to delete.
+        """
+        self.client.table("groups").delete().eq("id", str(group_id)).execute()

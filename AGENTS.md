@@ -21,3 +21,11 @@
 - Supabase client factory: `src/portfolio_manager/services/supabase_client.py`
 - Data models: `src/portfolio_manager/models/group.py`, `src/portfolio_manager/models/stock.py`
 - Test coverage: `tests/test_group_repository.py`, `tests/test_stock_repository.py`
+
+## Strategic Insights
+- TUI flows now split into `GroupListScreen` and `StockListScreen`; screens load data on mount and handle add/delete actions via Supabase repositories.
+- Group selection in the TUI drives stock list context by passing the selected group ID into the stock screen.
+
+## Governance Updates
+- Authentication clients now share the `AuthClient` interface to decouple token management from a concrete provider.
+- TUI, repository, and KIS client behaviors are covered by dedicated tests to enforce UI flows and API parsing expectations.

@@ -78,3 +78,26 @@ def test_list_by_group_returns_stocks_for_group():
     assert stocks[1].ticker == "GOOGL"
     assert all(s.group_id == group_id for s in stocks)
     mock_client.table.assert_called_once_with("stocks")
+
+
+def test_delete_removes_stock():
+    """Should delete a stock by ID."""
+    # Arrange
+    mock_client = Mock()
+    mock_response = MagicMock()
+    stock_id = uuid4()
+
+    mock_response.data = []
+    mock_client.table.return_value.delete.return_value.eq.return_value.execute.return_value = mock_response
+
+    repository = StockRepository(mock_client)
+
+    # Act
+    repository.delete(stock_id)
+
+    # Assert
+    mock_client.table.assert_called_once_with("stocks")
+    mock_client.table.return_value.delete.assert_called_once()
+    mock_client.table.return_value.delete.return_value.eq.assert_called_once_with(
+        "id", str(stock_id)
+    )

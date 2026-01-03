@@ -5,12 +5,14 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import httpx
+
 SRC_PATH = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC_PATH))
 
-import httpx
-
-from portfolio_manager.services.exim_exchange_rate_client import EximExchangeRateClient
+from portfolio_manager.services.exim_exchange_rate_client import (  # noqa: E402
+    EximExchangeRateClient,
+)
 
 
 def load_dotenv(path: Path) -> None:

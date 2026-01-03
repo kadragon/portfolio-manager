@@ -16,7 +16,9 @@ class KisDomesticPriceClient:
     cust_type: str
     env: str
 
-    def fetch_current_price(self, fid_cond_mrkt_div_code: str, fid_input_iscd: str) -> PriceQuote:
+    def fetch_current_price(
+        self, fid_cond_mrkt_div_code: str, fid_input_iscd: str
+    ) -> PriceQuote:
         tr_id = self._tr_id_for_env(self.env)
         response = self.client.get(
             "/uapi/domestic-stock/v1/quotations/inquire-price",

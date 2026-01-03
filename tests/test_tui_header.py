@@ -8,7 +8,7 @@ from portfolio_manager.tui.app import PortfolioApp
 async def test_app_renders_header_title():
     app = PortfolioApp()
 
-    async with app.run_test() as pilot:
+    async with app.run_test():
         header = app.query_one("#app-title", Static)
         assert header is not None
-        assert "portfolio" in header.render().plain.lower()
+        assert "portfolio" in header.render().plain.lower()  # type: ignore

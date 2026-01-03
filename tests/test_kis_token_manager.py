@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 
+from portfolio_manager.services.auth_client import AuthClient
 from portfolio_manager.services.kis_token_manager import TokenManager
-from portfolio_manager.services.kis_token_store import TokenData, TokenStore
+from portfolio_manager.services.kis_token_store import TokenData, MemoryTokenStore
 
 
-class FakeAuthClient:
+class FakeAuthClient(AuthClient):
     def __init__(self, token: TokenData) -> None:
         self._token = token
         self.calls = 0
@@ -17,7 +18,7 @@ class FakeAuthClient:
 def test_token_manager_reuses_valid_token():
     now = datetime.now()
     stored = TokenData(token="cached", expires_at=now + timedelta(minutes=10))
-    store = TokenStore()
+    store = MemoryTokenStore()
     store.save(stored.token, stored.expires_at)
 
     auth = FakeAuthClient(TokenData(token="new", expires_at=now + timedelta(hours=1)))

@@ -40,12 +40,14 @@ class KisOverseasPriceClient:
         if isinstance(output, list):
             output = output[0] if output else {}
         name = output.get("name") or ""
-        symbol = output.get("symbol") or output.get("symb") or output.get("rsym") or symb
+        symbol = (
+            output.get("symbol") or output.get("symb") or output.get("rsym") or symb
+        )
         price = float(output["last"])
         return PriceQuote(
             symbol=symbol,
             name=name,
-            price=price,
+            price=float(price),
             market="US",
         )
 
