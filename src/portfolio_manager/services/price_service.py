@@ -10,7 +10,7 @@ class PriceService:
         """Initialize with a price client."""
         self.price_client = price_client
 
-    def get_stock_price(self, ticker: str) -> tuple[Decimal, str]:
-        """Get current price and currency for a stock ticker."""
+    def get_stock_price(self, ticker: str) -> tuple[Decimal, str, str]:
+        """Get current price, currency, and name for a stock ticker."""
         quote = self.price_client.get_price(ticker)
-        return Decimal(str(quote.price)), quote.currency
+        return Decimal(str(quote.price)), quote.currency, quote.name

@@ -18,6 +18,12 @@ def render_dashboard(
     console: Console, data: list[GroupHoldings] | PortfolioSummary
 ) -> None:
     """Render dashboard with groups and their stock holdings."""
+
+    def truncate_name(name: str, max_length: int = 25) -> str:
+        if len(name) <= max_length:
+            return name
+        return name[:max_length]
+
     # Handle PortfolioSummary
     if isinstance(data, PortfolioSummary):
         if not data.holdings:
@@ -27,6 +33,7 @@ def render_dashboard(
         table = Table(title="📊 Portfolio")
         table.add_column("Group", style="blue")
         table.add_column("Ticker", style="cyan")
+        table.add_column("Name", style="white")
         table.add_column("Quantity", style="magenta", justify="right")
         table.add_column("Price", style="green", justify="right")
         table.add_column("Value", style="yellow", justify="right")
@@ -36,6 +43,7 @@ def render_dashboard(
             table.add_row(
                 group.name,
                 holding_with_price.stock.ticker,
+                truncate_name(holding_with_price.name),
                 str(holding_with_price.quantity),
                 f"{currency_symbol}{holding_with_price.price:,.0f}"
                 if holding_with_price.currency == "KRW"
@@ -46,7 +54,7 @@ def render_dashboard(
             )
 
         console.print(table)
-        console.print(f"\n[bold]Total Value: ${data.total_value:,.2f}[/bold]")
+        console.print(f"\n[bold]Total Value: ₩{data.total_value:,.0f}[/bold]")
         return
 
     # Handle list[GroupHoldings]

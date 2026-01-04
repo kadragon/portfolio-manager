@@ -1,0 +1,247 @@
+import httpx
+import pytest
+from unittest.mock import MagicMock
+
+from portfolio_manager.services.kis_domestic_price_client import (
+    KisDomesticPriceClient,
+    PriceQuote,
+)
+from portfolio_manager.services.kis_unified_price_client import KisUnifiedPriceClient
+from portfolio_manager.services.kis_domestic_info_client import DomesticStockInfo
+from portfolio_manager.services.kis_price_parser import (
+    parse_korea_price,
+    parse_us_price,
+)
+
+
+# --- KisDomesticPriceClient Tests ---
+
+
+def test_domestic_price_request_uses_headers_and_params():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["params"] = dict(request.url.params)
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(
+            status_code=200,
+            json={
+                "rt_cd": "0",
+                "msg_cd": "",
+                "msg1": "",
+                "output": {
+                    "stck_prpr": "73500",
+                    "hts_kor_isnm": "삼성전자",
+                },
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.Client(
+        transport=transport, base_url="https://openapi.koreainvestment.com:9443"
+    )
+
+    kis = KisDomesticPriceClient(
+        client=client,
+        app_key="app-key",
+        app_secret="app-secret",
+        access_token="access-token",
+        cust_type="P",
+        env="real",
+    )
+
+    result = kis.fetch_current_price(
+        fid_cond_mrkt_div_code="J", fid_input_iscd="005930"
+    )
+
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/uapi/domestic-stock/v1/quotations/inquire-price"
+    assert captured["params"] == {
+        "FID_COND_MRKT_DIV_CODE": "J",
+        "FID_INPUT_ISCD": "005930",
+    }
+    assert captured["headers"]["authorization"] == "Bearer access-token"
+    assert captured["headers"]["appkey"] == "app-key"
+    assert captured["headers"]["appsecret"] == "app-secret"
+    assert captured["headers"]["tr_id"] == "FHKST01010100"
+    assert captured["headers"]["custtype"] == "P"
+
+    assert result == PriceQuote(
+        symbol="005930",
+        name="삼성전자",
+        price=73500,
+        market="KR",
+        currency="KRW",
+    )
+
+
+def test_env_normalization_allows_whitespace_and_case():
+    assert KisDomesticPriceClient._tr_id_for_env(" REAL ") == "FHKST01010100"
+    assert KisDomesticPriceClient._tr_id_for_env("VPS ") == "FHKST01010100"
+
+
+def test_env_allows_real_prod_token():
+    assert KisDomesticPriceClient._tr_id_for_env("real/prod") == "FHKST01010100"
+
+
+# --- KisUnifiedPriceClient Tests ---
+
+
+@pytest.fixture
+def mock_domestic_client():
+    client = MagicMock()
+    client.fetch_current_price.return_value = PriceQuote(
+        symbol="005930", name="삼성전자", price=70000, market="KR", currency="KRW"
+    )
+    return client
+
+
+@pytest.fixture
+def mock_overseas_client():
+    client = MagicMock()
+    client.fetch_current_price.return_value = PriceQuote(
+        symbol="AAPL", name="Apple Inc.", price=150.0, market="US", currency="USD"
+    )
+    return client
+
+
+@pytest.fixture
+def mock_domestic_info_client():
+    client = MagicMock()
+    client.fetch_basic_info.return_value = DomesticStockInfo(
+        pdno="005930", prdt_type_cd="300", market_id="STK", name="삼성전자"
+    )
+    return client
+
+
+def test_detects_6_digit_numeric_ticker_as_domestic(
+    mock_domestic_client, mock_overseas_client
+):
+    """6자리 숫자 티커는 국내 주식으로 처리한다."""
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    unified.get_price("005930")
+
+    mock_domestic_client.fetch_current_price.assert_called_once_with("J", "005930")
+    mock_overseas_client.fetch_current_price.assert_not_called()
+
+
+def test_detects_alphabetic_ticker_as_overseas(
+    mock_domestic_client, mock_overseas_client
+):
+    """알파벳 티커는 해외 주식으로 처리한다."""
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    unified.get_price("AAPL")
+
+    mock_overseas_client.fetch_current_price.assert_called_once_with("NAS", "AAPL")
+    mock_domestic_client.fetch_current_price.assert_not_called()
+
+
+def test_detects_6_digit_alphanumeric_ticker_as_domestic(
+    mock_domestic_client, mock_overseas_client
+):
+    """6자리 영숫자 혼합 티커는 국내 주식으로 처리한다 (예: 0052D0)."""
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    unified.get_price("0052D0")
+
+    mock_domestic_client.fetch_current_price.assert_called_once_with("J", "0052D0")
+    mock_overseas_client.fetch_current_price.assert_not_called()
+
+
+def test_domestic_name_falls_back_to_basic_info_when_missing(
+    mock_domestic_client, mock_overseas_client, mock_domestic_info_client
+):
+    """국내 가격 응답에 이름이 없으면 기본정보로 보완한다."""
+    mock_domestic_client.fetch_current_price.return_value = PriceQuote(
+        symbol="005930", name="", price=70000, market="KR", currency="KRW"
+    )
+    unified = KisUnifiedPriceClient(
+        mock_domestic_client, mock_overseas_client, mock_domestic_info_client
+    )
+
+    quote = unified.get_price("005930")
+
+    mock_domestic_client.fetch_current_price.assert_called_once_with("J", "005930")
+    mock_domestic_info_client.fetch_basic_info.assert_called_once_with(
+        prdt_type_cd="300", pdno="005930"
+    )
+    assert quote.name == "삼성전자"
+
+
+def test_domestic_name_uses_configured_product_type_code(
+    mock_domestic_client, mock_overseas_client, mock_domestic_info_client
+):
+    """기본정보 조회 시 설정된 상품유형코드를 사용한다."""
+    mock_domestic_client.fetch_current_price.return_value = PriceQuote(
+        symbol="005930", name="", price=70000, market="KR", currency="KRW"
+    )
+    unified = KisUnifiedPriceClient(
+        mock_domestic_client,
+        mock_overseas_client,
+        mock_domestic_info_client,
+        prdt_type_cd="301",
+    )
+
+    unified.get_price("005930")
+
+    mock_domestic_info_client.fetch_basic_info.assert_called_once_with(
+        prdt_type_cd="301", pdno="005930"
+    )
+
+
+def test_domestic_name_lookup_failure_returns_price_quote(
+    mock_domestic_client, mock_overseas_client, mock_domestic_info_client
+):
+    """기본정보 조회가 실패해도 가격 응답은 반환한다."""
+    mock_domestic_client.fetch_current_price.return_value = PriceQuote(
+        symbol="005930", name="", price=70000, market="KR", currency="KRW"
+    )
+    mock_domestic_info_client.fetch_basic_info.side_effect = KeyError("output")
+    unified = KisUnifiedPriceClient(
+        mock_domestic_client, mock_overseas_client, mock_domestic_info_client
+    )
+
+    quote = unified.get_price("005930")
+
+    assert quote.name == ""
+
+
+# --- Price Parser Tests ---
+
+
+def test_parse_korea_price_returns_common_model():
+    payload = {
+        "output": {
+            "stck_prpr": "73500",
+            "stck_code": "005930",
+            "hts_kor_isnm": "삼성전자",
+        }
+    }
+
+    price = parse_korea_price(payload)
+
+    assert price.symbol == "005930"
+    assert price.name == "삼성전자"
+    assert price.price == 73500
+    assert price.market == "KR"
+
+
+def test_parse_us_price_returns_common_model():
+    payload = {
+        "output": {
+            "last": "192.45",
+            "symbol": "AAPL",
+            "name": "Apple Inc",
+        }
+    }
+
+    price = parse_us_price(payload)
+
+    assert price.symbol == "AAPL"
+    assert price.name == "Apple Inc"
+    assert price.price == 192.45
+    assert price.market == "US"

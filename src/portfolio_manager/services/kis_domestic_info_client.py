@@ -40,10 +40,21 @@ class KisDomesticInfoClient:
         )
         response.raise_for_status()
         data = response.json()
-        output = data["output"]
+        output = data.get("output")
+        if isinstance(output, list):
+            output = output[0] if output else None
+        if not output:
+            raise ValueError("KIS response missing output for stock info")
+        name = (
+            output.get("prdt_name")
+            or output.get("prdt_name120")
+            or output.get("prdt_abrv_name")
+            or output.get("prdt_eng_name")
+            or ""
+        )
         return DomesticStockInfo(
             pdno=output["pdno"],
             prdt_type_cd=output["prdt_type_cd"],
             market_id=output["mket_id_cd"],
-            name=output["prdt_name"],
+            name=name,
         )

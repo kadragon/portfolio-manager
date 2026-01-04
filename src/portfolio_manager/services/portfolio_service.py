@@ -10,6 +10,7 @@ from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
 
 if TYPE_CHECKING:
+    from portfolio_manager.services.exchange_rate_service import ExchangeRateService
     from portfolio_manager.services.price_service import PriceService
 
 
@@ -29,6 +30,7 @@ class StockHoldingWithPrice:
     quantity: Decimal
     price: Decimal
     currency: str
+    name: str
 
     @property
     def value(self) -> Decimal:
@@ -61,12 +63,14 @@ class PortfolioService:
         stock_repository: StockRepository,
         holding_repository: HoldingRepository,
         price_service: "PriceService | None" = None,
+        exchange_rate_service: "ExchangeRateService | None" = None,
     ):
         """Initialize service with repositories."""
         self.group_repository = group_repository
         self.stock_repository = stock_repository
         self.holding_repository = holding_repository
         self.price_service = price_service
+        self.exchange_rate_service = exchange_rate_service
 
     def get_holdings_by_group(self) -> list[GroupHoldings]:
         """Get holdings aggregated by group."""
@@ -95,17 +99,33 @@ class PortfolioService:
 
         holdings = []
         total_value = Decimal("0")
+        usd_krw_rate: Decimal | None = None
 
         for group in groups:
             stocks = self.stock_repository.list_by_group(group.id)
             for stock in stocks:
                 quantity = aggregated_holdings.get(stock.id, Decimal("0"))
                 if quantity > 0:
-                    price, currency = self.price_service.get_stock_price(stock.ticker)
+                    price, currency, name = self.price_service.get_stock_price(
+                        stock.ticker
+                    )
                     holding_with_price = StockHoldingWithPrice(
-                        stock=stock, quantity=quantity, price=price, currency=currency
+                        stock=stock,
+                        quantity=quantity,
+                        price=price,
+                        currency=currency,
+                        name=name,
                     )
                     holdings.append((group, holding_with_price))
-                    total_value += holding_with_price.value
+                    if holding_with_price.currency == "USD":
+                        if self.exchange_rate_service is None:
+                            raise ValueError(
+                                "Exchange rate service is required for USD"
+                            )
+                        if usd_krw_rate is None:
+                            usd_krw_rate = self.exchange_rate_service.get_usd_krw_rate()
+                        total_value += holding_with_price.value * usd_krw_rate
+                    else:
+                        total_value += holding_with_price.value
 
         return PortfolioSummary(holdings=holdings, total_value=total_value)

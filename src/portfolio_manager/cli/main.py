@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from decimal import Decimal
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -34,6 +35,7 @@ from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
 from portfolio_manager.services.kis_auth_client import KisAuthClient
+from portfolio_manager.services.kis_domestic_info_client import KisDomesticInfoClient
 from portfolio_manager.services.kis_domestic_price_client import KisDomesticPriceClient
 from portfolio_manager.services.kis_overseas_price_client import KisOverseasPriceClient
 from portfolio_manager.services.kis_token_manager import TokenManager
@@ -41,6 +43,8 @@ from portfolio_manager.services.kis_token_store import FileTokenStore
 from portfolio_manager.services.kis_unified_price_client import KisUnifiedPriceClient
 from portfolio_manager.services.portfolio_service import PortfolioService
 from portfolio_manager.services.price_service import PriceService
+from portfolio_manager.services.exim_exchange_rate_client import EximExchangeRateClient
+from portfolio_manager.services.exchange_rate_service import ExchangeRateService
 from portfolio_manager.services.supabase_client import get_supabase_client
 
 
@@ -152,9 +156,23 @@ def main() -> None:
         base_url = "https://openapivts.koreainvestment.com:29443"
 
     http_client = httpx.Client(base_url=base_url)
+    exim_client: httpx.Client | None = None
 
     # Setup price service (only if KIS credentials are available)
     price_service = None
+    exchange_rate_service = None
+    usd_krw_rate_env = os.getenv("USD_KRW_RATE")
+    exim_auth_key = os.getenv("EXIM_AUTH_KEY")
+    if usd_krw_rate_env:
+        exchange_rate_service = ExchangeRateService(
+            fixed_usd_krw_rate=Decimal(usd_krw_rate_env)
+        )
+    elif exim_auth_key:
+        exim_client = httpx.Client(base_url="https://oapi.koreaexim.go.kr")
+        exim_rate_client = EximExchangeRateClient(
+            client=exim_client, auth_key=exim_auth_key
+        )
+        exchange_rate_service = ExchangeRateService(exim_client=exim_rate_client)
     if app_key and app_secret:
         try:
             auth = KisAuthClient(
@@ -172,6 +190,16 @@ def main() -> None:
                 cust_type=cust_type,
                 env=env,
             )
+            prdt_type_cd = os.getenv("KIS_PRDT_TYPE_CD", "300").strip()
+            info_tr_id = os.getenv("KIS_DOMESTIC_INFO_TR_ID", "CTPF1002R").strip()
+            domestic_info_client = KisDomesticInfoClient(
+                client=http_client,
+                app_key=app_key,
+                app_secret=app_secret,
+                access_token=token,
+                tr_id=info_tr_id,
+                cust_type=cust_type,
+            )
             overseas_client = KisOverseasPriceClient(
                 client=http_client,
                 app_key=app_key,
@@ -180,7 +208,12 @@ def main() -> None:
                 cust_type=cust_type,
                 env=env,
             )
-            unified_client = KisUnifiedPriceClient(domestic_client, overseas_client)
+            unified_client = KisUnifiedPriceClient(
+                domestic_client,
+                overseas_client,
+                domestic_info_client,
+                prdt_type_cd=prdt_type_cd,
+            )
             price_service = PriceService(unified_client)
         except Exception as e:
             console.print(
@@ -197,7 +230,11 @@ def main() -> None:
             stock_repo = StockRepository(client)
             holding_repo = HoldingRepository(client)
             portfolio_service = PortfolioService(
-                group_repo, stock_repo, holding_repo, price_service
+                group_repo,
+                stock_repo,
+                holding_repo,
+                price_service,
+                exchange_rate_service,
             )
 
             # Show dashboard with or without prices
@@ -234,3 +271,5 @@ def main() -> None:
                 return
     finally:
         http_client.close()
+        if exim_client is not None:
+            exim_client.close()
