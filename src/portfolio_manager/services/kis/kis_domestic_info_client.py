@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from portfolio_manager.services.kis.kis_base_client import KisBaseClient
+
 
 @dataclass(frozen=True)
 class DomesticStockInfo:
@@ -14,7 +16,7 @@ class DomesticStockInfo:
 
 
 @dataclass(frozen=True)
-class KisDomesticInfoClient:
+class KisDomesticInfoClient(KisBaseClient):
     client: httpx.Client
     app_key: str
     app_secret: str
@@ -29,14 +31,7 @@ class KisDomesticInfoClient:
                 "PRDT_TYPE_CD": prdt_type_cd,
                 "PDNO": pdno,
             },
-            headers={
-                "content-type": "application/json",
-                "authorization": f"Bearer {self.access_token}",
-                "appkey": self.app_key,
-                "appsecret": self.app_secret,
-                "tr_id": self.tr_id,
-                "custtype": self.cust_type,
-            },
+            headers=self._build_headers(self.tr_id),
         )
         response.raise_for_status()
         data = response.json()

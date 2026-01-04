@@ -4,11 +4,12 @@ from dataclasses import dataclass
 
 import httpx
 
+from portfolio_manager.services.kis.kis_base_client import KisBaseClient
 from portfolio_manager.services.kis.kis_price_parser import PriceQuote
 
 
 @dataclass(frozen=True)
-class KisOverseasPriceClient:
+class KisOverseasPriceClient(KisBaseClient):
     client: httpx.Client
     app_key: str
     app_secret: str
@@ -25,14 +26,7 @@ class KisOverseasPriceClient:
                 "EXCD": excd,
                 "SYMB": symb,
             },
-            headers={
-                "content-type": "application/json",
-                "authorization": f"Bearer {self.access_token}",
-                "appkey": self.app_key,
-                "appsecret": self.app_secret,
-                "tr_id": tr_id,
-                "custtype": self.cust_type,
-            },
+            headers=self._build_headers(tr_id),
         )
         response.raise_for_status()
         data = response.json()
@@ -69,12 +63,7 @@ class KisOverseasPriceClient:
         )
 
     @staticmethod
-    def _tr_id_for_env(env: str) -> str:
-        env_normalized = env.strip().lower()
-        if "/" in env_normalized:
-            env_normalized = env_normalized.split("/", 1)[0]
-        if env_normalized in {"real", "prod"}:
-            return "HHDFS00000300"
-        if env_normalized in {"demo", "vps", "paper"}:
-            return "HHDFS00000300"
-        raise ValueError("env must be one of: real/prod or demo/vps/paper")
+    def _tr_id_for_env(
+        env: str, *, real_id: str = "HHDFS00000300", demo_id: str = "HHDFS00000300"
+    ) -> str:
+        return KisBaseClient._tr_id_for_env(env, real_id=real_id, demo_id=demo_id)
