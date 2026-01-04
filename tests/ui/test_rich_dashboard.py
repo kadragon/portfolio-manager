@@ -851,3 +851,52 @@ def test_dashboard_displays_investment_summary_panel():
     assert "50,000" in output  # Cash Balance
     assert "2,000,000" in output  # Total Assets
     assert "1,500,000" in output  # Total Invested
+
+
+def test_dashboard_displays_change_rate_columns():
+    """대시보드에 1Y/6M/1M 변동률 컬럼을 표시한다."""
+    console = Console(record=True, width=160)
+
+    group = Group(
+        id=uuid4(),
+        name="Tech",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="AAPL",
+        group_id=group.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    holdings = [
+        (
+            group,
+            StockHoldingWithPrice(
+                stock=stock,
+                quantity=Decimal("10"),
+                price=Decimal("150.0"),
+                currency="USD",
+                name="Apple Inc.",
+                value_krw=Decimal("1950000"),
+                change_rates={
+                    "1y": Decimal("20"),
+                    "6m": Decimal("10"),
+                    "1m": Decimal("-5"),
+                },
+            ),
+        ),
+    ]
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("1950000"))
+
+    render_dashboard(console, summary)
+
+    output = console.export_text()
+    assert "1Y" in output
+    assert "6M" in output
+    assert "1M" in output
+    assert "20.0%" in output
+    assert "10.0%" in output
+    assert "-5.0%" in output

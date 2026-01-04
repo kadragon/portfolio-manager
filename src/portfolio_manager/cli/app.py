@@ -52,6 +52,9 @@ def render_dashboard(
         table.add_column("Quantity", style="magenta", justify="right")
         table.add_column("Price", style="green", justify="right")
         table.add_column("Value", style="yellow", justify="right")
+        table.add_column("1Y", style="white", justify="right")
+        table.add_column("6M", style="white", justify="right")
+        table.add_column("1M", style="white", justify="right")
 
         group_totals: dict[str, Decimal] = {}
         group_lookup: dict[str, Group] = {}
@@ -84,6 +87,15 @@ def render_dashboard(
                 if holding_with_price.currency == "KRW"
                 else f"{currency_symbol}{holding_with_price.price:,.2f}",
                 f"₩{value_krw:,.0f}",
+                f"{format_signed_percent(holding_with_price.change_rates['1y'])}%"
+                if holding_with_price.change_rates
+                else "-",
+                f"{format_signed_percent(holding_with_price.change_rates['6m'])}%"
+                if holding_with_price.change_rates
+                else "-",
+                f"{format_signed_percent(holding_with_price.change_rates['1m'])}%"
+                if holding_with_price.change_rates
+                else "-",
             )
 
         console.print(table)

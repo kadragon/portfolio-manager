@@ -37,6 +37,7 @@ class StockHoldingWithPrice:
     currency: str
     name: str
     value_krw: Decimal | None = None
+    change_rates: dict[str, Decimal] | None = None
 
     @property
     def value(self) -> Decimal:
@@ -142,6 +143,9 @@ class PortfolioService:
                         value_krw = holding_value * usd_krw_rate
                     else:
                         value_krw = holding_value
+                    change_rates = self.price_service.get_stock_change_rates(
+                        stock.ticker
+                    )
                     holding_with_price = StockHoldingWithPrice(
                         stock=stock,
                         quantity=quantity,
@@ -149,6 +153,7 @@ class PortfolioService:
                         currency=currency,
                         name=name,
                         value_krw=value_krw,
+                        change_rates=change_rates,
                     )
                     holdings.append((group, holding_with_price))
                     if value_krw is not None:

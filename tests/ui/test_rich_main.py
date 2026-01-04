@@ -1,5 +1,6 @@
 """Tests for Rich-based main menu and navigation."""
 
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from rich.console import Console
@@ -13,6 +14,7 @@ from portfolio_manager.cli.menu import render_menu_options
 from portfolio_manager.cli.groups import select_group_menu_option
 from portfolio_manager.cli import main as main_app
 from portfolio_manager.cli.prompt_select import choose_main_menu
+from portfolio_manager.services.portfolio_service import PortfolioSummary
 
 
 def test_rich_main_menu_renders_title():
@@ -47,6 +49,26 @@ def test_main_menu_quit_exits():
     render_menu.assert_called()
     run_group_menu.assert_not_called()
     run_account_menu.assert_not_called()
+
+
+def test_main_menu_renders_dashboard_and_quits():
+    """Should render dashboard before quitting."""
+    summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
+
+    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
+        container = MockContainer.return_value
+        container.get_portfolio_service.return_value = MagicMock(
+            get_portfolio_summary=MagicMock(return_value=summary)
+        )
+        container.price_service = object()
+        container.setup = MagicMock()
+
+        with patch.object(main_app, "render_dashboard") as render_dashboard:
+            with patch.object(main_app, "choose_main_menu", return_value="quit"):
+                main_app.main()
+
+    render_dashboard.assert_called()
+    assert render_dashboard.call_args[0][1] is summary
 
 
 def test_render_menu_options_prints_options_line():

@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 from unittest.mock import Mock
+from datetime import date
 
 from portfolio_manager.services.kis.kis_price_parser import PriceQuote
 from portfolio_manager.services.price_service import PriceService
@@ -103,3 +104,44 @@ def test_overseas_price_uses_usd():
     )
 
     assert quote.currency == "USD"
+
+
+def test_get_stock_change_rates_returns_percentages():
+    """현재가 대비 1Y/6M/1M 변동률을 계산한다."""
+    price_client = Mock()
+    price_client.get_price.return_value = PriceQuote(
+        symbol="AAPL", name="Apple Inc.", price=120.0, market="US", currency="USD"
+    )
+    price_client.get_historical_close.side_effect = lambda ticker, target_date: {
+        date(2024, 1, 15): 100.0,
+        date(2024, 7, 15): 80.0,
+        date(2024, 12, 13): 60.0,
+    }[target_date]
+
+    service = PriceService(price_client)
+
+    change_rates = service.get_stock_change_rates("AAPL", as_of=date(2025, 1, 15))
+
+    assert change_rates["1y"] == Decimal("20")
+    assert change_rates["6m"] == Decimal("50")
+    assert change_rates["1m"] == Decimal("100")
+
+
+def test_get_stock_change_rates_adjusts_to_previous_business_day():
+    """휴장일이면 이전 영업일로 보정해 과거 종가를 조회한다."""
+    price_client = Mock()
+    price_client.get_price.return_value = PriceQuote(
+        symbol="AAPL", name="Apple Inc.", price=120.0, market="US", currency="USD"
+    )
+    price_client.get_historical_close.side_effect = lambda ticker, target_date: {
+        date(2024, 1, 12): 100.0,  # 2024-01-13 (Sat) -> 2024-01-12 (Fri)
+        date(2024, 7, 12): 100.0,
+        date(2024, 12, 13): 100.0,
+    }[target_date]
+
+    service = PriceService(price_client)
+
+    change_rates = service.get_stock_change_rates("AAPL", as_of=date(2025, 1, 13))
+
+    assert change_rates["1y"] == Decimal("20")
+    price_client.get_historical_close.assert_any_call("AAPL", date(2024, 1, 12))

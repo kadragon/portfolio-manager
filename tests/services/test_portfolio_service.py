@@ -367,3 +367,67 @@ def test_portfolio_summary_calculates_return_rate():
     assert summary.total_assets == Decimal("1100000")
     assert summary.total_invested == Decimal("1000000")
     assert summary.return_rate == Decimal("10.0")  # 10%
+
+
+def test_portfolio_summary_includes_change_rates():
+    """보유 주식에 1Y/6M/1M 변동률을 포함한다."""
+    group_id = uuid4()
+    stock_id = uuid4()
+
+    group_repo = Mock()
+    group_repo.list_all.return_value = [
+        Group(
+            id=group_id,
+            name="Tech",
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+
+    stock_repo = Mock()
+    stock_repo.list_by_group.return_value = [
+        Stock(
+            id=stock_id,
+            ticker="AAPL",
+            group_id=group_id,
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+
+    holding_repo = Mock()
+    holding_repo.get_aggregated_holdings_by_stock.return_value = {
+        stock_id: Decimal("10"),
+    }
+
+    price_service = Mock()
+    price_service.get_stock_price.return_value = (
+        Decimal("150.0"),
+        "USD",
+        "Apple Inc.",
+    )
+    price_service.get_stock_change_rates.return_value = {
+        "1y": Decimal("20"),
+        "6m": Decimal("10"),
+        "1m": Decimal("-5"),
+    }
+
+    exchange_rate_service = Mock()
+    exchange_rate_service.get_usd_krw_rate.return_value = Decimal("1300")
+
+    portfolio_service = PortfolioService(
+        group_repo,
+        stock_repo,
+        holding_repo,
+        price_service,
+        exchange_rate_service,
+    )
+
+    summary = portfolio_service.get_portfolio_summary()
+
+    holding = summary.holdings[0][1]
+    assert holding.change_rates == {
+        "1y": Decimal("20"),
+        "6m": Decimal("10"),
+        "1m": Decimal("-5"),
+    }

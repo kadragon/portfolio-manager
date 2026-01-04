@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 import httpx
 
@@ -70,6 +71,35 @@ class KisOverseasPriceClient(KisBaseClient):
             market="US",
             currency="USD",
         )
+
+    def fetch_historical_close(
+        self, excd: str, symb: str, target_date: date, auth: str = ""
+    ) -> float:
+        """Fetch historical close price for a given date."""
+        tr_id = KisBaseClient._tr_id_for_env(
+            self.env, real_id="HHDFS76240000", demo_id="HHDFS76240000"
+        )
+        response = self.client.get(
+            "/uapi/overseas-price/v1/quotations/dailyprice",
+            params={
+                "AUTH": auth,
+                "EXCD": excd,
+                "SYMB": symb,
+                "GUBN": "0",
+                "BYMD": target_date.strftime("%Y%m%d"),
+                "MODP": "0",
+            },
+            headers=self._build_headers(tr_id),
+        )
+        response.raise_for_status()
+        data = response.json()
+        output = data.get("output2") or data.get("output") or []
+        if isinstance(output, list):
+            item = output[0] if output else {}
+        else:
+            item = output or {}
+        raw_close = (item.get("close") or item.get("last") or "0").strip()
+        return float(raw_close) if raw_close else 0.0
 
     def fetch_current_price_with_retry(
         self, excd: str, symb: str, token_manager: TokenManager, auth: str = ""

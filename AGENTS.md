@@ -74,3 +74,8 @@
 
 ## Governance Updates
 - Added `is_domestic_ticker()` helper in KIS services to centralize market detection by ticker length and keep routing logic consistent across clients.
+- PriceService now provides `get_stock_change_rates()` to compute 1Y/6M/1M change percentages from historical closes with date-shift helpers.
+- Dashboard now renders 1Y/6M/1M change-rate columns per holding when change rate data is available.
+- Added KIS historical close fetch methods for domestic and overseas price clients to support date-based close lookups.
+- Change-rate calculation now adjusts target dates that fall on weekends to the previous business day before fetching historical closes.
+- Added a lightweight CLI integration test to ensure the main loop renders the dashboard once and exits cleanly when quit is selected.

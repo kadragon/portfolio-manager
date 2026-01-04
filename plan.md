@@ -104,13 +104,25 @@
   - [x] Test: 메인 메뉴에 rebalance 옵션 추가
   - [x] Impl: choose_main_menu에 rebalance 옵션
   - [x] Test: 리밸런싱 추천 테이블 렌더링
-  - [x] Impl: render_rebalance_recommendations 함수
+- [x] Impl: render_rebalance_recommendations 함수
+
+### 2.7 주식별 과거 대비 변동률 표시 (1Y/6M/1M)
+- [x] **Test**: PriceService가 1Y/6M/1M 변동률을 계산한다
+- [x] **Implementation**: PriceService에 변동률 계산 메서드 추가
+- [x] **Test**: PortfolioService가 보유주식에 변동률을 포함한다
+- [x] **Implementation**: PortfolioService가 PriceService에서 변동률을 받아 StockHoldingWithPrice에 저장
+- [x] **Test**: 대시보드에 1Y/6M/1M 컬럼을 표시한다
+- [x] **Implementation**: render_dashboard에 1Y/6M/1M 컬럼 추가
+- [x] **Test**: KIS 국내/해외 과거 종가 조회 API 요청을 구성한다
+- [x] **Implementation**: KisDomesticPriceClient/KisOverseasPriceClient에 과거 종가 조회 추가
+- [x] **Test**: 휴장일이면 이전 영업일로 자동 보정한다
+- [x] **Implementation**: 과거 종가 조회 시 이전 영업일 탐색 로직 추가
 
 ---
 
 ## 3. 테스트 및 검증
-- [ ] 각 리팩토링 단계 후 `pytest` 실행
-- [ ] CLI 정상 동작 확인 (통합 테스트)
+- [x] 각 리팩토링 단계 후 `pytest` 실행
+- [x] CLI 정상 동작 확인 (통합 테스트)
 
 ---
 

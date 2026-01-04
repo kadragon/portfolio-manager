@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 import httpx
 
@@ -50,6 +51,38 @@ class KisDomesticPriceClient(KisBaseClient):
             market="KR",
             currency="KRW",
         )
+
+    def fetch_historical_close(
+        self,
+        fid_input_iscd: str,
+        target_date: date,
+        fid_cond_mrkt_div_code: str = "J",
+    ) -> int:
+        """Fetch historical close price for a given date."""
+        tr_id = KisBaseClient._tr_id_for_env(
+            self.env, real_id="FHKST03010100", demo_id="FHKST03010100"
+        )
+        response = self.client.get(
+            "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
+            params={
+                "FID_COND_MRKT_DIV_CODE": fid_cond_mrkt_div_code,
+                "FID_INPUT_ISCD": fid_input_iscd,
+                "FID_INPUT_DATE_1": target_date.strftime("%Y%m%d"),
+                "FID_INPUT_DATE_2": target_date.strftime("%Y%m%d"),
+                "FID_PERIOD_DIV_CODE": "D",
+                "FID_ORG_ADJ_PRC": "1",
+            },
+            headers=self._build_headers(tr_id),
+        )
+        response.raise_for_status()
+        data = response.json()
+        output = data.get("output2") or data.get("output") or []
+        if isinstance(output, list):
+            item = output[0] if output else {}
+        else:
+            item = output or {}
+        raw_close = (item.get("stck_clpr") or item.get("stck_prpr") or "0").strip()
+        return int(raw_close) if raw_close else 0
 
     def fetch_current_price_with_retry(
         self,
