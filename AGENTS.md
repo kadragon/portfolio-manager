@@ -71,3 +71,6 @@
 - 대시보드 투자 요약(Total Summary)을 Rich Panel로 개선하고, 연환산 수익률(Annualized Return Rate) 표시 기능을 추가했다. 최초 입금일로부터 경과 일수를 기준으로 ((총자산/투자원금)^(365/경과일수) - 1) × 100 공식으로 계산한다.
 - `RebalanceService`가 그룹별 과대/과소 비중을 계산하고 개별 주식 매매 추천을 생성한다. 매도 시 해외주식(USD)을 우선 추천하고, 매수 시 국내주식(KRW)을 우선 추천하여 환전 비용과 세금을 최소화한다.
 - 주식명 표기 시 "증권상장지수투자신탁(주식)" 접미어를 제거하는 규칙을 CLI와 PortfolioService에 적용했다.
+
+## Governance Updates
+- Added `is_domestic_ticker()` helper in KIS services to centralize market detection by ticker length and keep routing logic consistent across clients.

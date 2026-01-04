@@ -9,6 +9,7 @@ from portfolio_manager.services.kis.kis_domestic_price_client import (
 from portfolio_manager.services.kis.kis_overseas_price_client import (
     KisOverseasPriceClient,
 )
+from portfolio_manager.services.kis.kis_market_detector import is_domestic_ticker
 from portfolio_manager.services.kis.kis_price_parser import PriceQuote
 
 
@@ -31,7 +32,7 @@ class KisUnifiedPriceClient:
     def get_price(self, ticker: str) -> PriceQuote:
         """Get price for a ticker (auto-detects market)."""
         # Korean stocks are 6-character codes (e.g., "005930", "0052D0")
-        if len(ticker) == 6:
+        if is_domestic_ticker(ticker):
             quote = self.domestic_client.fetch_current_price("J", ticker)
             if quote.name or self.domestic_info_client is None:
                 return quote

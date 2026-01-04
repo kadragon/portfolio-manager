@@ -84,7 +84,7 @@
 - [x] **Integration**: `KisDomesticPriceClient`, `KisOverseasPriceClient`에 retry 로직 통합
 
 ### 2.2 시장 감지 로직 개선
-- [ ] `KisUnifiedPriceClient`의 티커 길이 기반 감지 로직을 보다 명확한 유틸리티로 분리
+- [x] `KisUnifiedPriceClient`의 티커 길이 기반 감지 로직을 보다 명확한 유틸리티로 분리
 
 ### 2.6 리밸런싱 추천 기능 (Rebalancing Recommendations)
 - **개요**: 그룹 목표 비중과 현재 평가액 차이를 기준으로 개별 주식 매매 추천
