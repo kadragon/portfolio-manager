@@ -80,6 +80,27 @@ def delete_account_flow(
     console.print(f"Deleted account: {account.name}")
 
 
+def quick_update_cash_flow(
+    console: Console,
+    repository,
+    prompt_cash: Callable[[str], Decimal] | None = None,
+) -> None:
+    """Update cash balance for all accounts in sequence."""
+    accounts = repository.list_all()
+    if not accounts:
+        console.print("No accounts to update")
+        return
+
+    cash_func = prompt_cash or (
+        lambda name: Decimal(Prompt.ask(f"Cash balance for {name}"))
+    )
+
+    for account in accounts:
+        new_balance = cash_func(account.name)
+        repository.update(account.id, name=account.name, cash_balance=new_balance)
+        console.print(f"Updated {account.name}: {new_balance}")
+
+
 def _select_account_by_id(accounts: list[Account], account_id) -> Account | None:
     for account in accounts:
         if account.id == account_id:
@@ -118,6 +139,9 @@ def run_account_menu(
         action = choose_account_menu(chooser)
         if action == "back":
             return
+        if action == "quick":
+            quick_update_cash_flow(console, repository)
+            continue
         if action == "add":
             add_account_flow(console, repository)
             continue

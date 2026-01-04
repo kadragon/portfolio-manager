@@ -67,13 +67,14 @@ def choose_account_menu(chooser: Callable | None = None) -> str | None:
         chooser = choice
 
     options: OptionList = [
+        ("quick", "Quick update cash"),
         ("add", "Add account"),
         ("edit", "Edit account"),
         ("delete", "Delete account"),
         ("select", "Select account"),
         ("back", "Back"),
     ]
-    return chooser(message="Accounts menu:", options=options, default="select")
+    return chooser(message="Accounts menu:", options=options, default="quick")
 
 
 def choose_holding_menu(chooser: Callable | None = None) -> str | None:
