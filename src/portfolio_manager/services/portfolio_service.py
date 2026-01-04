@@ -127,8 +127,13 @@ class PortfolioService:
             for stock in stocks:
                 quantity = aggregated_holdings.get(stock.id, Decimal("0"))
                 if quantity > 0:
-                    price, currency, name = self.price_service.get_stock_price(
-                        stock.ticker
+                    (
+                        price,
+                        currency,
+                        name,
+                        exchange,
+                    ) = self.price_service.get_stock_price(
+                        stock.ticker, preferred_exchange=stock.exchange
                     )
                     name = format_stock_name(name)
                     value_krw: Decimal | None = None
@@ -144,8 +149,10 @@ class PortfolioService:
                     else:
                         value_krw = holding_value
                     change_rates = self.price_service.get_stock_change_rates(
-                        stock.ticker
+                        stock.ticker, preferred_exchange=stock.exchange
                     )
+                    if exchange and exchange != stock.exchange:
+                        self.stock_repository.update_exchange(stock.id, exchange)
                     holding_with_price = StockHoldingWithPrice(
                         stock=stock,
                         quantity=quantity,

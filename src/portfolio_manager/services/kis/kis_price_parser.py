@@ -10,6 +10,7 @@ class PriceQuote:
     price: float
     market: str
     currency: str
+    exchange: str | None = None
 
 
 def parse_korea_price(payload: dict) -> PriceQuote:
@@ -20,6 +21,7 @@ def parse_korea_price(payload: dict) -> PriceQuote:
         price=int(output["stck_prpr"]),
         market="KR",
         currency="KRW",
+        exchange=None,
     )
 
 
@@ -31,4 +33,5 @@ def parse_us_price(payload: dict) -> PriceQuote:
         price=float(output["last"]),
         market="US",
         currency="USD",
+        exchange=None,
     )

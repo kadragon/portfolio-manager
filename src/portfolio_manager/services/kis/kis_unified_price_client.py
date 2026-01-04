@@ -33,7 +33,9 @@ class KisUnifiedPriceClient:
         self.domestic_info_client = domestic_info_client
         self.prdt_type_cd = prdt_type_cd
 
-    def get_price(self, ticker: str) -> PriceQuote:
+    def get_price(
+        self, ticker: str, preferred_exchange: str | None = None
+    ) -> PriceQuote:
         """Get price for a ticker (auto-detects market)."""
         # Korean stocks are 6-character codes (e.g., "005930", "0052D0")
         if is_domestic_ticker(ticker):
@@ -56,6 +58,10 @@ class KisUnifiedPriceClient:
         # US stocks are alphabetic symbols (e.g., "AAPL")
         else:
             exchanges = ["NAS", "NYS", "AMS"]
+            if preferred_exchange in exchanges:
+                exchanges = [preferred_exchange] + [
+                    excd for excd in exchanges if excd != preferred_exchange
+                ]
             best_quote: PriceQuote | None = None
             for excd in exchanges:
                 try:
@@ -72,7 +78,12 @@ class KisUnifiedPriceClient:
                 return self.overseas_client.fetch_current_price("NAS", ticker)
             return best_quote
 
-    def get_historical_close(self, ticker: str, target_date: date) -> float:
+    def get_historical_close(
+        self,
+        ticker: str,
+        target_date: date,
+        preferred_exchange: str | None = None,
+    ) -> float:
         """Get historical close price for a ticker (auto-detects market)."""
         if is_domestic_ticker(ticker):
             return float(
@@ -81,11 +92,18 @@ class KisUnifiedPriceClient:
                 )
             )
         exchanges = ["NAS", "NYS", "AMS"]
+        if preferred_exchange in exchanges:
+            exchanges = [preferred_exchange] + [
+                excd for excd in exchanges if excd != preferred_exchange
+            ]
         best_close = 0.0
         for excd in exchanges:
-            close_price = self.overseas_client.fetch_historical_close(
-                excd=excd, symb=ticker, target_date=target_date
-            )
+            try:
+                close_price = self.overseas_client.fetch_historical_close(
+                    excd=excd, symb=ticker, target_date=target_date
+                )
+            except httpx.HTTPStatusError:
+                continue
             if close_price:
                 return float(close_price)
             if best_close == 0.0 and close_price:

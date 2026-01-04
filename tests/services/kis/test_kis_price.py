@@ -406,6 +406,63 @@ def test_unified_historical_close_checks_overseas_exchanges(
     )
 
 
+def test_unified_price_uses_preferred_exchange_first(
+    mock_domestic_client, mock_overseas_client
+):
+    """저장된 거래소가 있으면 해당 거래소를 먼저 조회한다."""
+    mock_overseas_client.fetch_current_price.side_effect = [
+        PriceQuote(
+            symbol="SCHD",
+            name="Schwab US Dividend Equity ETF",
+            price=70.0,
+            market="US",
+            currency="USD",
+        )
+    ]
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    quote = unified.get_price("SCHD", preferred_exchange="NYS")
+
+    assert quote.name == "Schwab US Dividend Equity ETF"
+    mock_overseas_client.fetch_current_price.assert_called_once_with("NYS", "SCHD")
+
+
+def test_unified_historical_close_uses_preferred_exchange_first(
+    mock_domestic_client, mock_overseas_client
+):
+    """과거 종가도 저장된 거래소를 먼저 조회한다."""
+    mock_overseas_client.fetch_historical_close.side_effect = [150.0]
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    close_price = unified.get_historical_close(
+        "AAPL", target_date=date(2024, 1, 15), preferred_exchange="NYS"
+    )
+
+    assert close_price == 150.0
+    mock_overseas_client.fetch_historical_close.assert_called_once_with(
+        excd="NYS", symb="AAPL", target_date=date(2024, 1, 15)
+    )
+
+
+def test_unified_historical_close_skips_http_errors(
+    mock_domestic_client, mock_overseas_client
+):
+    """과거 종가 조회가 HTTP 에러면 다음 거래소로 넘어간다."""
+    request = httpx.Request("GET", "https://example.com")
+    response = httpx.Response(status_code=500, request=request)
+    mock_overseas_client.fetch_historical_close.side_effect = [
+        httpx.HTTPStatusError("Server error", request=request, response=response),
+        0.0,
+        150.0,
+    ]
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    close_price = unified.get_historical_close("AAPL", target_date=date(2024, 1, 15))
+
+    assert close_price == 150.0
+    assert mock_overseas_client.fetch_historical_close.call_count == 3
+
+
 # --- Price Parser Tests ---
 
 

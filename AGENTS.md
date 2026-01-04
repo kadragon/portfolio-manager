@@ -81,3 +81,9 @@
 - Added a lightweight CLI integration test to ensure the main loop renders the dashboard once and exits cleanly when quit is selected.
 - KisUnifiedPriceClient now exposes `get_historical_close()` with domestic routing and overseas exchange fallback to support change-rate queries.
 - KisUnifiedPriceClient now skips HTTPStatusError failures for overseas quotes and falls back to the next exchange.
+- Added `stocks.exchange` migration to cache the preferred overseas exchange per ticker.
+- Stock model and repository now track a preferred overseas exchange via `stocks.exchange` and support updating it.
+- KisUnifiedPriceClient now accepts an optional preferred exchange to prioritize NAS/NYS/AMS ordering for overseas quotes.
+- KisUnifiedPriceClient historical close lookup now accepts a preferred exchange for prioritized overseas history queries.
+- PriceService now passes preferred exchanges into KIS clients and returns the resolved exchange so PortfolioService can persist exchange cache updates.
+- Overseas historical close lookup now skips HTTPStatusError responses and falls back to the next exchange.
