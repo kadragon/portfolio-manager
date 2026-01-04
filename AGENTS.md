@@ -80,3 +80,4 @@
 - Change-rate calculation now adjusts target dates that fall on weekends to the previous business day before fetching historical closes.
 - Added a lightweight CLI integration test to ensure the main loop renders the dashboard once and exits cleanly when quit is selected.
 - KisUnifiedPriceClient now exposes `get_historical_close()` with domestic routing and overseas exchange fallback to support change-rate queries.
+- KisUnifiedPriceClient now skips HTTPStatusError failures for overseas quotes and falls back to the next exchange.

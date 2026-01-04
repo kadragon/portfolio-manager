@@ -2,6 +2,8 @@
 
 from datetime import date
 
+import httpx
+
 from portfolio_manager.services.kis.kis_domestic_info_client import (
     KisDomesticInfoClient,
 )
@@ -56,7 +58,10 @@ class KisUnifiedPriceClient:
             exchanges = ["NAS", "NYS", "AMS"]
             best_quote: PriceQuote | None = None
             for excd in exchanges:
-                quote = self.overseas_client.fetch_current_price(excd, ticker)
+                try:
+                    quote = self.overseas_client.fetch_current_price(excd, ticker)
+                except httpx.HTTPStatusError:
+                    continue
                 if best_quote is None:
                     best_quote = quote
                 if quote.name:

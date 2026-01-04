@@ -269,6 +269,33 @@ def test_overseas_price_falls_back_when_name_missing(
     )
 
 
+def test_overseas_price_skips_http_errors_and_tries_next_exchange(
+    mock_domestic_client,
+):
+    """해외 시세 조회가 HTTP 에러면 다음 거래소로 넘어간다."""
+    overseas_client = MagicMock()
+    request = httpx.Request("GET", "https://example.com")
+    response = httpx.Response(status_code=500, request=request)
+    overseas_client.fetch_current_price.side_effect = [
+        httpx.HTTPStatusError("Server error", request=request, response=response),
+        PriceQuote(
+            symbol="SCHD",
+            name="Schwab US Dividend Equity ETF",
+            price=70.0,
+            market="US",
+            currency="USD",
+        ),
+    ]
+    unified = KisUnifiedPriceClient(mock_domestic_client, overseas_client)
+
+    quote = unified.get_price("SCHD")
+
+    assert quote.name == "Schwab US Dividend Equity ETF"
+    overseas_client.fetch_current_price.assert_has_calls(
+        [call("NAS", "SCHD"), call("NYS", "SCHD")]
+    )
+
+
 def test_detects_6_digit_alphanumeric_ticker_as_domestic(
     mock_domestic_client, mock_overseas_client
 ):
