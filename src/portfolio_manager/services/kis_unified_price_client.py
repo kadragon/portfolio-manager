@@ -19,8 +19,8 @@ class KisUnifiedPriceClient:
 
     def get_price(self, ticker: str) -> PriceQuote:
         """Get price for a ticker (auto-detects market)."""
-        # Korean stocks are 6-digit numbers (e.g., "005930")
-        if ticker.isdigit() and len(ticker) == 6:
+        # Korean stocks are 6-character codes (e.g., "005930", "0052D0")
+        if len(ticker) == 6:
             return self.domestic_client.fetch_current_price("J", ticker)
         # US stocks are alphabetic symbols (e.g., "AAPL")
         else:
