@@ -86,6 +86,26 @@
 ### 2.2 시장 감지 로직 개선
 - [ ] `KisUnifiedPriceClient`의 티커 길이 기반 감지 로직을 보다 명확한 유틸리티로 분리
 
+### 2.6 리밸런싱 추천 기능 (Rebalancing Recommendations)
+- **개요**: 그룹 목표 비중과 현재 평가액 차이를 기준으로 개별 주식 매매 추천
+  - 매도 우선순위: 해외주식 먼저
+  - 매수 우선순위: 국내주식 먼저
+- **Model**: `RebalanceRecommendation` 데이터 클래스 생성
+  - [x] Test: 추천 모델이 ticker, action(buy/sell), amount, priority 포함
+  - [x] Impl: `RebalanceRecommendation` 구현
+- **Service**: `RebalanceService` 구현
+  - [x] Test: 그룹별 현재 평가액과 목표 차이 계산
+  - [x] Impl: 그룹별 차이 계산 로직
+  - [x] Test: 매도 추천 시 해외주식(USD) 우선
+  - [x] Impl: 해외주식 우선 매도 로직
+  - [x] Test: 매수 추천 시 국내주식(KRW) 우선
+  - [x] Impl: 국내주식 우선 매수 로직
+- **CLI**: 리밸런싱 메뉴 추가
+  - [x] Test: 메인 메뉴에 rebalance 옵션 추가
+  - [x] Impl: choose_main_menu에 rebalance 옵션
+  - [x] Test: 리밸런싱 추천 테이블 렌더링
+  - [x] Impl: render_rebalance_recommendations 함수
+
 ---
 
 ## 3. 테스트 및 검증

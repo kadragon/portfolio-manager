@@ -13,6 +13,7 @@ from rich.prompt import Prompt
 
 from portfolio_manager.cli.app import render_dashboard, render_main_menu
 from portfolio_manager.cli.deposits import run_deposit_menu
+from portfolio_manager.cli.rebalance import render_rebalance_recommendations
 from portfolio_manager.cli.groups import (
     add_group_flow,
     delete_group_flow,
@@ -28,6 +29,7 @@ from portfolio_manager.cli.accounts import run_account_menu
 from portfolio_manager.cli.stocks import run_stock_menu
 from portfolio_manager.core.container import ServiceContainer
 from portfolio_manager.models import Group
+from portfolio_manager.services.rebalance_service import RebalanceService
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,31 @@ def _select_group_by_id(groups: Iterable[Group], group_id) -> Group | None:
         if group.id == group_id:
             return group
     return None
+
+
+def run_rebalance_menu(console: Console, container: ServiceContainer) -> None:
+    """Run the rebalance recommendations view."""
+    portfolio_service = container.get_portfolio_service()
+
+    if not container.price_service:
+        console.print(
+            "[yellow]Price service not available. Cannot calculate rebalance.[/yellow]"
+        )
+        return
+
+    try:
+        summary = portfolio_service.get_portfolio_summary()
+    except Exception as e:
+        console.print(f"[red]Error fetching portfolio: {e}[/red]")
+        return
+
+    rebalance_service = RebalanceService()
+    sell_recommendations = rebalance_service.get_sell_recommendations(summary)
+    buy_recommendations = rebalance_service.get_buy_recommendations(summary)
+
+    render_rebalance_recommendations(console, sell_recommendations, buy_recommendations)
+
+    Prompt.ask("Press Enter to continue")
 
 
 def run_group_menu(console: Console, container: ServiceContainer) -> None:
@@ -157,6 +184,9 @@ def main() -> None:
                     console,
                     container.deposit_repository,
                 )
+                continue
+            if action == "rebalance":
+                run_rebalance_menu(console, container)
                 continue
             if action == "quit":
                 return

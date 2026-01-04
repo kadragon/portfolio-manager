@@ -20,6 +20,7 @@ def choose_main_menu(chooser: Callable | None = None) -> str | None:
         ("groups", "Groups"),
         ("accounts", "Accounts"),
         ("deposits", "Deposits"),
+        ("rebalance", "Rebalance"),
         ("quit", "Quit"),
     ]
     return chooser(message="Select menu:", options=options, default="groups")
