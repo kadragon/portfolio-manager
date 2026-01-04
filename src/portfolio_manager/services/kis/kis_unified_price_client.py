@@ -1,5 +1,7 @@
 """Unified KIS price client for both domestic and overseas stocks."""
 
+from datetime import date
+
 from portfolio_manager.services.kis.kis_domestic_info_client import (
     KisDomesticInfoClient,
 )
@@ -64,3 +66,23 @@ class KisUnifiedPriceClient:
             if best_quote is None:
                 return self.overseas_client.fetch_current_price("NAS", ticker)
             return best_quote
+
+    def get_historical_close(self, ticker: str, target_date: date) -> float:
+        """Get historical close price for a ticker (auto-detects market)."""
+        if is_domestic_ticker(ticker):
+            return float(
+                self.domestic_client.fetch_historical_close(
+                    fid_input_iscd=ticker, target_date=target_date
+                )
+            )
+        exchanges = ["NAS", "NYS", "AMS"]
+        best_close = 0.0
+        for excd in exchanges:
+            close_price = self.overseas_client.fetch_historical_close(
+                excd=excd, symb=ticker, target_date=target_date
+            )
+            if close_price:
+                return float(close_price)
+            if best_close == 0.0 and close_price:
+                best_close = float(close_price)
+        return float(best_close)

@@ -145,3 +145,19 @@ def test_get_stock_change_rates_adjusts_to_previous_business_day():
 
     assert change_rates["1y"] == Decimal("20")
     price_client.get_historical_close.assert_any_call("AAPL", date(2024, 1, 12))
+
+
+def test_get_stock_change_rates_calls_price_client_historical_close():
+    """PriceService는 통합 가격 클라이언트의 과거 종가 조회를 호출한다."""
+    price_client = Mock()
+    price_client.get_price.return_value = PriceQuote(
+        symbol="AAPL", name="Apple Inc.", price=120.0, market="US", currency="USD"
+    )
+    price_client.get_historical_close.return_value = 100.0
+
+    service = PriceService(price_client)
+
+    change_rates = service.get_stock_change_rates("AAPL", as_of=date(2025, 1, 15))
+
+    assert change_rates["1y"] == Decimal("20")
+    price_client.get_historical_close.assert_any_call("AAPL", date(2024, 1, 15))

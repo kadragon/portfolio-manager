@@ -1,6 +1,8 @@
+from datetime import date
+from unittest.mock import MagicMock, call
+
 import httpx
 import pytest
-from unittest.mock import MagicMock, call
 
 from portfolio_manager.services.kis.kis_domestic_price_client import (
     KisDomesticPriceClient,
@@ -335,6 +337,46 @@ def test_domestic_name_lookup_failure_returns_price_quote(
     quote = unified.get_price("005930")
 
     assert quote.name == ""
+
+
+def test_unified_historical_close_routes_domestic_by_length(
+    mock_domestic_client, mock_overseas_client
+):
+    """과거 종가는 6자리 티커면 국내 클라이언트로 라우팅한다."""
+    mock_domestic_client.fetch_historical_close.return_value = 70000
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    close_price = unified.get_historical_close("005930", target_date=date(2024, 1, 15))
+
+    assert close_price == 70000
+    mock_domestic_client.fetch_historical_close.assert_called_once_with(
+        fid_input_iscd="005930", target_date=date(2024, 1, 15)
+    )
+    mock_overseas_client.fetch_historical_close.assert_not_called()
+
+
+def test_unified_historical_close_checks_overseas_exchanges(
+    mock_domestic_client, mock_overseas_client
+):
+    """해외 종가는 거래소를 순차 조회하며 첫 유효 값을 반환한다."""
+    mock_overseas_client.fetch_historical_close.side_effect = [
+        0.0,
+        0.0,
+        150.0,
+    ]
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    close_price = unified.get_historical_close("AAPL", target_date=date(2024, 1, 15))
+
+    assert close_price == 150.0
+    assert mock_overseas_client.fetch_historical_close.call_count == 3
+    mock_overseas_client.fetch_historical_close.assert_has_calls(
+        [
+            call(excd="NAS", symb="AAPL", target_date=date(2024, 1, 15)),
+            call(excd="NYS", symb="AAPL", target_date=date(2024, 1, 15)),
+            call(excd="AMS", symb="AAPL", target_date=date(2024, 1, 15)),
+        ]
+    )
 
 
 # --- Price Parser Tests ---
