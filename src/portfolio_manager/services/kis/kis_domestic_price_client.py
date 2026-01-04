@@ -5,7 +5,9 @@ from dataclasses import dataclass
 import httpx
 
 from portfolio_manager.services.kis.kis_base_client import KisBaseClient
+from portfolio_manager.services.kis.kis_error_handler import is_token_expired_error
 from portfolio_manager.services.kis.kis_price_parser import PriceQuote
+from portfolio_manager.services.kis.kis_token_manager import TokenManager
 
 
 @dataclass(frozen=True)
@@ -16,10 +18,17 @@ class KisDomesticPriceClient(KisBaseClient):
     access_token: str
     cust_type: str
     env: str
+    token_manager: TokenManager | None = None
 
     def fetch_current_price(
         self, fid_cond_mrkt_div_code: str, fid_input_iscd: str
     ) -> PriceQuote:
+        # Use retry logic if token_manager is available
+        if self.token_manager:
+            return self.fetch_current_price_with_retry(
+                fid_cond_mrkt_div_code, fid_input_iscd, self.token_manager
+            )
+
         tr_id = self._tr_id_for_env(self.env)
         response = self.client.get(
             "/uapi/domestic-stock/v1/quotations/inquire-price",
@@ -29,6 +38,55 @@ class KisDomesticPriceClient(KisBaseClient):
             },
             headers=self._build_headers(tr_id),
         )
+        response.raise_for_status()
+        data = response.json()
+        output = data["output"]
+        name = output.get("hts_kor_isnm", "")
+        price = int(output["stck_prpr"])
+        return PriceQuote(
+            symbol=fid_input_iscd,
+            name=name,
+            price=price,
+            market="KR",
+            currency="KRW",
+        )
+
+    def fetch_current_price_with_retry(
+        self,
+        fid_cond_mrkt_div_code: str,
+        fid_input_iscd: str,
+        token_manager: TokenManager,
+    ) -> PriceQuote:
+        """Fetch current price with automatic token refresh on expiration."""
+        tr_id = self._tr_id_for_env(self.env)
+        response = self.client.get(
+            "/uapi/domestic-stock/v1/quotations/inquire-price",
+            params={
+                "FID_COND_MRKT_DIV_CODE": fid_cond_mrkt_div_code,
+                "FID_INPUT_ISCD": fid_input_iscd,
+            },
+            headers=self._build_headers(tr_id),
+        )
+
+        # If token expired, refresh and retry
+        if is_token_expired_error(response):
+            new_token = token_manager.get_token()
+            response = self.client.get(
+                "/uapi/domestic-stock/v1/quotations/inquire-price",
+                params={
+                    "FID_COND_MRKT_DIV_CODE": fid_cond_mrkt_div_code,
+                    "FID_INPUT_ISCD": fid_input_iscd,
+                },
+                headers={
+                    "content-type": "application/json",
+                    "authorization": f"Bearer {new_token}",
+                    "appkey": self.app_key,
+                    "appsecret": self.app_secret,
+                    "tr_id": tr_id,
+                    "custtype": self.cust_type,
+                },
+            )
+
         response.raise_for_status()
         data = response.json()
         output = data["output"]

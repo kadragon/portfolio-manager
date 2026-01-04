@@ -73,8 +73,15 @@
   - [x] 대시보드 업데이트: '총 투자 원금' 표시 및 '투자 수익률' 계산 로직 반영
 
 ### 2.1 KIS 클라이언트 추상화
-- [ ] `KisBaseClient` 추상 클래스 도입
-- [ ] 공통 헤더 처리, 환경 변수 기반 TR ID 매핑 로직 통합
+- [x] `KisBaseClient` 추상 클래스 도입
+- [x] 공통 헤더 처리, 환경 변수 기반 TR ID 매핑 로직 통합
+
+### 2.5 KIS API 토큰 자동 갱신 (Token Auto-Refresh)
+- [x] **Test**: 토큰 만료 에러 감지 테스트 작성
+- [x] **Implementation**: 500 에러 응답에서 토큰 만료 감지 (msg_cd: 'EGW00123')
+- [x] **Test**: 토큰 만료 시 자동 재시도 테스트 작성
+- [x] **Implementation**: 토큰 만료 시 자동으로 재발급 및 재시도
+- [x] **Integration**: `KisDomesticPriceClient`, `KisOverseasPriceClient`에 retry 로직 통합
 
 ### 2.2 시장 감지 로직 개선
 - [ ] `KisUnifiedPriceClient`의 티커 길이 기반 감지 로직을 보다 명확한 유틸리티로 분리

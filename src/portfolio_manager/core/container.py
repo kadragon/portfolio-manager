@@ -96,6 +96,7 @@ class ServiceContainer:
                     access_token=token,
                     cust_type=cust_type,
                     env=env,
+                    token_manager=manager,
                 )
                 prdt_type_cd = os.getenv("KIS_PRDT_TYPE_CD", "300").strip()
                 info_tr_id = os.getenv("KIS_DOMESTIC_INFO_TR_ID", "CTPF1002R").strip()
@@ -114,6 +115,7 @@ class ServiceContainer:
                     access_token=token,
                     cust_type=cust_type,
                     env=env,
+                    token_manager=manager,
                 )
                 unified_client = KisUnifiedPriceClient(
                     domestic_client,

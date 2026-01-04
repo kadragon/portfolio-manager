@@ -77,10 +77,19 @@ def main() -> int:
             cust_type=cust_type,
             env=env,
         )
-        quote = price_client.fetch_current_price(
-            fid_cond_mrkt_div_code=fid_cond_mrkt_div_code,
-            fid_input_iscd=fid_input_iscd,
-        )
+        try:
+            quote = price_client.fetch_current_price(
+                fid_cond_mrkt_div_code=fid_cond_mrkt_div_code,
+                fid_input_iscd=fid_input_iscd,
+            )
+        except httpx.HTTPStatusError as exc:
+            response = exc.response
+            print(f"Price request failed: {response.status_code}")
+            try:
+                print(response.json())
+            except ValueError:
+                print(response.text)
+            return 1
 
     print(f"OK: {quote.symbol} {quote.name} {quote.price} ({quote.market})")
     return 0

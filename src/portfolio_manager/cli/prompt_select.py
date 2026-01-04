@@ -92,6 +92,22 @@ def choose_holding_menu(chooser: Callable | None = None) -> str | None:
     return chooser(message="Holdings menu:", options=options, default="back")
 
 
+def choose_deposit_menu(chooser: Callable | None = None) -> str | None:
+    """Choose a deposit menu action using prompt_toolkit."""
+    if chooser is None:
+        from prompt_toolkit.shortcuts import choice
+
+        chooser = choice
+
+    options: OptionList = [
+        ("add", "Add deposit"),
+        ("edit", "Edit deposit"),
+        ("delete", "Delete deposit"),
+        ("back", "Back"),
+    ]
+    return chooser(message="Deposits menu:", options=options, default="back")
+
+
 def choose_group_from_list(
     groups: list[Group], chooser: Callable | None = None
 ) -> UUID | None:

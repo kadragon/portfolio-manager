@@ -64,3 +64,4 @@
 - USD/KRW 환율 조회는 EXIM에서 USD 누락 시 최근 7일 내 직전 영업일로 자동 재시도한다.
 - KIS 클라이언트는 공통 `KisBaseClient`에서 헤더 구성 및 환경별 TR ID 매핑을 공유한다.
 - 투자 원금 합계는 계좌별 합산이 아니라 전체 deposits 합계로 계산된다.
+- KIS API 토큰 만료 시 자동 갱신: `is_token_expired_error()`로 500 에러 중 토큰 만료(msg_cd: 'EGW00123')를 감지하고, `KisDomesticPriceClient`와 `KisOverseasPriceClient`는 `token_manager`가 제공되면 자동으로 토큰 재발급 및 재시도를 수행한다. 이를 통해 토큰 만료로 인한 일시적 실패를 사용자 개입 없이 복구한다.

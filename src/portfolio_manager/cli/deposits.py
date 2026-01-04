@@ -8,6 +8,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from portfolio_manager.models import Deposit
+from portfolio_manager.cli.prompt_select import choose_deposit_menu
 
 
 def get_date_input(
@@ -163,11 +164,9 @@ def run_deposit_menu(
         deposits = deposit_repository.list_all()
         render_deposit_list(console, deposits)
 
-        action = Prompt.ask(
-            "Action", choices=["add", "edit", "delete", "back"], default="back"
-        )
+        action = choose_deposit_menu()
 
-        if action == "back":
+        if action == "back" or action is None:
             break
         elif action == "add":
             add_deposit_flow(console, deposit_repository)
