@@ -34,11 +34,15 @@ def test_selecting_groups_option_returns_groups_action():
 
 def test_main_menu_quit_exits():
     """Should exit the main loop when selecting quit."""
-    with patch.object(main_app, "render_main_menu") as render_menu:
-        with patch.object(main_app, "choose_main_menu", return_value="quit"):
-            with patch.object(main_app, "run_group_menu") as run_group_menu:
-                with patch.object(main_app, "run_account_menu") as run_account_menu:
-                    main_app.main()
+    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
+        container = MockContainer.return_value
+        container.get_portfolio_service.return_value = MagicMock()
+
+        with patch.object(main_app, "render_main_menu") as render_menu:
+            with patch.object(main_app, "choose_main_menu", return_value="quit"):
+                with patch.object(main_app, "run_group_menu") as run_group_menu:
+                    with patch.object(main_app, "run_account_menu") as run_account_menu:
+                        main_app.main()
 
     render_menu.assert_called()
     run_group_menu.assert_not_called()

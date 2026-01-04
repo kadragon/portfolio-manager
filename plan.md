@@ -38,8 +38,8 @@
 - [x] 관련 import 문 전체 수정
 
 ### 1.3 초기화 로직 분리
-- [ ] `src/portfolio_manager/core/container.py` (또는 factory) 생성
-- [ ] `main.py`의 서비스 및 리포지토리 초기화 로직을 컨테이너로 이동
+- [x] `src/portfolio_manager/core/container.py` (또는 factory) 생성
+- [x] `main.py`의 서비스 및 리포지토리 초기화 로직을 컨테이너로 이동
 
 ---
 

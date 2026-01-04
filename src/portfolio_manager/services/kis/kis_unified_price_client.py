@@ -52,6 +52,9 @@ class KisUnifiedPriceClient:
         else:
             quote = self.overseas_client.fetch_current_price("NAS", ticker)
             if quote.price == 0 and not quote.name:
-                # Fallback to NYSE
-                return self.overseas_client.fetch_current_price("NYS", ticker)
+                # Fallback to NYSE, then AMEX/ARCA
+                quote = self.overseas_client.fetch_current_price("NYS", ticker)
+                if quote.price == 0 and not quote.name:
+                    return self.overseas_client.fetch_current_price("AMS", ticker)
+                return quote
             return quote

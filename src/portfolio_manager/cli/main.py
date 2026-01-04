@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import os
-from decimal import Decimal
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Iterable
 
-import httpx
 from dotenv import load_dotenv
 from rich.console import Console
 from rich import box
@@ -29,35 +25,8 @@ from portfolio_manager.cli.prompt_select import (
 )
 from portfolio_manager.cli.accounts import run_account_menu
 from portfolio_manager.cli.stocks import run_stock_menu
+from portfolio_manager.core.container import ServiceContainer
 from portfolio_manager.models import Group
-from portfolio_manager.repositories.account_repository import AccountRepository
-from portfolio_manager.repositories.group_repository import GroupRepository
-from portfolio_manager.repositories.holding_repository import HoldingRepository
-from portfolio_manager.repositories.stock_repository import StockRepository
-from portfolio_manager.services.kis.kis_auth_client import KisAuthClient
-from portfolio_manager.services.kis.kis_domestic_info_client import (
-    KisDomesticInfoClient,
-)
-from portfolio_manager.services.kis.kis_domestic_price_client import (
-    KisDomesticPriceClient,
-)
-from portfolio_manager.services.kis.kis_overseas_price_client import (
-    KisOverseasPriceClient,
-)
-from portfolio_manager.services.kis.kis_token_manager import TokenManager
-from portfolio_manager.services.kis.kis_token_store import FileTokenStore
-from portfolio_manager.services.kis.kis_unified_price_client import (
-    KisUnifiedPriceClient,
-)
-from portfolio_manager.services.portfolio_service import PortfolioService
-from portfolio_manager.services.price_service import PriceService
-from portfolio_manager.services.exchange.exim_exchange_rate_client import (
-    EximExchangeRateClient,
-)
-from portfolio_manager.services.exchange.exchange_rate_service import (
-    ExchangeRateService,
-)
-from portfolio_manager.services.supabase_client import get_supabase_client
 
 
 @dataclass(frozen=True)
@@ -67,10 +36,8 @@ class GroupMenuState:
     groups: list[Group]
 
 
-def _load_groups() -> list[Group]:
-    client = get_supabase_client()
-    repo = GroupRepository(client)
-    return repo.list_all()
+def _load_groups(container: ServiceContainer) -> list[Group]:
+    return container.group_repository.list_all()
 
 
 def _select_group_by_index(groups: Iterable[Group], index: int) -> Group | None:
@@ -89,11 +56,11 @@ def _select_group_by_id(groups: Iterable[Group], group_id) -> Group | None:
     return None
 
 
-def run_group_menu(console: Console) -> None:
+def run_group_menu(console: Console, container: ServiceContainer) -> None:
     """Run the group management menu loop."""
     selected_group: Group | None = None
     while True:
-        groups = _load_groups()
+        groups = _load_groups(container)
         render_group_list(console, groups)
         if selected_group is not None:
             console.print(
@@ -109,27 +76,21 @@ def run_group_menu(console: Console) -> None:
         if action == "back":
             return
         if action == "add":
-            client = get_supabase_client()
-            repo = GroupRepository(client)
-            add_group_flow(console, repo)
+            add_group_flow(console, container.group_repository)
             continue
         if action == "edit":
             group_id = choose_group_from_list(groups)
             if group_id is not None:
                 group = _select_group_by_id(groups, group_id)
                 if group is not None:
-                    client = get_supabase_client()
-                    repo = GroupRepository(client)
-                    update_group_flow(console, repo, group)
+                    update_group_flow(console, container.group_repository, group)
             continue
         if action == "delete":
             group_id = choose_group_from_list(groups)
             if group_id is not None:
                 group = _select_group_by_id(groups, group_id)
                 if group is not None:
-                    client = get_supabase_client()
-                    repo = GroupRepository(client)
-                    delete_group_flow(console, repo, group)
+                    delete_group_flow(console, container.group_repository, group)
             continue
         if action == "select":
             group_id = choose_group_from_list(groups)
@@ -137,15 +98,12 @@ def run_group_menu(console: Console) -> None:
                 group = _select_group_by_id(groups, group_id)
                 if group is not None:
                     selected_group = group
-                    client = get_supabase_client()
-                    repo = StockRepository(client)
-                    group_repo = GroupRepository(client)
                     run_stock_menu(
                         console,
-                        repo,
+                        container.stock_repository,
                         group,
                         prompt=lambda: Prompt.ask("Stock menu"),
-                        group_repository=group_repo,
+                        group_repository=container.group_repository,
                     )
             continue
 
@@ -154,103 +112,18 @@ def main() -> None:
     """CLI entrypoint."""
     load_dotenv()
     console = Console()
-
-    # Initialize KIS clients
-    app_key = os.getenv("KIS_APP_KEY")
-    app_secret = os.getenv("KIS_APP_SECRET")
-    env = os.getenv("KIS_ENV", "real").strip().lower()
-    if "/" in env:
-        env = env.split("/", 1)[0]
-    cust_type = os.getenv("KIS_CUST_TYPE", "P")
-
-    base_url = "https://openapi.koreainvestment.com:9443"
-    if env in {"demo", "vps", "paper"}:
-        base_url = "https://openapivts.koreainvestment.com:29443"
-
-    http_client = httpx.Client(base_url=base_url)
-    exim_client: httpx.Client | None = None
-
-    # Setup price service (only if KIS credentials are available)
-    price_service = None
-    exchange_rate_service = None
-    usd_krw_rate_env = os.getenv("USD_KRW_RATE")
-    exim_auth_key = os.getenv("EXIM_AUTH_KEY")
-    if usd_krw_rate_env:
-        exchange_rate_service = ExchangeRateService(
-            fixed_usd_krw_rate=Decimal(usd_krw_rate_env)
-        )
-    elif exim_auth_key:
-        exim_client = httpx.Client(base_url="https://oapi.koreaexim.go.kr")
-        exim_rate_client = EximExchangeRateClient(
-            client=exim_client, auth_key=exim_auth_key
-        )
-        exchange_rate_service = ExchangeRateService(exim_client=exim_rate_client)
-    if app_key and app_secret:
-        try:
-            auth = KisAuthClient(
-                client=http_client, app_key=app_key, app_secret=app_secret
-            )
-            store = FileTokenStore(Path(".data/kis_token.json"))
-            manager = TokenManager(store=store, auth_client=auth)
-            token = manager.get_token()
-
-            domestic_client = KisDomesticPriceClient(
-                client=http_client,
-                app_key=app_key,
-                app_secret=app_secret,
-                access_token=token,
-                cust_type=cust_type,
-                env=env,
-            )
-            prdt_type_cd = os.getenv("KIS_PRDT_TYPE_CD", "300").strip()
-            info_tr_id = os.getenv("KIS_DOMESTIC_INFO_TR_ID", "CTPF1002R").strip()
-            domestic_info_client = KisDomesticInfoClient(
-                client=http_client,
-                app_key=app_key,
-                app_secret=app_secret,
-                access_token=token,
-                tr_id=info_tr_id,
-                cust_type=cust_type,
-            )
-            overseas_client = KisOverseasPriceClient(
-                client=http_client,
-                app_key=app_key,
-                app_secret=app_secret,
-                access_token=token,
-                cust_type=cust_type,
-                env=env,
-            )
-            unified_client = KisUnifiedPriceClient(
-                domestic_client,
-                overseas_client,
-                domestic_info_client,
-                prdt_type_cd=prdt_type_cd,
-            )
-            price_service = PriceService(unified_client)
-        except Exception as e:
-            console.print(
-                f"[yellow]Warning: Could not initialize price service: {e}[/yellow]"
-            )
+    container = ServiceContainer(console)
+    container.setup()
 
     try:
         while True:
             render_main_menu(console)
 
             # Render dashboard
-            client = get_supabase_client()
-            group_repo = GroupRepository(client)
-            stock_repo = StockRepository(client)
-            holding_repo = HoldingRepository(client)
-            portfolio_service = PortfolioService(
-                group_repo,
-                stock_repo,
-                holding_repo,
-                price_service,
-                exchange_rate_service,
-            )
+            portfolio_service = container.get_portfolio_service()
 
             # Show dashboard with or without prices
-            if price_service:
+            if container.price_service:
                 try:
                     summary = portfolio_service.get_portfolio_summary()
                     render_dashboard(console, summary)
@@ -266,22 +139,19 @@ def main() -> None:
 
             action = choose_main_menu()
             if action == "groups":
-                run_group_menu(console)
+                run_group_menu(console, container)
                 continue
             if action == "accounts":
-                account_repo = AccountRepository(client)
                 run_account_menu(
                     console,
-                    account_repo,
-                    holding_repo,
+                    container.account_repository,
+                    container.holding_repository,
                     prompt=lambda: Prompt.ask("Accounts menu"),
-                    stock_repository=stock_repo,
-                    group_repository=group_repo,
+                    stock_repository=container.stock_repository,
+                    group_repository=container.group_repository,
                 )
                 continue
             if action == "quit":
                 return
     finally:
-        http_client.close()
-        if exim_client is not None:
-            exim_client.close()
+        container.close()

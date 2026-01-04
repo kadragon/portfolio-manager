@@ -182,12 +182,13 @@ def test_detects_alphabetic_ticker_as_overseas(
     mock_domestic_client.fetch_current_price.assert_not_called()
 
 
-def test_overseas_price_falls_back_to_other_exchange_when_empty(
+def test_overseas_price_falls_back_to_additional_exchange_when_empty(
     mock_domestic_client,
 ):
     """해외 시세가 비어있으면 다른 거래소로 재시도한다."""
     overseas_client = MagicMock()
     overseas_client.fetch_current_price.side_effect = [
+        PriceQuote(symbol="SPY", name="", price=0.0, market="US", currency="USD"),
         PriceQuote(symbol="SPY", name="", price=0.0, market="US", currency="USD"),
         PriceQuote(
             symbol="SPY",
@@ -203,9 +204,9 @@ def test_overseas_price_falls_back_to_other_exchange_when_empty(
 
     assert quote.name == "SPDR S&P 500 ETF Trust"
     assert quote.price == 470.0
-    assert overseas_client.fetch_current_price.call_count == 2
+    assert overseas_client.fetch_current_price.call_count == 3
     overseas_client.fetch_current_price.assert_has_calls(
-        [call("NAS", "SPY"), call("NYS", "SPY")]
+        [call("NAS", "SPY"), call("NYS", "SPY"), call("AMS", "SPY")]
     )
 
 

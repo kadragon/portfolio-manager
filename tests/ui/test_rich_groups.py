@@ -69,32 +69,28 @@ def test_render_group_list_shows_empty_message_when_no_groups():
 def test_run_group_menu_add_flow_invokes_add_group():
     """Should call add flow when selecting add in group menu."""
     console = Console(record=True, width=80)
+    container = MagicMock()
 
     with patch.object(main_app, "_load_groups", return_value=[]):
         with patch.object(main_app, "choose_group_menu", side_effect=["add", "back"]):
-            with patch.object(main_app, "get_supabase_client"):
-                with patch.object(main_app, "GroupRepository"):
-                    with patch.object(main_app, "add_group_flow") as add_group_flow:
-                        main_app.run_group_menu(console)
+            with patch.object(main_app, "add_group_flow") as add_group_flow:
+                main_app.run_group_menu(console, container)
 
-    add_group_flow.assert_called_once()
+    add_group_flow.assert_called_once_with(console, container.group_repository)
 
 
 def test_run_group_menu_delete_flow_invokes_delete_group():
     """Should call delete flow when selecting delete in group menu."""
     console = Console(record=True, width=80)
+    container = MagicMock()
 
     with patch.object(main_app, "_load_groups", return_value=[]):
         with patch.object(
             main_app, "choose_group_menu", side_effect=["delete", "back"]
         ):
             with patch.object(main_app, "choose_group_from_list", return_value=None):
-                with patch.object(main_app, "get_supabase_client"):
-                    with patch.object(main_app, "GroupRepository"):
-                        with patch.object(
-                            main_app, "delete_group_flow"
-                        ) as delete_group_flow:
-                            main_app.run_group_menu(console)
+                with patch.object(main_app, "delete_group_flow") as delete_group_flow:
+                    main_app.run_group_menu(console, container)
 
     delete_group_flow.assert_not_called()
 
@@ -102,6 +98,7 @@ def test_run_group_menu_delete_flow_invokes_delete_group():
 def test_run_group_menu_select_flow_invokes_stock_menu():
     """Should open stock menu when selecting a group."""
     console = Console(record=True, width=80)
+    container = MagicMock()
     group = main_app.Group(
         id=uuid4(),
         name="Tech",
@@ -116,10 +113,8 @@ def test_run_group_menu_select_flow_invokes_stock_menu():
             with patch.object(
                 main_app, "choose_group_from_list", return_value=group.id
             ):
-                with patch.object(main_app, "get_supabase_client"):
-                    with patch.object(main_app, "StockRepository"):
-                        with patch.object(main_app, "run_stock_menu") as run_stock_menu:
-                            main_app.run_group_menu(console)
+                with patch.object(main_app, "run_stock_menu") as run_stock_menu:
+                    main_app.run_group_menu(console, container)
 
     run_stock_menu.assert_called_once()
 
@@ -127,6 +122,7 @@ def test_run_group_menu_select_flow_invokes_stock_menu():
 def test_run_group_menu_edit_flow_invokes_update_group():
     """Should call update flow when selecting edit in group menu."""
     console = Console(record=True, width=80)
+    container = MagicMock()
     group = main_app.Group(
         id=uuid4(),
         name="Tech",
@@ -139,12 +135,8 @@ def test_run_group_menu_edit_flow_invokes_update_group():
             with patch.object(
                 main_app, "choose_group_from_list", return_value=group.id
             ):
-                with patch.object(main_app, "get_supabase_client"):
-                    with patch.object(main_app, "GroupRepository"):
-                        with patch.object(
-                            main_app, "update_group_flow"
-                        ) as update_group_flow:
-                            main_app.run_group_menu(console)
+                with patch.object(main_app, "update_group_flow") as update_group_flow:
+                    main_app.run_group_menu(console, container)
 
     update_group_flow.assert_called_once()
 
@@ -152,6 +144,7 @@ def test_run_group_menu_edit_flow_invokes_update_group():
 def test_run_group_menu_displays_current_group_after_selection():
     """Should display current group after a selection."""
     console = Console(record=True, width=80)
+    container = MagicMock()
     group = Group(
         id=uuid4(),
         name="Tech Stocks",
@@ -166,10 +159,8 @@ def test_run_group_menu_displays_current_group_after_selection():
             with patch.object(
                 main_app, "choose_group_from_list", return_value=group.id
             ):
-                with patch.object(main_app, "get_supabase_client"):
-                    with patch.object(main_app, "StockRepository"):
-                        with patch.object(main_app, "run_stock_menu"):
-                            main_app.run_group_menu(console)
+                with patch.object(main_app, "run_stock_menu"):
+                    main_app.run_group_menu(console, container)
 
     output = console.export_text()
     assert "Current Group" in output
