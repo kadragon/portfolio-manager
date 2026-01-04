@@ -118,6 +118,16 @@
 - [x] **Test**: 휴장일이면 이전 영업일로 자동 보정한다
 - [x] **Implementation**: 과거 종가 조회 시 이전 영업일 탐색 로직 추가
 
+### 2.8 해외 거래소 캐시 (NAS/NYS/AMS)
+- [x] **Migration**: `stocks` 테이블에 `exchange` 컬럼 추가 (text, nullable)
+- [x] **Model/Repository**: `Stock` 모델에 `exchange` 필드 추가 및 `StockRepository.update_exchange()` 구현
+- [x] **Test**: StockRepository가 exchange를 업데이트한다
+- [x] **Test**: KisUnifiedPriceClient가 저장된 거래소를 우선 조회하고 실패 시 다음 거래소로 넘어간다
+- [x] **Test**: KisUnifiedPriceClient의 과거 종가 조회도 저장된 거래소를 우선 조회한다
+- [x] **Test**: PortfolioService가 조회 성공한 거래소로 stocks.exchange를 갱신한다
+- [x] **Implementation**: PriceService가 preferred_exchange를 전달하고 exchange를 반환한다
+- [x] **Implementation**: PortfolioService가 exchange 캐시를 갱신한다
+
 ---
 
 ## 3. 테스트 및 검증

@@ -149,10 +149,12 @@ def test_portfolio_summary_calculates_total_value():
     }
 
     price_service = Mock()
-    price_service.get_stock_price.side_effect = lambda ticker: (
-        (Decimal("150.0"), "USD", "Apple Inc.")
-        if ticker == "AAPL"
-        else (Decimal("100.0"), "USD", "Google")
+    price_service.get_stock_price.side_effect = (
+        lambda ticker, preferred_exchange=None: (
+            (Decimal("150.0"), "USD", "Apple Inc.", "NAS")
+            if ticker == "AAPL"
+            else (Decimal("100.0"), "USD", "Google", "NAS")
+        )
     )
 
     exchange_rate_service = Mock()
@@ -225,6 +227,7 @@ def test_portfolio_summary_sets_value_krw_for_usd_holdings():
         Decimal("100.0"),
         "USD",
         "Vanguard High Dividend Yield ETF",
+        "NAS",
     )
 
     exchange_rate_service = Mock()
@@ -288,6 +291,7 @@ def test_portfolio_summary_strips_etf_suffix_from_name():
         Decimal("10000"),
         "KRW",
         "KODEX 200 증권상장지수투자신탁(주식)",
+        None,
     )
 
     exchange_rate_service = Mock()
@@ -339,7 +343,12 @@ def test_portfolio_summary_calculates_return_rate():
         stock_id: Decimal("10")
     }
     price_service = Mock()
-    price_service.get_stock_price.return_value = (Decimal("100000"), "KRW", "Samsung")
+    price_service.get_stock_price.return_value = (
+        Decimal("100000"),
+        "KRW",
+        "Samsung",
+        None,
+    )
 
     account_id = uuid4()
     account_repo = Mock()
@@ -405,6 +414,7 @@ def test_portfolio_summary_includes_change_rates():
         Decimal("150.0"),
         "USD",
         "Apple Inc.",
+        "NAS",
     )
     price_service.get_stock_change_rates.return_value = {
         "1y": Decimal("20"),
@@ -431,3 +441,64 @@ def test_portfolio_summary_includes_change_rates():
         "6m": Decimal("10"),
         "1m": Decimal("-5"),
     }
+
+
+def test_portfolio_summary_updates_stock_exchange_cache():
+    """해외 주식 조회 성공 시 거래소 캐시를 갱신한다."""
+    group_id = uuid4()
+    stock_id = uuid4()
+
+    group_repo = Mock()
+    group_repo.list_all.return_value = [
+        Group(
+            id=group_id,
+            name="Overseas",
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+
+    stock_repo = Mock()
+    stock_repo.list_by_group.return_value = [
+        Stock(
+            id=stock_id,
+            ticker="SCHD",
+            group_id=group_id,
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+            exchange=None,
+        )
+    ]
+
+    holding_repo = Mock()
+    holding_repo.get_aggregated_holdings_by_stock.return_value = {
+        stock_id: Decimal("10"),
+    }
+
+    price_service = Mock()
+    price_service.get_stock_price.return_value = (
+        Decimal("70.0"),
+        "USD",
+        "Schwab US Dividend Equity ETF",
+        "NYS",
+    )
+    price_service.get_stock_change_rates.return_value = {
+        "1y": Decimal("20"),
+        "6m": Decimal("10"),
+        "1m": Decimal("-5"),
+    }
+
+    exchange_rate_service = Mock()
+    exchange_rate_service.get_usd_krw_rate.return_value = Decimal("1300")
+
+    portfolio_service = PortfolioService(
+        group_repo,
+        stock_repo,
+        holding_repo,
+        price_service,
+        exchange_rate_service,
+    )
+
+    portfolio_service.get_portfolio_summary()
+
+    stock_repo.update_exchange.assert_called_once_with(stock_id, "NYS")

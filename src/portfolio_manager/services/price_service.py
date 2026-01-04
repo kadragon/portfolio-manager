@@ -12,13 +12,20 @@ class PriceService:
         """Initialize with a price client."""
         self.price_client = price_client
 
-    def get_stock_price(self, ticker: str) -> tuple[Decimal, str, str]:
-        """Get current price, currency, and name for a stock ticker."""
-        quote = self.price_client.get_price(ticker)
-        return Decimal(str(quote.price)), quote.currency, quote.name
+    def get_stock_price(
+        self, ticker: str, preferred_exchange: str | None = None
+    ) -> tuple[Decimal, str, str, str | None]:
+        """Get current price, currency, name, and exchange for a stock ticker."""
+        quote = self.price_client.get_price(
+            ticker, preferred_exchange=preferred_exchange
+        )
+        return Decimal(str(quote.price)), quote.currency, quote.name, quote.exchange
 
     def get_stock_change_rates(
-        self, ticker: str, as_of: date | None = None
+        self,
+        ticker: str,
+        as_of: date | None = None,
+        preferred_exchange: str | None = None,
     ) -> dict[str, Decimal]:
         """Get 1Y/6M/1M change rates compared to historical close prices."""
         if as_of is None:
@@ -47,7 +54,9 @@ class PriceService:
                 return target_date - timedelta(days=2)
             return target_date
 
-        current_price, _, _ = self.get_stock_price(ticker)
+        current_price, _, _, _ = self.get_stock_price(
+            ticker, preferred_exchange=preferred_exchange
+        )
         targets = {
             "1y": adjust_to_previous_business_day(shift_years(as_of, 1)),
             "6m": adjust_to_previous_business_day(shift_months(as_of, 6)),
@@ -56,7 +65,13 @@ class PriceService:
         change_rates: dict[str, Decimal] = {}
         for label, target_date in targets.items():
             past_close = Decimal(
-                str(self.price_client.get_historical_close(ticker, target_date))
+                str(
+                    self.price_client.get_historical_close(
+                        ticker,
+                        target_date,
+                        preferred_exchange=preferred_exchange,
+                    )
+                )
             )
             if past_close == 0:
                 change_rates[label] = Decimal("0")

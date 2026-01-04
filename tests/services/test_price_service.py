@@ -19,13 +19,14 @@ def test_get_stock_price_returns_price():
     service = PriceService(price_client)
 
     # When: 주식 가격 조회
-    price, currency, name = service.get_stock_price("AAPL")
+    price, currency, name, exchange = service.get_stock_price("AAPL")
 
     # Then: 가격과 화폐 단위가 반환됨
     assert price == Decimal("150.0")
     assert currency == "USD"
     assert name == "Apple Inc."
-    price_client.get_price.assert_called_once_with("AAPL")
+    assert exchange is None
+    price_client.get_price.assert_called_once_with("AAPL", preferred_exchange=None)
 
 
 def test_get_stock_price_returns_currency():
@@ -39,13 +40,14 @@ def test_get_stock_price_returns_currency():
     service = PriceService(price_client)
 
     # When: 주식 가격 조회
-    price, currency, name = service.get_stock_price("AAPL")
+    price, currency, name, exchange = service.get_stock_price("AAPL")
 
     # Then: 가격과 화폐 단위가 반환됨
     assert price == Decimal("150.0")
     assert currency == "USD"
     assert name == "Apple Inc."
-    price_client.get_price.assert_called_once_with("AAPL")
+    assert exchange is None
+    price_client.get_price.assert_called_once_with("AAPL", preferred_exchange=None)
 
 
 def test_get_stock_price_returns_krw_for_domestic():
@@ -59,12 +61,13 @@ def test_get_stock_price_returns_krw_for_domestic():
     service = PriceService(price_client)
 
     # When: 국내 주식 가격 조회
-    price, currency, name = service.get_stock_price("005930")
+    price, currency, name, exchange = service.get_stock_price("005930")
 
     # Then: KRW가 반환됨
     assert price == Decimal("70000")
     assert currency == "KRW"
     assert name == "삼성전자"
+    assert exchange is None
 
 
 def test_price_quote_has_currency_field():
@@ -112,11 +115,13 @@ def test_get_stock_change_rates_returns_percentages():
     price_client.get_price.return_value = PriceQuote(
         symbol="AAPL", name="Apple Inc.", price=120.0, market="US", currency="USD"
     )
-    price_client.get_historical_close.side_effect = lambda ticker, target_date: {
-        date(2024, 1, 15): 100.0,
-        date(2024, 7, 15): 80.0,
-        date(2024, 12, 13): 60.0,
-    }[target_date]
+    price_client.get_historical_close.side_effect = (
+        lambda ticker, target_date, preferred_exchange=None: {
+            date(2024, 1, 15): 100.0,
+            date(2024, 7, 15): 80.0,
+            date(2024, 12, 13): 60.0,
+        }[target_date]
+    )
 
     service = PriceService(price_client)
 
@@ -133,18 +138,22 @@ def test_get_stock_change_rates_adjusts_to_previous_business_day():
     price_client.get_price.return_value = PriceQuote(
         symbol="AAPL", name="Apple Inc.", price=120.0, market="US", currency="USD"
     )
-    price_client.get_historical_close.side_effect = lambda ticker, target_date: {
-        date(2024, 1, 12): 100.0,  # 2024-01-13 (Sat) -> 2024-01-12 (Fri)
-        date(2024, 7, 12): 100.0,
-        date(2024, 12, 13): 100.0,
-    }[target_date]
+    price_client.get_historical_close.side_effect = (
+        lambda ticker, target_date, preferred_exchange=None: {
+            date(2024, 1, 12): 100.0,  # 2024-01-13 (Sat) -> 2024-01-12 (Fri)
+            date(2024, 7, 12): 100.0,
+            date(2024, 12, 13): 100.0,
+        }[target_date]
+    )
 
     service = PriceService(price_client)
 
     change_rates = service.get_stock_change_rates("AAPL", as_of=date(2025, 1, 13))
 
     assert change_rates["1y"] == Decimal("20")
-    price_client.get_historical_close.assert_any_call("AAPL", date(2024, 1, 12))
+    price_client.get_historical_close.assert_any_call(
+        "AAPL", date(2024, 1, 12), preferred_exchange=None
+    )
 
 
 def test_get_stock_change_rates_calls_price_client_historical_close():
@@ -160,4 +169,6 @@ def test_get_stock_change_rates_calls_price_client_historical_close():
     change_rates = service.get_stock_change_rates("AAPL", as_of=date(2025, 1, 15))
 
     assert change_rates["1y"] == Decimal("20")
-    price_client.get_historical_close.assert_any_call("AAPL", date(2024, 1, 15))
+    price_client.get_historical_close.assert_any_call(
+        "AAPL", date(2024, 1, 15), preferred_exchange=None
+    )

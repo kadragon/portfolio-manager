@@ -44,6 +44,7 @@ class StockRepository:
             group_id=UUID(str(data["group_id"])),
             created_at=datetime.fromisoformat(str(data["created_at"])),
             updated_at=datetime.fromisoformat(str(data["updated_at"])),
+            exchange=str(data["exchange"]) if data.get("exchange") else None,
         )
 
     def list_by_group(self, group_id: UUID) -> list[Stock]:
@@ -71,6 +72,7 @@ class StockRepository:
                 group_id=UUID(str(item["group_id"])),
                 created_at=datetime.fromisoformat(str(item["created_at"])),
                 updated_at=datetime.fromisoformat(str(item["updated_at"])),
+                exchange=str(item["exchange"]) if item.get("exchange") else None,
             )
             for item in cast(list[dict[str, Any]], response.data)
         ]
@@ -108,6 +110,7 @@ class StockRepository:
             group_id=UUID(str(item["group_id"])),
             created_at=datetime.fromisoformat(str(item["created_at"])),
             updated_at=datetime.fromisoformat(str(item["updated_at"])),
+            exchange=str(item["exchange"]) if item.get("exchange") else None,
         )
 
     def get_by_id(self, stock_id: UUID) -> Stock | None:
@@ -128,6 +131,7 @@ class StockRepository:
             group_id=UUID(str(item["group_id"])),
             created_at=datetime.fromisoformat(str(item["created_at"])),
             updated_at=datetime.fromisoformat(str(item["updated_at"])),
+            exchange=str(item["exchange"]) if item.get("exchange") else None,
         )
 
     def get_by_ticker(self, ticker: str) -> Stock | None:
@@ -144,6 +148,7 @@ class StockRepository:
             group_id=UUID(str(item["group_id"])),
             created_at=datetime.fromisoformat(str(item["created_at"])),
             updated_at=datetime.fromisoformat(str(item["updated_at"])),
+            exchange=str(item["exchange"]) if item.get("exchange") else None,
         )
 
     def update_group(self, stock_id: UUID, group_id: UUID) -> Stock:
@@ -163,4 +168,25 @@ class StockRepository:
             group_id=UUID(str(item["group_id"])),
             created_at=datetime.fromisoformat(str(item["created_at"])),
             updated_at=datetime.fromisoformat(str(item["updated_at"])),
+            exchange=str(item["exchange"]) if item.get("exchange") else None,
+        )
+
+    def update_exchange(self, stock_id: UUID, exchange: str) -> Stock:
+        """Update a stock's preferred exchange by ID."""
+        response = (
+            self.client.table("stocks")
+            .update({"exchange": exchange})
+            .eq("id", str(stock_id))
+            .execute()
+        )
+        if not response.data:
+            raise ValueError("Failed to update stock exchange")
+        item = cast(dict[str, Any], response.data[0])
+        return Stock(
+            id=UUID(str(item["id"])),
+            ticker=str(item["ticker"]),
+            group_id=UUID(str(item["group_id"])),
+            created_at=datetime.fromisoformat(str(item["created_at"])),
+            updated_at=datetime.fromisoformat(str(item["updated_at"])),
+            exchange=str(item["exchange"]) if item.get("exchange") else None,
         )

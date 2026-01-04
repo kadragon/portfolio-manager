@@ -70,6 +70,7 @@ class KisOverseasPriceClient(KisBaseClient):
             price=float(price),
             market="US",
             currency="USD",
+            exchange=excd,
         )
 
     def fetch_historical_close(
@@ -168,6 +169,7 @@ class KisOverseasPriceClient(KisBaseClient):
             price=float(price),
             market="US",
             currency="USD",
+            exchange=excd,
         )
 
     @staticmethod
