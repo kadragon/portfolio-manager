@@ -51,3 +51,4 @@
 - Dashboard gracefully degrades to quantity-only display if KIS credentials unavailable or price fetch fails.
 - Market detection uses length-based logic: 6-character tickers route to domestic API, others to overseas API (supports both pure numeric and alphanumeric Korean stock codes).
 - Currency information flows from PriceQuote through PriceService and StockHoldingWithPrice to dashboard rendering with appropriate symbols (₩/$ based on KRW/USD).
+- USD/KRW 환율 조회는 EXIM에서 USD 누락 시 최근 7일 내 직전 영업일로 자동 재시도한다.

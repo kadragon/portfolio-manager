@@ -43,7 +43,8 @@ class KisOverseasPriceClient:
         symbol = (
             output.get("symbol") or output.get("symb") or output.get("rsym") or symb
         )
-        price = float(output["last"])
+        raw_last = (output.get("last") or "").strip()
+        price = float(raw_last) if raw_last else 0.0
         return PriceQuote(
             symbol=symbol,
             name=name,

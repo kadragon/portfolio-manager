@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from portfolio_manager.services.exim_exchange_rate_client import (
@@ -25,6 +25,16 @@ class ExchangeRateService:
         if self.exim_client is None:
             raise ValueError("Exchange rate source is not configured")
         if search_date is None:
-            search_date = date.today().strftime("%Y%m%d")
+            base_date = date.today()
+            for offset in range(0, 7):
+                candidate = (base_date - timedelta(days=offset)).strftime("%Y%m%d")
+                try:
+                    rate = self.exim_client.fetch_usd_rate(search_date=candidate)
+                except ValueError as exc:
+                    if str(exc) != "USD rate not found":
+                        raise
+                    continue
+                return Decimal(str(rate))
+            raise ValueError("USD rate not found")
         rate = self.exim_client.fetch_usd_rate(search_date=search_date)
         return Decimal(str(rate))

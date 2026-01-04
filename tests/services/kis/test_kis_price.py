@@ -6,6 +6,7 @@ from portfolio_manager.services.kis_domestic_price_client import (
     KisDomesticPriceClient,
     PriceQuote,
 )
+from portfolio_manager.services.kis_overseas_price_client import KisOverseasPriceClient
 from portfolio_manager.services.kis_unified_price_client import KisUnifiedPriceClient
 from portfolio_manager.services.kis_domestic_info_client import DomesticStockInfo
 from portfolio_manager.services.kis_price_parser import (
@@ -84,6 +85,43 @@ def test_env_normalization_allows_whitespace_and_case():
 
 def test_env_allows_real_prod_token():
     assert KisDomesticPriceClient._tr_id_for_env("real/prod") == "FHKST01010100"
+
+
+# --- KisOverseasPriceClient Tests ---
+
+
+def test_overseas_price_empty_last_returns_zero():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={
+                "output": {
+                    "last": "",
+                    "symbol": "AAPL",
+                    "name": "Apple Inc",
+                }
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.Client(
+        transport=transport, base_url="https://openapi.koreainvestment.com:9443"
+    )
+
+    kis = KisOverseasPriceClient(
+        client=client,
+        app_key="app-key",
+        app_secret="app-secret",
+        access_token="access-token",
+        cust_type="P",
+        env="real",
+    )
+
+    result = kis.fetch_current_price(excd="NAS", symb="AAPL")
+
+    assert result.price == 0.0
+    assert result.symbol == "AAPL"
+    assert result.name == "Apple Inc"
 
 
 # --- KisUnifiedPriceClient Tests ---
