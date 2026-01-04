@@ -1,5 +1,6 @@
 """Holding repository for database operations."""
 
+from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, cast
@@ -93,3 +94,17 @@ class HoldingRepository:
             created_at=datetime.fromisoformat(str(data["created_at"])),
             updated_at=datetime.fromisoformat(str(data["updated_at"])),
         )
+
+    def get_aggregated_holdings_by_stock(self) -> dict[UUID, Decimal]:
+        """Get aggregated holdings by stock across all accounts."""
+        response = self.client.table("holdings").select("*").execute()
+        if not response.data:
+            return {}
+
+        aggregated: dict[UUID, Decimal] = defaultdict(Decimal)
+        for item in cast(list[dict[str, Any]], response.data):
+            stock_id = UUID(str(item["stock_id"]))
+            quantity = Decimal(str(item["quantity"]))
+            aggregated[stock_id] += quantity
+
+        return dict(aggregated)
