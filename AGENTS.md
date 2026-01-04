@@ -40,6 +40,7 @@
 - List selections for groups/stocks/accounts/holdings use prompt_toolkit choice (arrow-key) instead of numeric input.
 - Main menu displays unified portfolio dashboard in single table with price and valuation information.
 - Dashboard shows: Group, Ticker, Quantity, Price, Value (quantity × price), and Total Portfolio Value.
+- Currency symbols display based on stock market: ₩ for KRW (domestic), $ for USD (overseas).
 
 ## Governance Updates
 - Authentication clients now share the `AuthClient` interface to decouple token management from a concrete provider.
@@ -49,3 +50,4 @@
 - Real-time pricing integrated via KIS API with automatic market detection (6-character codes = domestic, including alphanumeric like "0052D0"; alphabetic = overseas).
 - Dashboard gracefully degrades to quantity-only display if KIS credentials unavailable or price fetch fails.
 - Market detection uses length-based logic: 6-character tickers route to domestic API, others to overseas API (supports both pure numeric and alphanumeric Korean stock codes).
+- Currency information flows from PriceQuote through PriceService and StockHoldingWithPrice to dashboard rendering with appropriate symbols (₩/$ based on KRW/USD).
