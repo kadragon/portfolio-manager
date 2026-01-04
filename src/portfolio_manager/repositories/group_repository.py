@@ -19,16 +19,21 @@ class GroupRepository:
         """
         self.client = client
 
-    def create(self, name: str) -> Group:
+    def create(self, name: str, target_percentage: float = 0.0) -> Group:
         """Create a new group.
 
         Args:
             name: Name of the group.
+            target_percentage: Target percentage of the portfolio (0-100).
 
         Returns:
             Created Group instance.
         """
-        response = self.client.table("groups").insert({"name": name}).execute()
+        response = (
+            self.client.table("groups")
+            .insert({"name": name, "target_percentage": target_percentage})
+            .execute()
+        )
         if not response.data or len(response.data) == 0:
             raise ValueError("Failed to create group")
         data = cast(dict[str, Any], response.data[0])
@@ -36,6 +41,7 @@ class GroupRepository:
         return Group(
             id=UUID(str(data["id"])),
             name=str(data["name"]),
+            target_percentage=float(data.get("target_percentage", 0.0)),
             created_at=datetime.fromisoformat(str(data["created_at"])),
             updated_at=datetime.fromisoformat(str(data["updated_at"])),
         )
@@ -54,6 +60,7 @@ class GroupRepository:
             Group(
                 id=UUID(str(item["id"])),
                 name=str(item["name"]),
+                target_percentage=float(item.get("target_percentage", 0.0)),
                 created_at=datetime.fromisoformat(str(item["created_at"])),
                 updated_at=datetime.fromisoformat(str(item["updated_at"])),
             )
@@ -68,19 +75,34 @@ class GroupRepository:
         """
         self.client.table("groups").delete().eq("id", str(group_id)).execute()
 
-    def update(self, group_id: UUID, name: str) -> Group:
-        """Update a group name by ID.
+    def update(
+        self,
+        group_id: UUID,
+        name: str | None = None,
+        target_percentage: float | None = None,
+    ) -> Group:
+        """Update a group by ID.
 
         Args:
             group_id: ID of the group to update.
             name: Updated name.
+            target_percentage: Updated target percentage.
 
         Returns:
             Updated Group instance.
         """
+        updates: dict[str, Any] = {}
+        if name is not None:
+            updates["name"] = name
+        if target_percentage is not None:
+            updates["target_percentage"] = target_percentage
+
+        if not updates:
+            raise ValueError("No fields to update")
+
         response = (
             self.client.table("groups")
-            .update({"name": name})
+            .update(updates)
             .eq("id", str(group_id))
             .execute()
         )
@@ -91,6 +113,7 @@ class GroupRepository:
         return Group(
             id=UUID(str(data["id"])),
             name=str(data["name"]),
+            target_percentage=float(data.get("target_percentage", 0.0)),
             created_at=datetime.fromisoformat(str(data["created_at"])),
             updated_at=datetime.fromisoformat(str(data["updated_at"])),
         )

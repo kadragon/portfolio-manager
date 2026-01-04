@@ -10,6 +10,7 @@ from portfolio_manager.cli.groups import (
     add_group_flow,
     delete_group_flow,
     render_group_list,
+    update_group_flow,
 )
 from portfolio_manager.cli import main as main_app
 from portfolio_manager.models import Group
@@ -26,16 +27,39 @@ def test_add_group_flow_creates_group_and_reports_name():
     group = Group(
         id=uuid4(),
         name="Tech Stocks",
+        target_percentage=10.0,
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
     repo.create.return_value = group
 
-    add_group_flow(console, repo, lambda: "Tech Stocks")
+    # Mock prompt to return name then percentage
+    prompt_mock = MagicMock(side_effect=["Tech Stocks", "10.0"])
 
-    repo.create.assert_called_once_with("Tech Stocks")
+    add_group_flow(console, repo, prompt=prompt_mock)
+
+    repo.create.assert_called_once_with("Tech Stocks", target_percentage=10.0)
     output = console.export_text()
     assert "Tech Stocks" in output
+    assert "10.0%" in output
+
+
+def test_render_group_list_shows_target_percentage():
+    """Should show target percentage in group list."""
+    console = Console(record=True, width=80)
+    group = Group(
+        id=uuid4(),
+        name="Tech Stocks",
+        target_percentage=12.5,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+
+    render_group_list(console, [group])
+
+    output = console.export_text()
+    assert "Tech Stocks" in output
+    assert "12.5" in output
 
 
 def test_delete_group_flow_removes_group_and_reports_name():
@@ -45,6 +69,7 @@ def test_delete_group_flow_removes_group_and_reports_name():
     group = Group(
         id=uuid4(),
         name="Tech Stocks",
+        target_percentage=0.0,
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -102,6 +127,7 @@ def test_run_group_menu_select_flow_invokes_stock_menu():
     group = main_app.Group(
         id=uuid4(),
         name="Tech",
+        target_percentage=0.0,
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -126,6 +152,7 @@ def test_run_group_menu_edit_flow_invokes_update_group():
     group = main_app.Group(
         id=uuid4(),
         name="Tech",
+        target_percentage=0.0,
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -148,6 +175,7 @@ def test_run_group_menu_displays_current_group_after_selection():
     group = Group(
         id=uuid4(),
         name="Tech Stocks",
+        target_percentage=0.0,
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -181,7 +209,13 @@ def test_choose_group_from_list_returns_group_id():
     """Should return the selected group id."""
     group_id = uuid4()
     groups = [
-        Group(id=group_id, name="Tech", created_at=None, updated_at=None),  # type: ignore[arg-type]
+        Group(
+            id=group_id,
+            name="Tech",
+            target_percentage=0.0,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        ),
     ]
     chooser = MagicMock(return_value=group_id)
 
@@ -189,3 +223,36 @@ def test_choose_group_from_list_returns_group_id():
 
     chooser.assert_called_once()
     assert result == group_id
+
+
+def test_update_group_flow_updates_group_and_reports_changes():
+    """Should update group and render confirmation."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    group = Group(
+        id=uuid4(),
+        name="Old Name",
+        target_percentage=10.0,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    updated_group = Group(
+        id=group.id,
+        name="New Name",
+        target_percentage=20.0,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    repo.update.return_value = updated_group
+
+    # Mock prompt to return name then percentage
+    prompt_mock = MagicMock(side_effect=["New Name", "20.0"])
+
+    update_group_flow(console, repo, group, prompt=prompt_mock)
+
+    repo.update.assert_called_once_with(
+        group.id, name="New Name", target_percentage=20.0
+    )
+    output = console.export_text()
+    assert "New Name" in output
+    assert "20.0%" in output

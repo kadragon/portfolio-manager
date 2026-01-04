@@ -13,3 +13,4 @@ class Group:
     name: str
     created_at: datetime
     updated_at: datetime
+    target_percentage: float = 0.0

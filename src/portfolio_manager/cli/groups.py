@@ -17,8 +17,9 @@ def render_group_list(console: Console, groups: list[Group]) -> None:
     table = Table(title="Groups", header_style="bold")
     table.add_column("#", style="dim", width=4, justify="right")
     table.add_column("Name", style="bold")
+    table.add_column("Target %", justify="right")
     for index, group in enumerate(groups, start=1):
-        table.add_row(str(index), group.name)
+        table.add_row(str(index), group.name, f"{group.target_percentage:.1f}%")
     console.print(table)
 
 
@@ -26,10 +27,21 @@ def add_group_flow(
     console: Console, repository, prompt: Callable[[], str] | None = None
 ) -> None:
     """Add a group via prompt and render confirmation."""
-    prompt_func = prompt or (lambda: Prompt.ask("Group name"))
-    name = prompt_func()
-    group = repository.create(name)
-    console.print(f"Added group: {group.name}")
+    if prompt:
+        name = prompt()
+        target_str = prompt()
+    else:
+        name = Prompt.ask("Group name")
+        target_str = Prompt.ask("Target Percentage", default="0.0")
+
+    try:
+        target_percentage = float(target_str)
+    except ValueError:
+        console.print("[yellow]Invalid percentage, defaulting to 0.0[/yellow]")
+        target_percentage = 0.0
+
+    group = repository.create(name, target_percentage=target_percentage)
+    console.print(f"Added group: {group.name} (Target: {group.target_percentage}%)")
 
 
 def update_group_flow(
@@ -39,10 +51,27 @@ def update_group_flow(
     prompt: Callable[[], str] | None = None,
 ) -> None:
     """Update a group name via prompt and render confirmation."""
-    prompt_func = prompt or (lambda: Prompt.ask("New group name"))
-    name = prompt_func()
-    updated = repository.update(group.id, name)
-    console.print(f"Updated group: {updated.name}")
+    current_target = group.target_percentage
+
+    if prompt:
+        name = prompt()
+        target_str = prompt()
+    else:
+        name = Prompt.ask("New group name", default=group.name)
+        target_str = Prompt.ask("New target percentage", default=str(current_target))
+
+    try:
+        target_percentage = float(target_str)
+    except ValueError:
+        console.print("[yellow]Invalid percentage, keeping current value[/yellow]")
+        target_percentage = current_target
+
+    updated = repository.update(
+        group.id, name=name, target_percentage=target_percentage
+    )
+    console.print(
+        f"Updated group: {updated.name} (Target: {updated.target_percentage}%)"
+    )
 
 
 def delete_group_flow(
