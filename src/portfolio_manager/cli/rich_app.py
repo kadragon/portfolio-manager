@@ -18,18 +18,18 @@ def render_dashboard(console: Console, group_holdings: list[GroupHoldings]) -> N
         return
 
     for group_holding in group_holdings:
-        if not group_holding.stock_holdings:
-            continue
-
         table = Table(title=f"📊 {group_holding.group.name}")
         table.add_column("Ticker", style="cyan")
         table.add_column("Quantity", style="magenta", justify="right")
 
-        for stock_holding in group_holding.stock_holdings:
-            table.add_row(
-                stock_holding.stock.ticker,
-                str(stock_holding.quantity),
-            )
+        if not group_holding.stock_holdings:
+            table.add_row("(no stocks)", "-")
+        else:
+            for stock_holding in group_holding.stock_holdings:
+                table.add_row(
+                    stock_holding.stock.ticker,
+                    str(stock_holding.quantity),
+                )
 
         console.print(table)
 

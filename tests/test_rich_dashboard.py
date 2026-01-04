@@ -71,3 +71,30 @@ def test_render_dashboard_shows_message_when_no_groups():
     # Then: 안내 메시지가 표시됨
     output = console.export_text()
     assert "No groups" in output or "no groups" in output
+
+
+def test_render_dashboard_shows_groups_without_stocks():
+    """주식이 없는 그룹도 표시한다."""
+    console = Console(record=True, width=120)
+
+    # Given: 주식이 없는 그룹
+    group1 = Group(
+        id=uuid4(),
+        name="Empty Group",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    group_holdings = [
+        GroupHoldings(
+            group=group1,
+            stock_holdings=[],
+        )
+    ]
+
+    # When: 대시보드를 렌더링
+    render_dashboard(console, group_holdings)
+
+    # Then: 그룹명이 표시됨
+    output = console.export_text()
+    assert "Empty Group" in output
