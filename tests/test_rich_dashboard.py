@@ -7,7 +7,12 @@ from rich.console import Console
 
 from portfolio_manager.cli.rich_app import render_dashboard
 from portfolio_manager.models import Group, Stock
-from portfolio_manager.services.portfolio_service import GroupHoldings, StockHolding
+from portfolio_manager.services.portfolio_service import (
+    GroupHoldings,
+    PortfolioSummary,
+    StockHolding,
+    StockHoldingWithPrice,
+)
 
 
 def test_render_dashboard_shows_groups_and_stocks():
@@ -154,3 +159,59 @@ def test_render_dashboard_shows_all_stocks_in_single_table():
     assert "JPM" in output
     # 테이블 제목이 하나만 있어야 함 (여러 테이블이 아님)
     assert output.count("📊") == 1 or "Portfolio" in output
+
+
+def test_render_dashboard_shows_prices_and_values():
+    """가격과 평가금액을 표시한다."""
+    console = Console(record=True, width=120)
+
+    # Given: Portfolio summary with prices
+    group = Group(
+        id=uuid4(),
+        name="Tech",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock1 = Stock(
+        id=uuid4(),
+        ticker="AAPL",
+        group_id=group.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock2 = Stock(
+        id=uuid4(),
+        ticker="GOOGL",
+        group_id=group.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    holdings = [
+        (
+            group,
+            StockHoldingWithPrice(
+                stock=stock1, quantity=Decimal("10"), price=Decimal("150.0")
+            ),
+        ),
+        (
+            group,
+            StockHoldingWithPrice(
+                stock=stock2, quantity=Decimal("5"), price=Decimal("100.0")
+            ),
+        ),
+    ]
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("2000.0"))
+
+    # When: 대시보드를 렌더링
+    render_dashboard(console, summary)
+
+    # Then: 가격, 평가금액, 총계가 표시됨
+    output = console.export_text()
+    assert "AAPL" in output
+    assert "GOOGL" in output
+    assert "150" in output  # price
+    assert "1,500" in output  # value (10 × 150)
+    assert "100" in output  # price
+    assert "500" in output  # value (5 × 100)
+    assert "2,000" in output  # total value
