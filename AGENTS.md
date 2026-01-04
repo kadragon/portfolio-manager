@@ -24,17 +24,21 @@
   - `GroupRepository`: create(), list_all()
   - `StockRepository`: create(), list_by_group()
   - `AccountRepository`: create(), list_all(), delete_with_holdings()
-  - `HoldingRepository`: create(), list_by_account(), delete_by_account()
+  - `HoldingRepository`: create(), list_by_account(), delete_by_account(), get_aggregated_holdings_by_stock()
+- Services implemented:
+  - `PortfolioService`: get_holdings_by_group() - aggregates holdings across accounts by stock and groups them by group
 - Supabase client factory: `src/portfolio_manager/services/supabase_client.py`
 - Data models: `src/portfolio_manager/models/group.py`, `src/portfolio_manager/models/stock.py`, `src/portfolio_manager/models/account.py`, `src/portfolio_manager/models/holding.py`
-- Test coverage: `tests/test_group_repository.py`, `tests/test_stock_repository.py`, `tests/test_account_repository.py`, `tests/test_account_delete_cascade.py`, `tests/test_holding_repository.py`, `tests/test_holding_quantity_decimal.py`
+- Test coverage: `tests/test_group_repository.py`, `tests/test_stock_repository.py`, `tests/test_account_repository.py`, `tests/test_account_delete_cascade.py`, `tests/test_holding_repository.py`, `tests/test_holding_quantity_decimal.py`, `tests/test_holding_aggregation.py`, `tests/test_portfolio_service.py`, `tests/test_rich_dashboard.py`
 
 ## Strategic Insights
 - Rich-only CLI replaces Textual screens; menu navigation and prompts drive group/stock flows.
 - Group selection now leads to a stock menu loop with table-based rendering and back navigation.
 - List selections for groups/stocks/accounts/holdings use prompt_toolkit choice (arrow-key) instead of numeric input.
+- Main menu displays portfolio dashboard showing all groups with aggregated holdings across accounts.
 
 ## Governance Updates
 - Authentication clients now share the `AuthClient` interface to decouple token management from a concrete provider.
 - Rich CLI flows and account/holding repositories are test-backed to lock in prompt/flow behavior and data parsing.
 - Choice-based selection helpers cover group/account/stock/holding lists to standardize CLI selection inputs.
+- Portfolio aggregation logic is encapsulated in PortfolioService with comprehensive test coverage for cross-account holding summation.
