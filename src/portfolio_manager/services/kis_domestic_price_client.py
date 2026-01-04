@@ -45,6 +45,7 @@ class KisDomesticPriceClient:
             name=name,
             price=price,
             market="KR",
+            currency="KRW",
         )
 
     @staticmethod

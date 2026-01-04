@@ -12,7 +12,7 @@ from portfolio_manager.services.kis_unified_price_client import KisUnifiedPriceC
 def mock_domestic_client():
     client = MagicMock()
     client.fetch_current_price.return_value = PriceQuote(
-        symbol="005930", name="삼성전자", price=70000, market="KR"
+        symbol="005930", name="삼성전자", price=70000, market="KR", currency="KRW"
     )
     return client
 
@@ -21,7 +21,7 @@ def mock_domestic_client():
 def mock_overseas_client():
     client = MagicMock()
     client.fetch_current_price.return_value = PriceQuote(
-        symbol="AAPL", name="Apple Inc.", price=150.0, market="US"
+        symbol="AAPL", name="Apple Inc.", price=150.0, market="US", currency="USD"
     )
     return client
 

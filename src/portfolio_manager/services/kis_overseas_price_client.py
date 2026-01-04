@@ -49,6 +49,7 @@ class KisOverseasPriceClient:
             name=name,
             price=float(price),
             market="US",
+            currency="USD",
         )
 
     @staticmethod

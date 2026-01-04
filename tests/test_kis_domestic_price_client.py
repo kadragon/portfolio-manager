@@ -62,4 +62,5 @@ def test_domestic_price_request_uses_headers_and_params():
         name="삼성전자",
         price=73500,
         market="KR",
+        currency="KRW",
     )

@@ -23,7 +23,7 @@ def test_calculate_valuation_with_prices():
     )
 
     holding = StockHoldingWithPrice(
-        stock=stock, quantity=Decimal("10"), price=Decimal("150.0")
+        stock=stock, quantity=Decimal("10"), price=Decimal("150.0"), currency="USD"
     )
 
     # When: Calculate valuation
@@ -76,7 +76,7 @@ def test_portfolio_summary_calculates_total_value():
 
     price_service = Mock()
     price_service.get_stock_price.side_effect = lambda ticker: (
-        Decimal("150.0") if ticker == "AAPL" else Decimal("100.0")
+        (Decimal("150.0"), "USD") if ticker == "AAPL" else (Decimal("100.0"), "USD")
     )
 
     portfolio_service = PortfolioService(

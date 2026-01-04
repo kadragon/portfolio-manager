@@ -191,13 +191,19 @@ def test_render_dashboard_shows_prices_and_values():
         (
             group,
             StockHoldingWithPrice(
-                stock=stock1, quantity=Decimal("10"), price=Decimal("150.0")
+                stock=stock1,
+                quantity=Decimal("10"),
+                price=Decimal("150.0"),
+                currency="USD",
             ),
         ),
         (
             group,
             StockHoldingWithPrice(
-                stock=stock2, quantity=Decimal("5"), price=Decimal("100.0")
+                stock=stock2,
+                quantity=Decimal("5"),
+                price=Decimal("100.0"),
+                currency="USD",
             ),
         ),
     ]

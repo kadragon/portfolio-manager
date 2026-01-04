@@ -28,6 +28,7 @@ class StockHoldingWithPrice:
     stock: Stock
     quantity: Decimal
     price: Decimal
+    currency: str
 
     @property
     def value(self) -> Decimal:
@@ -100,9 +101,9 @@ class PortfolioService:
             for stock in stocks:
                 quantity = aggregated_holdings.get(stock.id, Decimal("0"))
                 if quantity > 0:
-                    price = self.price_service.get_stock_price(stock.ticker)
+                    price, currency = self.price_service.get_stock_price(stock.ticker)
                     holding_with_price = StockHoldingWithPrice(
-                        stock=stock, quantity=quantity, price=price
+                        stock=stock, quantity=quantity, price=price, currency=currency
                     )
                     holdings.append((group, holding_with_price))
                     total_value += holding_with_price.value

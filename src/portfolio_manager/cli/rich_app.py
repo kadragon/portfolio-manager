@@ -32,12 +32,17 @@ def render_dashboard(
         table.add_column("Value", style="yellow", justify="right")
 
         for group, holding_with_price in data.holdings:
+            currency_symbol = "₩" if holding_with_price.currency == "KRW" else "$"
             table.add_row(
                 group.name,
                 holding_with_price.stock.ticker,
                 str(holding_with_price.quantity),
-                f"${holding_with_price.price}",
-                f"${holding_with_price.value:,.2f}",
+                f"{currency_symbol}{holding_with_price.price:,.0f}"
+                if holding_with_price.currency == "KRW"
+                else f"{currency_symbol}{holding_with_price.price:,.2f}",
+                f"{currency_symbol}{holding_with_price.value:,.0f}"
+                if holding_with_price.currency == "KRW"
+                else f"{currency_symbol}{holding_with_price.value:,.2f}",
             )
 
         console.print(table)

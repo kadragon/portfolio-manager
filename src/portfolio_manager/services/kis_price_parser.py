@@ -9,6 +9,7 @@ class PriceQuote:
     name: str
     price: float
     market: str
+    currency: str
 
 
 def parse_korea_price(payload: dict) -> PriceQuote:
@@ -18,6 +19,7 @@ def parse_korea_price(payload: dict) -> PriceQuote:
         name=output["hts_kor_isnm"],
         price=int(output["stck_prpr"]),
         market="KR",
+        currency="KRW",
     )
 
 
@@ -28,4 +30,5 @@ def parse_us_price(payload: dict) -> PriceQuote:
         name=output["name"],
         price=float(output["last"]),
         market="US",
+        currency="USD",
     )
