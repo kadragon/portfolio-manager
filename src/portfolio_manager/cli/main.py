@@ -11,7 +11,7 @@ from rich import box
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from portfolio_manager.cli.rich_app import render_main_menu
+from portfolio_manager.cli.rich_app import render_dashboard, render_main_menu
 from portfolio_manager.cli.rich_groups import (
     add_group_flow,
     delete_group_flow,
@@ -30,6 +30,7 @@ from portfolio_manager.repositories.account_repository import AccountRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
+from portfolio_manager.services.portfolio_service import PortfolioService
 from portfolio_manager.services.supabase_client import get_supabase_client
 
 
@@ -129,16 +130,22 @@ def main() -> None:
     console = Console()
     while True:
         render_main_menu(console)
+
+        # Render dashboard
+        client = get_supabase_client()
+        group_repo = GroupRepository(client)
+        stock_repo = StockRepository(client)
+        holding_repo = HoldingRepository(client)
+        portfolio_service = PortfolioService(group_repo, stock_repo, holding_repo)
+        group_holdings = portfolio_service.get_holdings_by_group()
+        render_dashboard(console, group_holdings)
+
         action = choose_main_menu()
         if action == "groups":
             run_group_menu(console)
             continue
         if action == "accounts":
-            client = get_supabase_client()
             account_repo = AccountRepository(client)
-            holding_repo = HoldingRepository(client)
-            stock_repo = StockRepository(client)
-            group_repo = GroupRepository(client)
             run_account_menu(
                 console,
                 account_repo,
