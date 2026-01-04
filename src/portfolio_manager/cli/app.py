@@ -23,10 +23,9 @@ def render_dashboard(
 ) -> None:
     """Render dashboard with groups and their stock holdings."""
 
-    def truncate_name(name: str, max_length: int = 25) -> str:
-        if len(name) <= max_length:
-            return name
-        return name[:max_length]
+    def format_stock_name(name: str, ticker: str) -> str:
+        display = name if name else ticker
+        return display.replace("증권상장지수투자신탁(주식)", "").strip()
 
     # Handle PortfolioSummary
     if isinstance(data, PortfolioSummary):
@@ -63,6 +62,9 @@ def render_dashboard(
                 if holding_with_price.name
                 else holding_with_price.stock.ticker
             )
+            display_name = format_stock_name(
+                display_name, holding_with_price.stock.ticker
+            )
             value_krw = holding_with_price.value_krw
             if value_krw is None:
                 value_krw = holding_with_price.value
@@ -74,7 +76,7 @@ def render_dashboard(
             table.add_row(
                 group.name,
                 holding_with_price.stock.ticker,
-                truncate_name(display_name),
+                display_name,
                 format_quantity(
                     holding_with_price.quantity, holding_with_price.currency
                 ),

@@ -24,6 +24,20 @@ class GroupDifference:
 class RebalanceService:
     """Service for calculating rebalancing recommendations."""
 
+    def _calculate_quantity(
+        self, amount: Decimal, holding: StockHoldingWithPrice
+    ) -> Decimal | None:
+        if holding.quantity <= 0:
+            return None
+
+        total_value = (
+            holding.value_krw if holding.value_krw is not None else holding.value
+        )
+        if total_value == 0:
+            return None
+
+        return (amount / total_value) * holding.quantity
+
     def calculate_group_differences(
         self, summary: PortfolioSummary
     ) -> list[GroupDifference]:
@@ -102,6 +116,8 @@ class RebalanceService:
                         amount=sell_amount,
                         priority=priority,
                         currency=holding.currency,
+                        quantity=self._calculate_quantity(sell_amount, holding),
+                        stock_name=holding.name or holding.stock.ticker,
                         group_name=diff.group.name,
                     )
                 )
@@ -145,6 +161,8 @@ class RebalanceService:
                         amount=amount_to_buy,
                         priority=priority,
                         currency=holding.currency,
+                        quantity=self._calculate_quantity(amount_to_buy, holding),
+                        stock_name=holding.name or holding.stock.ticker,
                         group_name=diff.group.name,
                     )
                 )

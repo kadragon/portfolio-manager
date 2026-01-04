@@ -111,6 +111,9 @@ class PortfolioService:
         if self.price_service is None:
             raise ValueError("Price service is required for portfolio summary")
 
+        def format_stock_name(name: str) -> str:
+            return name.replace("증권상장지수투자신탁(주식)", "").strip()
+
         groups = self.group_repository.list_all()
         aggregated_holdings = self.holding_repository.get_aggregated_holdings_by_stock()
 
@@ -126,6 +129,7 @@ class PortfolioService:
                     price, currency, name = self.price_service.get_stock_price(
                         stock.ticker
                     )
+                    name = format_stock_name(name)
                     value_krw: Decimal | None = None
                     holding_value = quantity * price
                     if currency == "USD":

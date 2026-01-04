@@ -172,6 +172,30 @@ class TestGroupDifferenceCalculation:
 class TestSellRecommendations:
     """Test sell recommendations with overseas stock priority."""
 
+    def test_sell_recommendations_include_quantity(self) -> None:
+        """Sell recommendations should include calculated share quantity."""
+        group = make_group("US Stocks", target_percentage=50.0)
+
+        stock = make_stock("AAPL", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("10"),
+            price=Decimal("150"),
+            currency="USD",
+            value_krw=Decimal("2000000"),
+        )
+
+        # Total 2M, target 50% = 1M, need to sell 1M (half the holding)
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("2000000"),
+        )
+
+        service = RebalanceService()
+        recommendations = service.get_sell_recommendations(summary)
+
+        assert recommendations[0].quantity == Decimal("5")
+
     def test_sell_recommendations_overseas_first(self) -> None:
         """When selling, should recommend overseas stocks (USD) first."""
         group = make_group("Mixed Portfolio", target_percentage=50.0)

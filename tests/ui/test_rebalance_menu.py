@@ -118,6 +118,142 @@ class TestRebalanceRecommendationsRendering:
         assert "2,000,000" in output or "2000000" in output
         assert "3,000,000" in output or "3000000" in output
 
+    def test_render_rebalance_recommendations_shows_quantities(self) -> None:
+        """Should render share quantities."""
+        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+
+        console = Console(record=True, width=120)
+
+        sell_recommendations = [
+            RebalanceRecommendation(
+                ticker="AAPL",
+                action=RebalanceAction.SELL,
+                amount=Decimal("2000000"),
+                priority=1,
+                currency="USD",
+                quantity=Decimal("17"),
+                group_name="US Stocks",
+            ),
+        ]
+        buy_recommendations = [
+            RebalanceRecommendation(
+                ticker="005930",
+                action=RebalanceAction.BUY,
+                amount=Decimal("3000000"),
+                priority=1,
+                currency="KRW",
+                quantity=Decimal("23"),
+                group_name="KR Stocks",
+            ),
+        ]
+
+        render_rebalance_recommendations(
+            console, sell_recommendations, buy_recommendations
+        )
+
+        output = console.export_text()
+        assert "Quantity" in output
+        assert "17" in output
+        assert "23" in output
+
+    def test_render_rebalance_recommendations_shows_stock_names(self) -> None:
+        """Should render stock names next to tickers."""
+        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+
+        console = Console(record=True, width=120)
+
+        sell_recommendations = [
+            RebalanceRecommendation(
+                ticker="AAPL",
+                action=RebalanceAction.SELL,
+                amount=Decimal("2000000"),
+                priority=1,
+                currency="USD",
+                stock_name="Apple Inc.",
+                group_name="US Stocks",
+            ),
+        ]
+        buy_recommendations = [
+            RebalanceRecommendation(
+                ticker="005930",
+                action=RebalanceAction.BUY,
+                amount=Decimal("3000000"),
+                priority=1,
+                currency="KRW",
+                stock_name="Samsung Electronics",
+                group_name="KR Stocks",
+            ),
+        ]
+
+        render_rebalance_recommendations(
+            console, sell_recommendations, buy_recommendations
+        )
+
+        output = console.export_text()
+        assert "Name" in output
+        assert "Apple Inc." in output
+        assert "Samsung Electronics" in output
+
+    def test_render_rebalance_recommendations_hides_priority(self) -> None:
+        """Should not render priority column."""
+        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+
+        console = Console(record=True, width=120)
+
+        sell_recommendations = [
+            RebalanceRecommendation(
+                ticker="AAPL",
+                action=RebalanceAction.SELL,
+                amount=Decimal("2000000"),
+                priority=1,
+                currency="USD",
+                stock_name="Apple Inc.",
+                group_name="US Stocks",
+            ),
+        ]
+        buy_recommendations = [
+            RebalanceRecommendation(
+                ticker="005930",
+                action=RebalanceAction.BUY,
+                amount=Decimal("3000000"),
+                priority=1,
+                currency="KRW",
+                stock_name="Samsung Electronics",
+                group_name="KR Stocks",
+            ),
+        ]
+
+        render_rebalance_recommendations(
+            console, sell_recommendations, buy_recommendations
+        )
+
+        output = console.export_text()
+        assert "Priority" not in output
+
+    def test_render_rebalance_recommendations_strips_etf_suffix(self) -> None:
+        """Should strip ETF suffix from stock names."""
+        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+
+        console = Console(record=True, width=120)
+
+        sell_recommendations = [
+            RebalanceRecommendation(
+                ticker="069500",
+                action=RebalanceAction.SELL,
+                amount=Decimal("2000000"),
+                priority=1,
+                currency="KRW",
+                stock_name="KODEX 200 증권상장지수투자신탁(주식)",
+                group_name="KR ETF",
+            ),
+        ]
+
+        render_rebalance_recommendations(console, sell_recommendations, [])
+
+        output = console.export_text()
+        assert "증권상장지수투자신탁(주식)" not in output
+        assert "KODEX 200" in output
+
     def test_render_rebalance_recommendations_empty_shows_balanced_message(
         self,
     ) -> None:

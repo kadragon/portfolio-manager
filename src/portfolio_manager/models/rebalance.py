@@ -22,4 +22,5 @@ class RebalanceRecommendation:
     priority: int
     currency: str | None = None
     quantity: Decimal | None = None
+    stock_name: str | None = None
     group_name: str | None = None

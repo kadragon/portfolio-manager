@@ -672,8 +672,8 @@ def test_dashboard_uses_ticker_when_name_missing():
     assert output.count("VYM") >= 2
 
 
-def test_dashboard_truncates_long_stock_names():
-    """긴 주식명은 잘라서 표시한다."""
+def test_dashboard_does_not_truncate_long_stock_names():
+    """긴 주식명도 전체 표시한다."""
     console = Console(record=True, width=120)
 
     group = Group(
@@ -708,10 +708,46 @@ def test_dashboard_truncates_long_stock_names():
     render_dashboard(console, summary)
 
     output = console.export_text()
-    # 25자로 잘린 이름 확인 (Apple Inc.는 포함됨)
-    assert "Apple Inc." in output
-    # 전체 이름은 표시되지 않음
-    assert "Apple Inc. Corporation Limited" not in output
+    assert "Apple Inc. Corporation Limited" in output
+
+
+def test_dashboard_strips_etf_suffix_from_stock_name():
+    """ETF 접미어를 제거하고 표시한다."""
+    console = Console(record=True, width=120)
+
+    group = Group(
+        id=uuid4(),
+        name="국내ETF",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="069500",
+        group_id=group.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    holdings = [
+        (
+            group,
+            StockHoldingWithPrice(
+                stock=stock,
+                quantity=Decimal("10"),
+                price=Decimal("10000"),
+                currency="KRW",
+                name="KODEX 200 증권상장지수투자신탁(주식)",
+            ),
+        ),
+    ]
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("100000"))
+
+    render_dashboard(console, summary)
+
+    output = console.export_text()
+    assert "증권상장지수투자신탁(주식)" not in output
+    assert "KODEX 200" in output
 
 
 def test_dashboard_displays_annualized_return_rate():

@@ -50,6 +50,8 @@
 - 그룹 목록에 목표 비중(%)을 함께 표시하고 추가/수정 시 입력을 받는다.
 - 입금 내역은 계좌와 무관하게 일자별로 1건만 허용하며, 중복 날짜는 수정 흐름으로 유도한다.
 - 리밸런싱 메뉴에서 그룹 목표 비중과 현재 평가액 차이를 기반으로 개별 주식 매매 추천을 제공한다.
+- 리밸런싱 추천 표에 주식명/수량을 함께 표시하고 Priority 컬럼은 제거했다.
+- 대시보드 주식명은 길이 제한 없이 전체 표시한다.
 
 ## Governance Updates
 - Authentication clients now share the `AuthClient` interface to decouple token management from a concrete provider.
@@ -68,3 +70,4 @@
 - KIS API 토큰 만료 시 자동 갱신: `is_token_expired_error()`로 500 에러 중 토큰 만료(msg_cd: 'EGW00123')를 감지하고, `KisDomesticPriceClient`와 `KisOverseasPriceClient`는 `token_manager`가 제공되면 자동으로 토큰 재발급 및 재시도를 수행한다. 이를 통해 토큰 만료로 인한 일시적 실패를 사용자 개입 없이 복구한다.
 - 대시보드 투자 요약(Total Summary)을 Rich Panel로 개선하고, 연환산 수익률(Annualized Return Rate) 표시 기능을 추가했다. 최초 입금일로부터 경과 일수를 기준으로 ((총자산/투자원금)^(365/경과일수) - 1) × 100 공식으로 계산한다.
 - `RebalanceService`가 그룹별 과대/과소 비중을 계산하고 개별 주식 매매 추천을 생성한다. 매도 시 해외주식(USD)을 우선 추천하고, 매수 시 국내주식(KRW)을 우선 추천하여 환전 비용과 세금을 최소화한다.
+- 주식명 표기 시 "증권상장지수투자신탁(주식)" 접미어를 제거하는 규칙을 CLI와 PortfolioService에 적용했다.
