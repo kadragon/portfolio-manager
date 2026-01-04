@@ -14,3 +14,4 @@ class Stock:
     group_id: UUID
     created_at: datetime
     updated_at: datetime
+    exchange: str | None = None

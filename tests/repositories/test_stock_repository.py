@@ -159,3 +159,33 @@ def test_stock_repository_gets_stock_by_ticker():
     )
     assert stock is not None
     assert stock.ticker == "310970"
+
+
+def test_stock_repository_updates_exchange():
+    """Should update a stock exchange by ID."""
+    stock_id = uuid4()
+    response = Mock()
+    response.data = [
+        {
+            "id": str(stock_id),
+            "ticker": "SCHD",
+            "group_id": str(uuid4()),
+            "exchange": "NAS",
+            "created_at": "2026-01-03T00:00:00",
+            "updated_at": "2026-01-03T00:00:00",
+        }
+    ]
+
+    client = Mock()
+    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
+
+    repository = StockRepository(client)
+    stock = repository.update_exchange(stock_id, "NAS")
+
+    client.table.assert_called_once_with("stocks")
+    client.table.return_value.update.assert_called_once_with({"exchange": "NAS"})
+    client.table.return_value.update.return_value.eq.assert_called_once_with(
+        "id", str(stock_id)
+    )
+    assert stock is not None
+    assert stock.exchange == "NAS"
