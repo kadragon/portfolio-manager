@@ -10,6 +10,7 @@ import httpx
 from rich.console import Console
 
 from portfolio_manager.repositories.account_repository import AccountRepository
+from portfolio_manager.repositories.deposit_repository import DepositRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
@@ -54,6 +55,7 @@ class ServiceContainer:
         self.stock_repository = StockRepository(self.supabase_client)
         self.account_repository = AccountRepository(self.supabase_client)
         self.holding_repository = HoldingRepository(self.supabase_client)
+        self.deposit_repository = DepositRepository(self.supabase_client)
 
         # Services (initialized on demand or setup)
         self.price_service: PriceService | None = None
@@ -150,6 +152,8 @@ class ServiceContainer:
             self.holding_repository,
             self.price_service,
             self.exchange_rate_service,
+            account_repository=self.account_repository,
+            deposit_repository=self.deposit_repository,
         )
 
     def close(self) -> None:

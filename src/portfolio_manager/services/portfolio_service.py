@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from portfolio_manager.models import Group, Stock
+from portfolio_manager.repositories.account_repository import AccountRepository
+from portfolio_manager.repositories.deposit_repository import DepositRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
@@ -55,6 +57,11 @@ class PortfolioSummary:
 
     holdings: list[tuple[Group, StockHoldingWithPrice]]
     total_value: Decimal
+    total_stock_value: Decimal = Decimal("0")
+    total_cash_balance: Decimal = Decimal("0")
+    total_assets: Decimal = Decimal("0")
+    total_invested: Decimal = Decimal("0")
+    return_rate: Decimal | None = None
 
 
 class PortfolioService:
@@ -67,6 +74,8 @@ class PortfolioService:
         holding_repository: HoldingRepository,
         price_service: "PriceService | None" = None,
         exchange_rate_service: "ExchangeRateService | None" = None,
+        account_repository: AccountRepository | None = None,
+        deposit_repository: DepositRepository | None = None,
     ):
         """Initialize service with repositories."""
         self.group_repository = group_repository
@@ -74,6 +83,8 @@ class PortfolioService:
         self.holding_repository = holding_repository
         self.price_service = price_service
         self.exchange_rate_service = exchange_rate_service
+        self.account_repository = account_repository
+        self.deposit_repository = deposit_repository
 
     def get_holdings_by_group(self) -> list[GroupHoldings]:
         """Get holdings aggregated by group."""
@@ -101,7 +112,7 @@ class PortfolioService:
         aggregated_holdings = self.holding_repository.get_aggregated_holdings_by_stock()
 
         holdings = []
-        total_value = Decimal("0")
+        total_stock_value = Decimal("0")
         usd_krw_rate: Decimal | None = None
 
         for group in groups:
@@ -134,6 +145,33 @@ class PortfolioService:
                     )
                     holdings.append((group, holding_with_price))
                     if value_krw is not None:
-                        total_value += value_krw
+                        total_stock_value += value_krw
 
-        return PortfolioSummary(holdings=holdings, total_value=total_value)
+        total_cash_balance = Decimal("0")
+        total_invested = Decimal("0")
+
+        if self.account_repository:
+            accounts = self.account_repository.list_all()
+            total_cash_balance = sum((a.cash_balance for a in accounts), Decimal("0"))
+
+            if self.deposit_repository:
+                for account in accounts:
+                    total_invested += self.deposit_repository.get_total_by_account(
+                        account.id
+                    )
+
+        total_assets = total_stock_value + total_cash_balance
+
+        return_rate = None
+        if total_invested > 0:
+            return_rate = (total_assets - total_invested) / total_invested * 100
+
+        return PortfolioSummary(
+            holdings=holdings,
+            total_value=total_stock_value,
+            total_stock_value=total_stock_value,
+            total_cash_balance=total_cash_balance,
+            total_assets=total_assets,
+            total_invested=total_invested,
+            return_rate=return_rate,
+        )

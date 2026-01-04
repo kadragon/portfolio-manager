@@ -134,7 +134,36 @@ def render_dashboard(
             )
 
         console.print(summary_table)
-        console.print(f"\n[bold]Total Value: ₩{data.total_value:,.0f}[/bold]")
+
+        # Total Summary Section
+        console.print("\n[bold]Total Summary[/bold]")
+        total_summary_table = Table(show_header=False, box=None)
+        total_summary_table.add_column(justify="left")
+        total_summary_table.add_column(justify="right")
+
+        total_summary_table.add_row("Stock Value:", f"₩{data.total_stock_value:,.0f}")
+        total_summary_table.add_row("Cash Balance:", f"₩{data.total_cash_balance:,.0f}")
+        total_summary_table.add_row(
+            "Total Assets:", f"[bold]₩{data.total_assets:,.0f}[/bold]"
+        )
+
+        if data.total_invested > 0:
+            total_summary_table.add_row(
+                "Total Invested:", f"₩{data.total_invested:,.0f}"
+            )
+            if data.return_rate is not None:
+                color = (
+                    "green"
+                    if data.return_rate > 0
+                    else "red"
+                    if data.return_rate < 0
+                    else "white"
+                )
+                total_summary_table.add_row(
+                    "Return Rate:", f"[{color}]{data.return_rate:,.2f}%[/{color}]"
+                )
+
+        console.print(total_summary_table)
         return
 
     # Handle list[GroupHoldings]

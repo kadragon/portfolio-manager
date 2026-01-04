@@ -209,7 +209,12 @@ def test_render_dashboard_shows_prices_and_values():
             ),
         ),
     ]
-    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("2600000.0"))
+    summary = PortfolioSummary(
+        holdings=holdings,
+        total_value=Decimal("2600000.0"),
+        total_stock_value=Decimal("2600000.0"),
+        total_assets=Decimal("2600000.0"),
+    )
 
     # When: 대시보드를 렌더링
     render_dashboard(console, summary)

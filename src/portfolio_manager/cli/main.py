@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 
 from portfolio_manager.cli.app import render_dashboard, render_main_menu
+from portfolio_manager.cli.deposits import run_deposit_menu
 from portfolio_manager.cli.groups import (
     add_group_flow,
     delete_group_flow,
@@ -149,6 +150,13 @@ def main() -> None:
                     prompt=lambda: Prompt.ask("Accounts menu"),
                     stock_repository=container.stock_repository,
                     group_repository=container.group_repository,
+                )
+                continue
+            if action == "deposits":
+                run_deposit_menu(
+                    console,
+                    container.deposit_repository,
+                    container.account_repository,
                 )
                 continue
             if action == "quit":
