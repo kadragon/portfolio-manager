@@ -46,5 +46,6 @@
 - Rich CLI flows and account/holding repositories are test-backed to lock in prompt/flow behavior and data parsing.
 - Choice-based selection helpers cover group/account/stock/holding lists to standardize CLI selection inputs.
 - Portfolio aggregation logic is encapsulated in PortfolioService with comprehensive test coverage for cross-account holding summation.
-- Real-time pricing integrated via KIS API with automatic market detection (domestic 6-digit vs overseas alphabetic tickers).
+- Real-time pricing integrated via KIS API with automatic market detection (6-character codes = domestic, including alphanumeric like "0052D0"; alphabetic = overseas).
 - Dashboard gracefully degrades to quantity-only display if KIS credentials unavailable or price fetch fails.
+- Market detection uses length-based logic: 6-character tickers route to domestic API, others to overseas API (supports both pure numeric and alphanumeric Korean stock codes).
