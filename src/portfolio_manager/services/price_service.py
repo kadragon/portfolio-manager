@@ -8,18 +8,48 @@ from decimal import Decimal
 class PriceService:
     """Service for fetching stock prices."""
 
-    def __init__(self, price_client):
+    def __init__(
+        self,
+        price_client,
+        price_cache_repository=None,
+        today_provider=date.today,
+    ):
         """Initialize with a price client."""
         self.price_client = price_client
+        self.price_cache_repository = price_cache_repository
+        self.today_provider = today_provider
 
     def get_stock_price(
         self, ticker: str, preferred_exchange: str | None = None
     ) -> tuple[Decimal, str, str, str | None]:
         """Get current price, currency, name, and exchange for a stock ticker."""
+        cached = None
+        if self.price_cache_repository:
+            cached = self.price_cache_repository.get_by_ticker_and_date(
+                ticker, self.today_provider()
+            )
+        if cached and cached.price > 0:
+            return (
+                cached.price,
+                cached.currency,
+                cached.name,
+                cached.exchange,
+            )
+
         quote = self.price_client.get_price(
             ticker, preferred_exchange=preferred_exchange
         )
-        return Decimal(str(quote.price)), quote.currency, quote.name, quote.exchange
+        price = Decimal(str(quote.price))
+        if self.price_cache_repository and price > 0:
+            self.price_cache_repository.save(
+                ticker=ticker,
+                price_date=self.today_provider(),
+                price=price,
+                currency=quote.currency,
+                name=quote.name,
+                exchange=quote.exchange,
+            )
+        return price, quote.currency, quote.name, quote.exchange
 
     def get_stock_change_rates(
         self,
@@ -54,7 +84,7 @@ class PriceService:
                 return target_date - timedelta(days=2)
             return target_date
 
-        current_price, _, _, _ = self.get_stock_price(
+        current_price, currency, name, exchange = self.get_stock_price(
             ticker, preferred_exchange=preferred_exchange
         )
         targets = {
@@ -64,15 +94,35 @@ class PriceService:
         }
         change_rates: dict[str, Decimal] = {}
         for label, target_date in targets.items():
-            past_close = Decimal(
-                str(
-                    self.price_client.get_historical_close(
-                        ticker,
-                        target_date,
-                        preferred_exchange=preferred_exchange,
-                    )
+            cached = None
+            if self.price_cache_repository:
+                cached = self.price_cache_repository.get_by_ticker_and_date(
+                    ticker, target_date
                 )
-            )
+            if cached and cached.price > 0:
+                past_close = cached.price
+            else:
+                try:
+                    past_close = Decimal(
+                        str(
+                            self.price_client.get_historical_close(
+                                ticker,
+                                target_date,
+                                preferred_exchange=preferred_exchange,
+                            )
+                        )
+                    )
+                except Exception:
+                    past_close = Decimal("0")
+                if self.price_cache_repository and past_close > 0:
+                    self.price_cache_repository.save(
+                        ticker=ticker,
+                        price_date=target_date,
+                        price=past_close,
+                        currency=currency,
+                        name=name,
+                        exchange=exchange,
+                    )
             if past_close == 0:
                 change_rates[label] = Decimal("0")
             else:

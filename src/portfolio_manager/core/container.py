@@ -14,6 +14,7 @@ from portfolio_manager.repositories.deposit_repository import DepositRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
+from portfolio_manager.repositories.stock_price_repository import StockPriceRepository
 from portfolio_manager.services.kis.kis_auth_client import KisAuthClient
 from portfolio_manager.services.kis.kis_domestic_info_client import (
     KisDomesticInfoClient,
@@ -53,6 +54,7 @@ class ServiceContainer:
         self.supabase_client = get_supabase_client()
         self.group_repository = GroupRepository(self.supabase_client)
         self.stock_repository = StockRepository(self.supabase_client)
+        self.stock_price_repository = StockPriceRepository(self.supabase_client)
         self.account_repository = AccountRepository(self.supabase_client)
         self.holding_repository = HoldingRepository(self.supabase_client)
         self.deposit_repository = DepositRepository(self.supabase_client)
@@ -123,7 +125,10 @@ class ServiceContainer:
                     domestic_info_client,
                     prdt_type_cd=prdt_type_cd,
                 )
-                self.price_service = PriceService(unified_client)
+                self.price_service = PriceService(
+                    unified_client,
+                    price_cache_repository=self.stock_price_repository,
+                )
             except Exception as e:
                 self.console.print(
                     f"[yellow]Warning: Could not initialize price service: {e}[/yellow]"

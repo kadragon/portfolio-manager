@@ -87,3 +87,6 @@
 - KisUnifiedPriceClient historical close lookup now accepts a preferred exchange for prioritized overseas history queries.
 - PriceService now passes preferred exchanges into KIS clients and returns the resolved exchange so PortfolioService can persist exchange cache updates.
 - Overseas historical close lookup now skips HTTPStatusError responses and falls back to the next exchange.
+- Added `stock_prices` table and repositories to cache daily price snapshots per ticker/date.
+- PriceService now reuses cached prices for the day and caches non-zero quotes from live fetches.
+- Historical close lookups now use the same daily cache and skip cache writes on errors or zero prices.

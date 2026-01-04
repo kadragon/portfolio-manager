@@ -296,6 +296,52 @@ def test_overseas_price_skips_http_errors_and_tries_next_exchange(
     )
 
 
+def test_overseas_price_returns_zero_when_all_exchanges_fail(
+    mock_domestic_client,
+):
+    """모든 거래소가 실패하면 0 가격의 기본 응답을 반환한다."""
+    overseas_client = MagicMock()
+    request = httpx.Request("GET", "https://example.com")
+    response = httpx.Response(status_code=500, request=request)
+    overseas_client.fetch_current_price.side_effect = [
+        httpx.HTTPStatusError("Server error", request=request, response=response),
+        httpx.HTTPStatusError("Server error", request=request, response=response),
+        httpx.HTTPStatusError("Server error", request=request, response=response),
+    ]
+    unified = KisUnifiedPriceClient(mock_domestic_client, overseas_client)
+
+    quote = unified.get_price("SPY")
+
+    assert quote.symbol == "SPY"
+    assert quote.name == ""
+    assert quote.price == 0.0
+    assert quote.currency == "USD"
+    assert quote.exchange is None
+    assert overseas_client.fetch_current_price.call_count == 3
+
+
+def test_domestic_price_returns_zero_when_http_error(
+    mock_overseas_client,
+):
+    """국내 시세 조회가 HTTP 에러면 기본 응답을 반환한다."""
+    domestic_client = MagicMock()
+    request = httpx.Request("GET", "https://example.com")
+    response = httpx.Response(status_code=500, request=request)
+    domestic_client.fetch_current_price.side_effect = httpx.HTTPStatusError(
+        "Server error", request=request, response=response
+    )
+    unified = KisUnifiedPriceClient(domestic_client, mock_overseas_client)
+
+    quote = unified.get_price("360750")
+
+    assert quote.symbol == "360750"
+    assert quote.name == ""
+    assert quote.price == 0.0
+    assert quote.currency == "KRW"
+    assert quote.exchange is None
+    domestic_client.fetch_current_price.assert_called_once_with("J", "360750")
+
+
 def test_detects_6_digit_alphanumeric_ticker_as_domestic(
     mock_domestic_client, mock_overseas_client
 ):
@@ -461,6 +507,26 @@ def test_unified_historical_close_skips_http_errors(
 
     assert close_price == 150.0
     assert mock_overseas_client.fetch_historical_close.call_count == 3
+
+
+def test_unified_historical_close_returns_zero_when_domestic_http_error(
+    mock_overseas_client,
+):
+    """국내 과거 종가 조회가 HTTP 에러면 0을 반환한다."""
+    domestic_client = MagicMock()
+    request = httpx.Request("GET", "https://example.com")
+    response = httpx.Response(status_code=500, request=request)
+    domestic_client.fetch_historical_close.side_effect = httpx.HTTPStatusError(
+        "Server error", request=request, response=response
+    )
+    unified = KisUnifiedPriceClient(domestic_client, mock_overseas_client)
+
+    close_price = unified.get_historical_close("360750", target_date=date(2025, 1, 3))
+
+    assert close_price == 0.0
+    domestic_client.fetch_historical_close.assert_called_once_with(
+        fid_input_iscd="360750", target_date=date(2025, 1, 3)
+    )
 
 
 # --- Price Parser Tests ---

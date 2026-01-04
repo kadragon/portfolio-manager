@@ -48,7 +48,17 @@ class KisUnifiedPriceClient:
         """Get price for a ticker (auto-detects market)."""
         # Korean stocks are 6-character codes (e.g., "005930", "0052D0")
         if is_domestic_ticker(ticker):
-            quote = self.domestic_client.fetch_current_price("J", ticker)
+            try:
+                quote = self.domestic_client.fetch_current_price("J", ticker)
+            except httpx.HTTPStatusError:
+                return PriceQuote(
+                    symbol=ticker,
+                    name="",
+                    price=0.0,
+                    market="KR",
+                    currency="KRW",
+                    exchange=None,
+                )
             if quote.name or self.domestic_info_client is None:
                 return quote
             try:
@@ -80,7 +90,14 @@ class KisUnifiedPriceClient:
                 if best_quote.price == 0 and quote.price > 0:
                     best_quote = quote
             if best_quote is None:
-                return self.overseas_client.fetch_current_price("NAS", ticker)
+                return PriceQuote(
+                    symbol=ticker,
+                    name="",
+                    price=0.0,
+                    market="US",
+                    currency="USD",
+                    exchange=None,
+                )
             return best_quote
 
     def get_historical_close(
@@ -91,11 +108,14 @@ class KisUnifiedPriceClient:
     ) -> float:
         """Get historical close price for a ticker (auto-detects market)."""
         if is_domestic_ticker(ticker):
-            return float(
-                self.domestic_client.fetch_historical_close(
-                    fid_input_iscd=ticker, target_date=target_date
+            try:
+                return float(
+                    self.domestic_client.fetch_historical_close(
+                        fid_input_iscd=ticker, target_date=target_date
+                    )
                 )
-            )
+            except httpx.HTTPStatusError:
+                return 0.0
         exchanges = self._get_prioritized_exchanges(preferred_exchange)
         best_close = 0.0
         for excd in exchanges:
