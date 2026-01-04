@@ -98,3 +98,59 @@ def test_render_dashboard_shows_groups_without_stocks():
     # Then: 그룹명이 표시됨
     output = console.export_text()
     assert "Empty Group" in output
+
+
+def test_render_dashboard_shows_all_stocks_in_single_table():
+    """단일 테이블로 모든 주식과 그룹명을 표시한다."""
+    console = Console(record=True, width=120)
+
+    # Given: 여러 그룹과 주식
+    group1 = Group(
+        id=uuid4(),
+        name="Tech",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    group2 = Group(
+        id=uuid4(),
+        name="Finance",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock1 = Stock(
+        id=uuid4(),
+        ticker="AAPL",
+        group_id=group1.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock2 = Stock(
+        id=uuid4(),
+        ticker="JPM",
+        group_id=group2.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    group_holdings = [
+        GroupHoldings(
+            group=group1,
+            stock_holdings=[StockHolding(stock=stock1, quantity=Decimal("10"))],
+        ),
+        GroupHoldings(
+            group=group2,
+            stock_holdings=[StockHolding(stock=stock2, quantity=Decimal("5"))],
+        ),
+    ]
+
+    # When: 대시보드를 렌더링
+    render_dashboard(console, group_holdings)
+
+    # Then: 단일 테이블에 모든 주식과 그룹이 표시됨
+    output = console.export_text()
+    assert "Tech" in output
+    assert "Finance" in output
+    assert "AAPL" in output
+    assert "JPM" in output
+    # 테이블 제목이 하나만 있어야 함 (여러 테이블이 아님)
+    assert output.count("📊") == 1 or "Portfolio" in output

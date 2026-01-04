@@ -17,21 +17,24 @@ def render_dashboard(console: Console, group_holdings: list[GroupHoldings]) -> N
         console.print("No groups found. Create a group to get started.")
         return
 
-    for group_holding in group_holdings:
-        table = Table(title=f"📊 {group_holding.group.name}")
-        table.add_column("Ticker", style="cyan")
-        table.add_column("Quantity", style="magenta", justify="right")
+    # Single table for all stocks
+    table = Table(title="📊 Portfolio")
+    table.add_column("Group", style="blue")
+    table.add_column("Ticker", style="cyan")
+    table.add_column("Quantity", style="magenta", justify="right")
 
+    for group_holding in group_holdings:
         if not group_holding.stock_holdings:
-            table.add_row("(no stocks)", "-")
+            table.add_row(group_holding.group.name, "(no stocks)", "-")
         else:
             for stock_holding in group_holding.stock_holdings:
                 table.add_row(
+                    group_holding.group.name,
                     stock_holding.stock.ticker,
                     str(stock_holding.quantity),
                 )
 
-        console.print(table)
+    console.print(table)
 
 
 def select_main_menu_option(choice: str) -> str | None:
