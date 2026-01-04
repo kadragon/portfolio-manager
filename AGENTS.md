@@ -35,7 +35,8 @@
 - Rich-only CLI replaces Textual screens; menu navigation and prompts drive group/stock flows.
 - Group selection now leads to a stock menu loop with table-based rendering and back navigation.
 - List selections for groups/stocks/accounts/holdings use prompt_toolkit choice (arrow-key) instead of numeric input.
-- Main menu displays portfolio dashboard showing all groups with aggregated holdings across accounts.
+- Main menu displays unified portfolio dashboard in single table with price and valuation information.
+- Dashboard shows: Group, Ticker, Quantity, Price, Value (quantity × price), and Total Portfolio Value.
 
 ## Governance Updates
 - Authentication clients now share the `AuthClient` interface to decouple token management from a concrete provider.
