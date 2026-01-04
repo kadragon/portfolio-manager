@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 from unittest.mock import Mock
-from datetime import date
+from datetime import date, datetime
 from uuid import uuid4
 
 import httpx
@@ -270,8 +270,8 @@ def test_get_stock_price_uses_cached_price_for_today():
         name="Invesco QQQ Trust",
         exchange="NAS",
         price_date=date(2026, 1, 4),
-        created_at=None,  # type: ignore[arg-type]
-        updated_at=None,  # type: ignore[arg-type]
+        created_at=datetime(2026, 1, 4, 0, 0, 0),
+        updated_at=datetime(2026, 1, 4, 0, 0, 0),
     )
 
     service = PriceService(
@@ -312,8 +312,8 @@ def test_get_stock_price_saves_price_when_cache_miss():
                 name="Apple Inc.",
                 exchange="NAS",
                 price_date=price_date,
-                created_at=None,  # type: ignore[arg-type]
-                updated_at=None,  # type: ignore[arg-type]
+                created_at=datetime(2026, 1, 4, 0, 0, 0),
+                updated_at=datetime(2026, 1, 4, 0, 0, 0),
             )
         return None
 
@@ -369,8 +369,8 @@ def test_get_stock_change_rates_uses_cached_historical_prices():
                 name="Apple Inc.",
                 exchange="NAS",
                 price_date=price_date,
-                created_at=None,  # type: ignore[arg-type]
-                updated_at=None,  # type: ignore[arg-type]
+                created_at=datetime(2026, 1, 4, 0, 0, 0),
+                updated_at=datetime(2026, 1, 4, 0, 0, 0),
             )
         if price_date == six_months:
             return StockPrice(
@@ -381,8 +381,8 @@ def test_get_stock_change_rates_uses_cached_historical_prices():
                 name="Apple Inc.",
                 exchange="NAS",
                 price_date=price_date,
-                created_at=None,  # type: ignore[arg-type]
-                updated_at=None,  # type: ignore[arg-type]
+                created_at=datetime(2026, 1, 4, 0, 0, 0),
+                updated_at=datetime(2026, 1, 4, 0, 0, 0),
             )
         if price_date == one_month:
             return StockPrice(
@@ -393,8 +393,8 @@ def test_get_stock_change_rates_uses_cached_historical_prices():
                 name="Apple Inc.",
                 exchange="NAS",
                 price_date=price_date,
-                created_at=None,  # type: ignore[arg-type]
-                updated_at=None,  # type: ignore[arg-type]
+                created_at=datetime(2026, 1, 4, 0, 0, 0),
+                updated_at=datetime(2026, 1, 4, 0, 0, 0),
             )
         return None
 
@@ -425,7 +425,11 @@ def test_get_stock_change_rates_skips_cache_save_on_history_error():
         currency="USD",
         exchange="NAS",
     )
-    price_client.get_historical_close.side_effect = RuntimeError("boom")
+    request = httpx.Request("GET", "https://example.com")
+    response = httpx.Response(status_code=500, request=request)
+    price_client.get_historical_close.side_effect = httpx.HTTPStatusError(
+        "Server error", request=request, response=response
+    )
     cache_repo = Mock()
 
     def cache_lookup(ticker, price_date):
@@ -438,8 +442,8 @@ def test_get_stock_change_rates_skips_cache_save_on_history_error():
                 name="Apple Inc.",
                 exchange="NAS",
                 price_date=price_date,
-                created_at=None,  # type: ignore[arg-type]
-                updated_at=None,  # type: ignore[arg-type]
+                created_at=datetime(2026, 1, 4, 0, 0, 0),
+                updated_at=datetime(2026, 1, 4, 0, 0, 0),
             )
         return None
 

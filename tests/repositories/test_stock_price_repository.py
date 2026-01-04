@@ -45,3 +45,52 @@ def test_stock_price_repository_gets_by_ticker_and_date():
     assert result is not None
     assert result.id == price_id
     assert result.price == Decimal("410.12")
+
+
+def test_stock_price_repository_saves_price():
+    """Should upsert cached price for ticker/date."""
+    price_id = uuid4()
+    response = Mock()
+    response.data = [
+        {
+            "id": str(price_id),
+            "ticker": "QQQ",
+            "price": "410.12",
+            "currency": "USD",
+            "name": "Invesco QQQ Trust",
+            "exchange": "",
+            "price_date": "2026-01-04",
+            "created_at": "2026-01-04T00:00:00",
+            "updated_at": "2026-01-04T00:00:00",
+        }
+    ]
+
+    client = Mock()
+    client.table.return_value.upsert.return_value.execute.return_value = response
+
+    repository = StockPriceRepository(client)
+
+    result = repository.save(
+        ticker="QQQ",
+        price_date=date(2026, 1, 4),
+        price=Decimal("410.12"),
+        currency="USD",
+        name="Invesco QQQ Trust",
+        exchange="",
+    )
+
+    client.table.assert_called_once_with("stock_prices")
+    client.table.return_value.upsert.assert_called_once_with(
+        {
+            "ticker": "QQQ",
+            "price_date": "2026-01-04",
+            "price": "410.12",
+            "currency": "USD",
+            "name": "Invesco QQQ Trust",
+            "exchange": "",
+        },
+        on_conflict="ticker,price_date",
+    )
+
+    assert result.id == price_id
+    assert result.exchange == ""

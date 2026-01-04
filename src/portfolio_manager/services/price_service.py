@@ -2,7 +2,9 @@
 
 from calendar import monthrange
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+
+import httpx
 
 
 class PriceService:
@@ -23,11 +25,10 @@ class PriceService:
         self, ticker: str, preferred_exchange: str | None = None
     ) -> tuple[Decimal, str, str, str | None]:
         """Get current price, currency, name, and exchange for a stock ticker."""
+        today = self.today_provider()
         cached = None
         if self.price_cache_repository:
-            cached = self.price_cache_repository.get_by_ticker_and_date(
-                ticker, self.today_provider()
-            )
+            cached = self.price_cache_repository.get_by_ticker_and_date(ticker, today)
         if cached and cached.price > 0:
             return (
                 cached.price,
@@ -43,7 +44,7 @@ class PriceService:
         if self.price_cache_repository and price > 0:
             self.price_cache_repository.save(
                 ticker=ticker,
-                price_date=self.today_provider(),
+                price_date=today,
                 price=price,
                 currency=quote.currency,
                 name=quote.name,
@@ -112,7 +113,7 @@ class PriceService:
                             )
                         )
                     )
-                except Exception:
+                except (httpx.HTTPStatusError, InvalidOperation, ValueError, TypeError):
                     past_close = Decimal("0")
                 if self.price_cache_repository and past_close > 0:
                     self.price_cache_repository.save(

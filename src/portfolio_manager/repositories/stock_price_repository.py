@@ -66,13 +66,14 @@ class StockPriceRepository:
 
     @staticmethod
     def _to_model(item: dict[str, Any]) -> StockPrice:
+        exchange = item.get("exchange")
         return StockPrice(
             id=UUID(str(item["id"])),
             ticker=str(item["ticker"]),
             price=Decimal(str(item["price"])),
             currency=str(item["currency"]),
             name=str(item["name"]),
-            exchange=str(item["exchange"]) if item.get("exchange") else None,
+            exchange=str(exchange) if exchange is not None else None,
             price_date=date.fromisoformat(str(item["price_date"])),
             created_at=datetime.fromisoformat(str(item["created_at"])),
             updated_at=datetime.fromisoformat(str(item["updated_at"])),
