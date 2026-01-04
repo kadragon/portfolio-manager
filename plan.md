@@ -61,16 +61,16 @@
   - 그룹 생성/수정 시 목표 비중 입력 받기
 
 ### 2.4 투자금(원금) 관리 기능 추가
-- **개요**: 계좌의 예수금(Cash Balance)과 별개로, 실제 투입된 원금을 추적하여 정확한 수익률 계산
-- **Migration**: `deposits` 테이블 생성
-  - [x] 컬럼: `id`, `account_id`, `amount`, `date` (YYYY-MM-DD), `note`
+- **개요**: 계좌의 예수금(Cash Balance)과 별개로, 실제 투입된 원금을 추적하여 정확한 수익률 계산 (계좌와 무관하게 전역 관리, 일별 유니크)
+- **Migration**: `deposits` 테이블 생성 및 수정
+  - [x] 컬럼: `id`, `amount`, `date` (Unique), `note` (account_id 제거)
 - **Model**: `Deposit` 모델 생성
   - [x] `Deposit` 모델 구현
-- **Repository**: `DepositRepository` 구현 (추가, 조회, 삭제, 계좌별 합계)
+- **Repository**: `DepositRepository` 구현 (추가, 수정, 조회, 삭제, 전체 합계)
   - [x] `DepositRepository` 구현 및 테스트
 - **CLI**:
-  - [x] 입금 내역 관리 메뉴 추가 (추가/목록/삭제)
-  - [x] 대시보드 업데이트: '총 투자 원금' 표시 및 '투자 수익률' (총 자산 / 총 투자 원금) 계산 로직 반영
+  - [x] 입금 내역 관리 메뉴 추가 (추가/수정/목록/삭제)
+  - [x] 대시보드 업데이트: '총 투자 원금' 표시 및 '투자 수익률' 계산 로직 반영
 
 ### 2.1 KIS 클라이언트 추상화
 - [ ] `KisBaseClient` 추상 클래스 도입

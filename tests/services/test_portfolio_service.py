@@ -162,6 +162,7 @@ def test_portfolio_summary_calculates_total_value():
     account_repo = Mock()
     account_repo.list_all.return_value = []
     deposit_repo = Mock()
+    deposit_repo.get_total.return_value = Decimal("0")
 
     portfolio_service = PortfolioService(
         group_repo,
@@ -231,6 +232,7 @@ def test_portfolio_summary_sets_value_krw_for_usd_holdings():
     account_repo = Mock()
     account_repo.list_all.return_value = []
     deposit_repo = Mock()
+    deposit_repo.get_total.return_value = Decimal("0")
 
     portfolio_service = PortfolioService(
         group_repo,
@@ -279,7 +281,7 @@ def test_portfolio_summary_calculates_return_rate():
         Mock(id=account_id, cash_balance=Decimal("100000"))
     ]
     deposit_repo = Mock()
-    deposit_repo.get_total_by_account.return_value = Decimal("1000000")
+    deposit_repo.get_total.return_value = Decimal("1000000")
 
     portfolio_service = PortfolioService(
         group_repo,

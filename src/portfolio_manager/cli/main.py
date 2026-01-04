@@ -156,7 +156,6 @@ def main() -> None:
                 run_deposit_menu(
                     console,
                     container.deposit_repository,
-                    container.account_repository,
                 )
                 continue
             if action == "quit":

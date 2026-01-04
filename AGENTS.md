@@ -21,11 +21,14 @@
   - `supabase/migrations/20260103000000_create_groups_and_stocks.sql`
   - `supabase/migrations/20260103010000_create_accounts_and_holdings.sql`
   - `supabase/migrations/20260104000000_add_target_percentage_to_groups.sql`
+  - `supabase/migrations/20260104010000_create_deposits.sql`
+  - `supabase/migrations/20260104020000_alter_deposits_global.sql`
 - Repositories implemented:
   - `GroupRepository`: create(), list_all(), update(), delete()
   - `StockRepository`: create(), list_by_group()
   - `AccountRepository`: create(), list_all(), delete_with_holdings()
   - `HoldingRepository`: create(), list_by_account(), delete_by_account(), get_aggregated_holdings_by_stock()
+  - `DepositRepository`: create(), update(), list_all(), get_by_date(), delete(), get_total()
 - Services implemented:
   - `PortfolioService`: get_holdings_by_group() - aggregates holdings across accounts by stock and groups them by group
   - `PortfolioService`: get_portfolio_summary() - aggregates holdings with real-time price and valuation
@@ -45,6 +48,7 @@
 - Currency symbols display based on stock market: ₩ for KRW (domestic), $ for USD (overseas).
 - 해외 종목명 누락 시 티커를 Name 컬럼에 표시하고, KIS 응답의 다양한 이름 필드로 보완한다.
 - 그룹 목록에 목표 비중(%)을 함께 표시하고 추가/수정 시 입력을 받는다.
+- 입금 내역은 계좌와 무관하게 일자별로 1건만 허용하며, 중복 날짜는 수정 흐름으로 유도한다.
 
 ## Governance Updates
 - Authentication clients now share the `AuthClient` interface to decouple token management from a concrete provider.
@@ -59,3 +63,4 @@
 - USD 보유분은 `value_krw`에 환산 평가액을 저장해 대시보드에서 KRW 기준으로 출력한다.
 - USD/KRW 환율 조회는 EXIM에서 USD 누락 시 최근 7일 내 직전 영업일로 자동 재시도한다.
 - KIS 클라이언트는 공통 `KisBaseClient`에서 헤더 구성 및 환경별 TR ID 매핑을 공유한다.
+- 투자 원금 합계는 계좌별 합산이 아니라 전체 deposits 합계로 계산된다.

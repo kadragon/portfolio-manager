@@ -12,7 +12,6 @@ class Deposit:
     """A deposit transaction."""
 
     id: UUID
-    account_id: UUID
     amount: Decimal
     deposit_date: date
     created_at: datetime

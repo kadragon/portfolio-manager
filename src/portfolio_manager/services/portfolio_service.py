@@ -154,11 +154,8 @@ class PortfolioService:
             accounts = self.account_repository.list_all()
             total_cash_balance = sum((a.cash_balance for a in accounts), Decimal("0"))
 
-            if self.deposit_repository:
-                for account in accounts:
-                    total_invested += self.deposit_repository.get_total_by_account(
-                        account.id
-                    )
+        if self.deposit_repository:
+            total_invested = self.deposit_repository.get_total()
 
         total_assets = total_stock_value + total_cash_balance
 

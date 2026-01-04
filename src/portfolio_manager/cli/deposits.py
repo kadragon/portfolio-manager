@@ -4,36 +4,31 @@ from datetime import datetime, date
 from decimal import Decimal
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from portfolio_manager.models import Account, Deposit
-from portfolio_manager.cli.prompt_select import (
-    choose_account_from_list,
-)
+from portfolio_manager.models import Deposit
 
 
-def get_date_input(prompt_text: str = "Date (YYYY-MM-DD)") -> date:
+def get_date_input(
+    prompt_text: str = "Date (YYYY-MM-DD)", default: date | None = None
+) -> date:
     """Prompt for a date input."""
+    default_str = default.isoformat() if default else date.today().isoformat()
     while True:
-        value = Prompt.ask(prompt_text, default=date.today().isoformat())
+        value = Prompt.ask(prompt_text, default=default_str)
         try:
             return datetime.strptime(value, "%Y-%m-%d").date()
         except ValueError:
             print("Invalid format. Please use YYYY-MM-DD.")
 
 
-def render_deposit_list(
-    console: Console, deposits: list[Deposit], account: Account
-) -> None:
+def render_deposit_list(console: Console, deposits: list[Deposit]) -> None:
     """Render the deposit list."""
     if not deposits:
-        console.print(f"No deposits found for {account.name}")
-        # Show table header anyway or just return?
-        # Better to show table header so user knows context.
+        console.print("No deposits found")
 
-    table = Table(title=f"Deposits for {account.name}", header_style="bold")
+    table = Table(title="Deposits", header_style="bold")
     table.add_column("#", style="dim", width=4, justify="right")
     table.add_column("Date", justify="center")
     table.add_column("Amount", justify="right")
@@ -59,9 +54,17 @@ def render_deposit_list(
 def add_deposit_flow(
     console: Console,
     deposit_repository,
-    account: Account,
 ) -> None:
     """Add a deposit."""
+    deposit_date = get_date_input()
+
+    existing = deposit_repository.get_by_date(deposit_date)
+    if existing:
+        console.print(f"[red]Deposit for {deposit_date} already exists.[/red]")
+        if Confirm.ask("Do you want to modify it instead?", default=True):
+            update_deposit_flow(console, deposit_repository, existing)
+        return
+
     while True:
         try:
             amount_str = Prompt.ask("Amount")
@@ -70,16 +73,33 @@ def add_deposit_flow(
         except Exception:
             console.print("[red]Invalid amount[/red]")
 
-    deposit_date = get_date_input()
     note = Prompt.ask("Note", default="")
 
     deposit_repository.create(
-        account_id=account.id,
-        amount=amount,
-        deposit_date=deposit_date,
-        note=note if note else None,
+        amount=amount, deposit_date=deposit_date, note=note if note else None
     )
-    console.print(f"[green]Added deposit of {amount:,.0f} to {account.name}[/green]")
+    console.print(f"[green]Added deposit for {deposit_date}[/green]")
+
+
+def update_deposit_flow(
+    console: Console,
+    deposit_repository,
+    deposit: Deposit,
+) -> None:
+    """Update a deposit."""
+    console.print(f"Updating deposit for {deposit.deposit_date}")
+
+    amount_str = Prompt.ask("New Amount", default=str(deposit.amount))
+    try:
+        amount = Decimal(amount_str)
+    except Exception:
+        console.print("[red]Invalid amount, keeping original[/red]")
+        amount = deposit.amount
+
+    note = Prompt.ask("New Note", default=deposit.note or "")
+
+    deposit_repository.update(deposit.id, amount=amount, note=note if note else None)
+    console.print("[green]Updated deposit[/green]")
 
 
 def delete_deposit_flow(
@@ -111,41 +131,47 @@ def delete_deposit_flow(
         console.print("[green]Deleted deposit[/green]")
 
 
+def select_deposit_to_edit(
+    console: Console,
+    deposit_repository,
+    deposits: list[Deposit],
+) -> None:
+    """Select a deposit to edit."""
+    if not deposits:
+        console.print("[yellow]No deposits to edit[/yellow]")
+        return
+
+    choice = Prompt.ask(
+        "Select deposit # to edit (or 'c' to cancel)",
+        choices=[str(i) for i in range(1, len(deposits) + 1)] + ["c"],
+    )
+
+    if choice == "c":
+        return
+
+    index = int(choice) - 1
+    deposit = deposits[index]
+    update_deposit_flow(console, deposit_repository, deposit)
+
+
 def run_deposit_menu(
     console: Console,
     deposit_repository,
-    account_repository,
 ) -> None:
     """Run the deposit management menu."""
     while True:
-        accounts = account_repository.list_all()
-        if not accounts:
-            console.print("No accounts found.")
-            return
+        deposits = deposit_repository.list_all()
+        render_deposit_list(console, deposits)
 
-        console.print(Panel("Select an account to manage deposits", title="Deposits"))
-        account_id = choose_account_from_list(accounts)
+        action = Prompt.ask(
+            "Action", choices=["add", "edit", "delete", "back"], default="back"
+        )
 
-        if account_id is None:  # Back/Exit logic in prompt_select might return None?
-            # choose_account_from_list returns None if user selects 'c' or similar if implemented
-            # Let's check choose_account_from_list implementation.
-            return
-
-        account = next((a for a in accounts if a.id == account_id), None)
-        if not account:
-            continue
-
-        while True:
-            deposits = deposit_repository.list_by_account(account.id)
-            render_deposit_list(console, deposits, account)
-
-            action = Prompt.ask(
-                "Action", choices=["add", "delete", "back"], default="back"
-            )
-
-            if action == "back":
-                break
-            elif action == "add":
-                add_deposit_flow(console, deposit_repository, account)
-            elif action == "delete":
-                delete_deposit_flow(console, deposit_repository, deposits)
+        if action == "back":
+            break
+        elif action == "add":
+            add_deposit_flow(console, deposit_repository)
+        elif action == "edit":
+            select_deposit_to_edit(console, deposit_repository, deposits)
+        elif action == "delete":
+            delete_deposit_flow(console, deposit_repository, deposits)
