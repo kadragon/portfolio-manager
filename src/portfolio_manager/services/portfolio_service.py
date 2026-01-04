@@ -33,6 +33,7 @@ class StockHoldingWithPrice:
     price: Decimal
     currency: str
     name: str
+    value_krw: Decimal | None = None
 
     @property
     def value(self) -> Decimal:
@@ -111,23 +112,28 @@ class PortfolioService:
                     price, currency, name = self.price_service.get_stock_price(
                         stock.ticker
                     )
-                    holding_with_price = StockHoldingWithPrice(
-                        stock=stock,
-                        quantity=quantity,
-                        price=price,
-                        currency=currency,
-                        name=name,
-                    )
-                    holdings.append((group, holding_with_price))
-                    if holding_with_price.currency == "USD":
+                    value_krw: Decimal | None = None
+                    holding_value = quantity * price
+                    if currency == "USD":
                         if self.exchange_rate_service is None:
                             raise ValueError(
                                 "Exchange rate service is required for USD"
                             )
                         if usd_krw_rate is None:
                             usd_krw_rate = self.exchange_rate_service.get_usd_krw_rate()
-                        total_value += holding_with_price.value * usd_krw_rate
+                        value_krw = holding_value * usd_krw_rate
                     else:
-                        total_value += holding_with_price.value
+                        value_krw = holding_value
+                    holding_with_price = StockHoldingWithPrice(
+                        stock=stock,
+                        quantity=quantity,
+                        price=price,
+                        currency=currency,
+                        name=name,
+                        value_krw=value_krw,
+                    )
+                    holdings.append((group, holding_with_price))
+                    if value_krw is not None:
+                        total_value += value_krw
 
         return PortfolioSummary(holdings=holdings, total_value=total_value)

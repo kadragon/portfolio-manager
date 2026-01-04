@@ -1,5 +1,7 @@
 """Rich-based CLI rendering."""
 
+from decimal import Decimal, ROUND_HALF_UP
+
 from rich.console import Console
 from rich.table import Table
 
@@ -30,6 +32,11 @@ def render_dashboard(
             console.print("No groups found. Create a group to get started.")
             return
 
+        def format_quantity(quantity: Decimal, currency: str) -> str:
+            if currency == "KRW":
+                return str(quantity)
+            return str(quantity.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
         table = Table(title="📊 Portfolio")
         table.add_column("Group", style="blue")
         table.add_column("Ticker", style="cyan")
@@ -40,17 +47,25 @@ def render_dashboard(
 
         for group, holding_with_price in data.holdings:
             currency_symbol = "₩" if holding_with_price.currency == "KRW" else "$"
+            display_name = (
+                holding_with_price.name
+                if holding_with_price.name
+                else holding_with_price.stock.ticker
+            )
+            value_krw = holding_with_price.value_krw
+            if value_krw is None:
+                value_krw = holding_with_price.value
             table.add_row(
                 group.name,
                 holding_with_price.stock.ticker,
-                truncate_name(holding_with_price.name),
-                str(holding_with_price.quantity),
+                truncate_name(display_name),
+                format_quantity(
+                    holding_with_price.quantity, holding_with_price.currency
+                ),
                 f"{currency_symbol}{holding_with_price.price:,.0f}"
                 if holding_with_price.currency == "KRW"
                 else f"{currency_symbol}{holding_with_price.price:,.2f}",
-                f"{currency_symbol}{holding_with_price.value:,.0f}"
-                if holding_with_price.currency == "KRW"
-                else f"{currency_symbol}{holding_with_price.value:,.2f}",
+                f"₩{value_krw:,.0f}",
             )
 
         console.print(table)

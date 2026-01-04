@@ -170,3 +170,54 @@ def test_portfolio_summary_calculates_total_value():
     assert summary.holdings[0][1].value == Decimal("1500.0")  # 10 × 150
     assert summary.holdings[1][1].value == Decimal("500.0")  # 5 × 100
     assert summary.total_value == Decimal("2600000.0")  # (1500 + 500) * 1300
+
+
+def test_portfolio_summary_sets_value_krw_for_usd_holdings():
+    """USD 보유분은 KRW 환산 금액을 함께 저장한다."""
+    group_id = uuid4()
+    stock_id = uuid4()
+
+    group_repo = Mock()
+    group_repo.list_all.return_value = [
+        Group(
+            id=group_id,
+            name="Overseas",
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+
+    stock_repo = Mock()
+    stock_repo.list_by_group.return_value = [
+        Stock(
+            id=stock_id,
+            ticker="VYM",
+            group_id=group_id,
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+
+    holding_repo = Mock()
+    holding_repo.get_aggregated_holdings_by_stock.return_value = {
+        stock_id: Decimal("10"),
+    }
+
+    price_service = Mock()
+    price_service.get_stock_price.return_value = (
+        Decimal("100.0"),
+        "USD",
+        "Vanguard High Dividend Yield ETF",
+    )
+
+    exchange_rate_service = Mock()
+    exchange_rate_service.get_usd_krw_rate.return_value = Decimal("1300")
+
+    portfolio_service = PortfolioService(
+        group_repo, stock_repo, holding_repo, price_service, exchange_rate_service
+    )
+
+    summary = portfolio_service.get_portfolio_summary()
+
+    holding = summary.holdings[0][1]
+    assert holding.value_krw == Decimal("1300000.0")

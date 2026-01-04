@@ -50,11 +50,16 @@ class KisUnifiedPriceClient:
             )
         # US stocks are alphabetic symbols (e.g., "AAPL")
         else:
-            quote = self.overseas_client.fetch_current_price("NAS", ticker)
-            if quote.price == 0 and not quote.name:
-                # Fallback to NYSE, then AMEX/ARCA
-                quote = self.overseas_client.fetch_current_price("NYS", ticker)
-                if quote.price == 0 and not quote.name:
-                    return self.overseas_client.fetch_current_price("AMS", ticker)
-                return quote
-            return quote
+            exchanges = ["NAS", "NYS", "AMS"]
+            best_quote: PriceQuote | None = None
+            for excd in exchanges:
+                quote = self.overseas_client.fetch_current_price(excd, ticker)
+                if best_quote is None:
+                    best_quote = quote
+                if quote.name:
+                    return quote
+                if best_quote.price == 0 and quote.price > 0:
+                    best_quote = quote
+            if best_quote is None:
+                return self.overseas_client.fetch_current_price("NAS", ticker)
+            return best_quote

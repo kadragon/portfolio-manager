@@ -47,8 +47,18 @@
 *기능적 개선 및 중복 제거*
 
 ### 2.x 대시보드 해외주식 표시 개선
-- [ ] 대시보드에 미국주식명, 가격이 조회되지 않은 문제 수정
-- [ ] 대시보드에서 해외주식 quantity 표기 시 소수점 첫번째 자리에서 반올림하여 정수로만 표기
+- [x] 대시보드에 미국주식명, 가격이 조회되지 않은 문제 수정
+- [x] 대시보드에서 해외주식 quantity 표기 시 소수점 첫번째 자리에서 반올림하여 정수로만 표기
+- [x] 해외주식 이름이 비어있을 때 다른 거래소 조회로 보완
+- [x] 해외주식 Value를 KRW로 환산해 표시
+
+### 2.3 그룹별 목표 비중 설정 기능 추가
+- [x] **Migration**: `groups` 테이블에 `target_percentage` 컬럼 추가 (numeric, nullable or default 0)
+- [x] **Model**: `Group` 모델에 `target_percentage` 필드 추가
+- [x] **Repository**: `GroupRepository`의 `create`, `update`, `list_all` 메서드 수정
+- [x] **CLI**:
+  - 그룹 목록 조회 시 목표 비중 표시
+  - 그룹 생성/수정 시 목표 비중 입력 받기
 
 ### 2.1 KIS 클라이언트 추상화
 - [ ] `KisBaseClient` 추상 클래스 도입

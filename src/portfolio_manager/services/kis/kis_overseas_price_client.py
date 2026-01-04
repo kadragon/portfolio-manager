@@ -39,7 +39,22 @@ class KisOverseasPriceClient:
         output = data["output"]
         if isinstance(output, list):
             output = output[0] if output else {}
-        name = output.get("name") or ""
+        name = ""
+        for key in (
+            "name",
+            "enname",
+            "ename",
+            "en_name",
+            "symb_name",
+            "symbol_name",
+            "prdt_name",
+            "product_name",
+            "item_name",
+        ):
+            value = output.get(key)
+            if isinstance(value, str) and value.strip():
+                name = value.strip()
+                break
         symbol = (
             output.get("symbol") or output.get("symb") or output.get("rsym") or symb
         )

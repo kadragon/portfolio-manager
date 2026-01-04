@@ -128,6 +128,38 @@ def test_overseas_price_empty_last_returns_zero():
     assert result.name == "Apple Inc"
 
 
+def test_overseas_price_uses_alternate_name_field():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={
+                "output": {
+                    "last": "144.76",
+                    "symbol": "VYM",
+                    "enname": "Vanguard High Dividend Yield ETF",
+                }
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.Client(
+        transport=transport, base_url="https://openapi.koreainvestment.com:9443"
+    )
+
+    kis = KisOverseasPriceClient(
+        client=client,
+        app_key="app-key",
+        app_secret="app-secret",
+        access_token="access-token",
+        cust_type="P",
+        env="real",
+    )
+
+    result = kis.fetch_current_price(excd="NAS", symb="VYM")
+
+    assert result.name == "Vanguard High Dividend Yield ETF"
+
+
 # --- KisUnifiedPriceClient Tests ---
 
 
@@ -207,6 +239,31 @@ def test_overseas_price_falls_back_to_additional_exchange_when_empty(
     assert overseas_client.fetch_current_price.call_count == 3
     overseas_client.fetch_current_price.assert_has_calls(
         [call("NAS", "SPY"), call("NYS", "SPY"), call("AMS", "SPY")]
+    )
+
+
+def test_overseas_price_falls_back_when_name_missing(
+    mock_domestic_client,
+):
+    """해외 종목명 누락 시 다른 거래소 응답으로 보완한다."""
+    overseas_client = MagicMock()
+    overseas_client.fetch_current_price.side_effect = [
+        PriceQuote(symbol="VYM", name="", price=144.76, market="US", currency="USD"),
+        PriceQuote(
+            symbol="VYM",
+            name="Vanguard High Dividend Yield ETF",
+            price=144.76,
+            market="US",
+            currency="USD",
+        ),
+    ]
+    unified = KisUnifiedPriceClient(mock_domestic_client, overseas_client)
+
+    quote = unified.get_price("VYM")
+
+    assert quote.name == "Vanguard High Dividend Yield ETF"
+    overseas_client.fetch_current_price.assert_has_calls(
+        [call("NAS", "VYM"), call("NYS", "VYM")]
     )
 
 

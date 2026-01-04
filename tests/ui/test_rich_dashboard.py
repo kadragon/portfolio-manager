@@ -265,7 +265,7 @@ def test_dashboard_displays_krw_for_domestic_stocks():
 
 
 def test_dashboard_displays_usd_for_overseas_stocks():
-    """해외 주식은 $ 기호로 표시한다."""
+    """해외 주식은 가격은 $, 평가는 ₩로 표시한다."""
     console = Console(record=True, width=120)
 
     group = Group(
@@ -291,16 +291,57 @@ def test_dashboard_displays_usd_for_overseas_stocks():
                 price=Decimal("150.0"),
                 currency="USD",
                 name="Apple Inc.",
+                value_krw=Decimal("975000.0"),
             ),
         ),
     ]
-    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("750.0"))
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("975000.0"))
 
     render_dashboard(console, summary)
 
     output = console.export_text()
     assert "$150" in output
-    assert "$750" in output
+    assert "₩975,000" in output
+
+
+def test_dashboard_rounds_overseas_quantity_to_integer():
+    """해외 주식 수량은 소수점 첫째 자리에서 반올림한다."""
+    console = Console(record=True, width=120)
+
+    group = Group(
+        id=uuid4(),
+        name="해외배당",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="VYM",
+        group_id=group.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    holdings = [
+        (
+            group,
+            StockHoldingWithPrice(
+                stock=stock,
+                quantity=Decimal("33.5"),
+                price=Decimal("0"),
+                currency="USD",
+                name="Vanguard High Dividend Yield ETF",
+                value_krw=Decimal("0"),
+            ),
+        ),
+    ]
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("0"))
+
+    render_dashboard(console, summary)
+
+    output = console.export_text()
+    assert "33.5" not in output
+    assert "34" in output
 
 
 def test_dashboard_displays_mixed_currencies():
@@ -354,16 +395,18 @@ def test_dashboard_displays_mixed_currencies():
                 price=Decimal("150.0"),
                 currency="USD",
                 name="Apple Inc.",
+                value_krw=Decimal("975000.0"),
             ),
         ),
     ]
-    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("700750.0"))
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("1675000.0"))
 
     render_dashboard(console, summary)
 
     output = console.export_text()
     assert "₩70,000" in output
     assert "$150" in output
+    assert "₩975,000" in output
 
 
 def test_dashboard_displays_stock_name():
@@ -404,6 +447,45 @@ def test_dashboard_displays_stock_name():
     assert "삼성전자" in output
 
 
+def test_dashboard_uses_ticker_when_name_missing():
+    """주식명이 없으면 티커를 대신 표시한다."""
+    console = Console(record=True, width=120)
+
+    group = Group(
+        id=uuid4(),
+        name="해외배당",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="VYM",
+        group_id=group.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    holdings = [
+        (
+            group,
+            StockHoldingWithPrice(
+                stock=stock,
+                quantity=Decimal("10"),
+                price=Decimal("100.0"),
+                currency="USD",
+                name="",
+                value_krw=Decimal("1300000.0"),
+            ),
+        ),
+    ]
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("1300000.0"))
+
+    render_dashboard(console, summary)
+
+    output = console.export_text()
+    assert output.count("VYM") >= 2
+
+
 def test_dashboard_truncates_long_stock_names():
     """긴 주식명은 잘라서 표시한다."""
     console = Console(record=True, width=120)
@@ -431,10 +513,11 @@ def test_dashboard_truncates_long_stock_names():
                 price=Decimal("150.0"),
                 currency="USD",
                 name="Apple Inc. Corporation Limited",
+                value_krw=Decimal("975000.0"),
             ),
         ),
     ]
-    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("750.0"))
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("975000.0"))
 
     render_dashboard(console, summary)
 
