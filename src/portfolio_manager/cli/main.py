@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
+import httpx
 from dotenv import load_dotenv
 from rich.console import Console
 from rich import box
@@ -30,7 +33,14 @@ from portfolio_manager.repositories.account_repository import AccountRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
+from portfolio_manager.services.kis_auth_client import KisAuthClient
+from portfolio_manager.services.kis_domestic_price_client import KisDomesticPriceClient
+from portfolio_manager.services.kis_overseas_price_client import KisOverseasPriceClient
+from portfolio_manager.services.kis_token_manager import TokenManager
+from portfolio_manager.services.kis_token_store import FileTokenStore
+from portfolio_manager.services.kis_unified_price_client import KisUnifiedPriceClient
 from portfolio_manager.services.portfolio_service import PortfolioService
+from portfolio_manager.services.price_service import PriceService
 from portfolio_manager.services.supabase_client import get_supabase_client
 
 
@@ -128,32 +138,99 @@ def main() -> None:
     """CLI entrypoint."""
     load_dotenv()
     console = Console()
-    while True:
-        render_main_menu(console)
 
-        # Render dashboard
-        client = get_supabase_client()
-        group_repo = GroupRepository(client)
-        stock_repo = StockRepository(client)
-        holding_repo = HoldingRepository(client)
-        portfolio_service = PortfolioService(group_repo, stock_repo, holding_repo)
-        group_holdings = portfolio_service.get_holdings_by_group()
-        render_dashboard(console, group_holdings)
+    # Initialize KIS clients
+    app_key = os.getenv("KIS_APP_KEY")
+    app_secret = os.getenv("KIS_APP_SECRET")
+    env = os.getenv("KIS_ENV", "real").strip().lower()
+    if "/" in env:
+        env = env.split("/", 1)[0]
+    cust_type = os.getenv("KIS_CUST_TYPE", "P")
 
-        action = choose_main_menu()
-        if action == "groups":
-            run_group_menu(console)
-            continue
-        if action == "accounts":
-            account_repo = AccountRepository(client)
-            run_account_menu(
-                console,
-                account_repo,
-                holding_repo,
-                prompt=lambda: Prompt.ask("Accounts menu"),
-                stock_repository=stock_repo,
-                group_repository=group_repo,
+    base_url = "https://openapi.koreainvestment.com:9443"
+    if env in {"demo", "vps", "paper"}:
+        base_url = "https://openapivts.koreainvestment.com:29443"
+
+    http_client = httpx.Client(base_url=base_url)
+
+    # Setup price service (only if KIS credentials are available)
+    price_service = None
+    if app_key and app_secret:
+        try:
+            auth = KisAuthClient(
+                client=http_client, app_key=app_key, app_secret=app_secret
             )
-            continue
-        if action == "quit":
-            return
+            store = FileTokenStore(Path(".data/kis_token.json"))
+            manager = TokenManager(store=store, auth_client=auth)
+            token = manager.get_token()
+
+            domestic_client = KisDomesticPriceClient(
+                client=http_client,
+                app_key=app_key,
+                app_secret=app_secret,
+                access_token=token,
+                cust_type=cust_type,
+                env=env,
+            )
+            overseas_client = KisOverseasPriceClient(
+                client=http_client,
+                app_key=app_key,
+                app_secret=app_secret,
+                access_token=token,
+                cust_type=cust_type,
+                env=env,
+            )
+            unified_client = KisUnifiedPriceClient(domestic_client, overseas_client)
+            price_service = PriceService(unified_client)
+        except Exception as e:
+            console.print(
+                f"[yellow]Warning: Could not initialize price service: {e}[/yellow]"
+            )
+
+    try:
+        while True:
+            render_main_menu(console)
+
+            # Render dashboard
+            client = get_supabase_client()
+            group_repo = GroupRepository(client)
+            stock_repo = StockRepository(client)
+            holding_repo = HoldingRepository(client)
+            portfolio_service = PortfolioService(
+                group_repo, stock_repo, holding_repo, price_service
+            )
+
+            # Show dashboard with or without prices
+            if price_service:
+                try:
+                    summary = portfolio_service.get_portfolio_summary()
+                    render_dashboard(console, summary)
+                except Exception as e:
+                    console.print(
+                        f"[yellow]Warning: Could not fetch prices: {e}[/yellow]"
+                    )
+                    group_holdings = portfolio_service.get_holdings_by_group()
+                    render_dashboard(console, group_holdings)
+            else:
+                group_holdings = portfolio_service.get_holdings_by_group()
+                render_dashboard(console, group_holdings)
+
+            action = choose_main_menu()
+            if action == "groups":
+                run_group_menu(console)
+                continue
+            if action == "accounts":
+                account_repo = AccountRepository(client)
+                run_account_menu(
+                    console,
+                    account_repo,
+                    holding_repo,
+                    prompt=lambda: Prompt.ask("Accounts menu"),
+                    stock_repository=stock_repo,
+                    group_repository=group_repo,
+                )
+                continue
+            if action == "quit":
+                return
+    finally:
+        http_client.close()
