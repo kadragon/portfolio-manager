@@ -4,6 +4,7 @@ from .account_repository import AccountRepository
 from .deposit_repository import DepositRepository
 from .group_repository import GroupRepository
 from .holding_repository import HoldingRepository
+from .stock_price_repository import StockPriceRepository
 from .stock_repository import StockRepository
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     "DepositRepository",
     "GroupRepository",
     "HoldingRepository",
+    "StockPriceRepository",
     "StockRepository",
 ]
