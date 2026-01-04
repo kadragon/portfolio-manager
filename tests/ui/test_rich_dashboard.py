@@ -225,6 +225,186 @@ def test_render_dashboard_shows_prices_and_values():
     assert "2,600,000" in output  # total value
 
 
+def test_dashboard_displays_group_totals_and_rebalance_info():
+    """그룹별 합계, 비중, 목표 대비 매수/매도 정보를 표시한다."""
+    console = Console(record=True, width=140)
+
+    group1 = Group(
+        id=uuid4(),
+        name="국내성장",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+        target_percentage=50.0,
+    )
+    group2 = Group(
+        id=uuid4(),
+        name="해외성장",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+        target_percentage=50.0,
+    )
+    stock1 = Stock(
+        id=uuid4(),
+        ticker="005930",
+        group_id=group1.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock2 = Stock(
+        id=uuid4(),
+        ticker="AAPL",
+        group_id=group2.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    holdings = [
+        (
+            group1,
+            StockHoldingWithPrice(
+                stock=stock1,
+                quantity=Decimal("10"),
+                price=Decimal("60000"),
+                currency="KRW",
+                name="삼성전자",
+            ),
+        ),
+        (
+            group2,
+            StockHoldingWithPrice(
+                stock=stock2,
+                quantity=Decimal("10"),
+                price=Decimal("40000"),
+                currency="KRW",
+                name="Apple Inc.",
+            ),
+        ),
+    ]
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("1000000"))
+
+    render_dashboard(console, summary)
+
+    output = console.export_text()
+    assert "Group Summary" in output
+    assert "₩600,000" in output
+    assert "60.0%" in output
+    assert "50.0%" in output
+    assert "+10.0%" in output
+    assert "Amount" in output
+    assert "🔴 Sell" in output
+    assert "🟢 Buy" in output
+    assert "Sell ₩100,000" not in output
+    assert "Buy ₩100,000" not in output
+    assert "₩100,000" in output
+
+
+def test_dashboard_displays_hold_as_dash():
+    """목표 비중과 동일하면 Hold 대신 대시를 표시한다."""
+    console = Console(record=True, width=140)
+
+    group = Group(
+        id=uuid4(),
+        name="균형",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+        target_percentage=100.0,
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="005930",
+        group_id=group.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    holdings = [
+        (
+            group,
+            StockHoldingWithPrice(
+                stock=stock,
+                quantity=Decimal("10"),
+                price=Decimal("10000"),
+                currency="KRW",
+                name="삼성전자",
+            ),
+        ),
+    ]
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("100000"))
+
+    render_dashboard(console, summary)
+
+    output = console.export_text()
+    assert "Hold" not in output
+    assert "Amount" in output
+    assert " - " in output
+
+
+def test_dashboard_colors_diff_percent_to_match_action():
+    """Diff %를 매수/매도와 동일한 색상으로 표시한다."""
+    console = Console(
+        record=True, width=140, force_terminal=True, color_system="standard"
+    )
+
+    group1 = Group(
+        id=uuid4(),
+        name="국내성장",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+        target_percentage=50.0,
+    )
+    group2 = Group(
+        id=uuid4(),
+        name="해외성장",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+        target_percentage=50.0,
+    )
+    stock1 = Stock(
+        id=uuid4(),
+        ticker="005930",
+        group_id=group1.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock2 = Stock(
+        id=uuid4(),
+        ticker="AAPL",
+        group_id=group2.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    holdings = [
+        (
+            group1,
+            StockHoldingWithPrice(
+                stock=stock1,
+                quantity=Decimal("10"),
+                price=Decimal("60000"),
+                currency="KRW",
+                name="삼성전자",
+            ),
+        ),
+        (
+            group2,
+            StockHoldingWithPrice(
+                stock=stock2,
+                quantity=Decimal("10"),
+                price=Decimal("40000"),
+                currency="KRW",
+                name="Apple Inc.",
+            ),
+        ),
+    ]
+    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("1000000"))
+
+    render_dashboard(console, summary)
+
+    output = console.export_text(styles=True)
+    assert "\x1b[31m+10.0%" in output
+    assert "\x1b[32m-10.0%" in output
+
+
 def test_dashboard_displays_krw_for_domestic_stocks():
     """국내 주식은 ₩ 기호로 표시한다."""
     console = Console(record=True, width=120)

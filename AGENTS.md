@@ -41,6 +41,7 @@
 - List selections for groups/stocks/accounts/holdings use prompt_toolkit choice (arrow-key) instead of numeric input.
 - Main menu displays unified portfolio dashboard in single table with price and valuation information.
 - Dashboard shows: Group, Ticker, Quantity, Price, Value (USD는 KRW 환산), and Total Portfolio Value.
+- 대시보드에 그룹별 합계/비중/목표 대비 리밸런스 요약 표를 추가하고, Buy/Sell은 아이콘+색상으로 표시하며 금액 컬럼을 분리했다.
 - Currency symbols display based on stock market: ₩ for KRW (domestic), $ for USD (overseas).
 - 해외 종목명 누락 시 티커를 Name 컬럼에 표시하고, KIS 응답의 다양한 이름 필드로 보완한다.
 - 그룹 목록에 목표 비중(%)을 함께 표시하고 추가/수정 시 입력을 받는다.
