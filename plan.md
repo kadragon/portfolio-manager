@@ -65,7 +65,9 @@
 - **Migration**: `deposits` 테이블 생성
   - [x] 컬럼: `id`, `account_id`, `amount`, `date` (YYYY-MM-DD), `note`
 - **Model**: `Deposit` 모델 생성
+  - [x] `Deposit` 모델 구현
 - **Repository**: `DepositRepository` 구현 (추가, 조회, 삭제, 계좌별 합계)
+  - [x] `DepositRepository` 구현 및 테스트
 - **CLI**:
   - [x] 입금 내역 관리 메뉴 추가 (추가/목록/삭제)
   - [x] 대시보드 업데이트: '총 투자 원금' 표시 및 '투자 수익률' (총 자산 / 총 투자 원금) 계산 로직 반영
