@@ -56,3 +56,18 @@ def test_render_dashboard_shows_groups_and_stocks():
     assert "GOOGL" in output
     assert "10" in output
     assert "5" in output
+
+
+def test_render_dashboard_shows_message_when_no_groups():
+    """그룹이 없을 때 안내 메시지를 표시한다."""
+    console = Console(record=True, width=120)
+
+    # Given: 빈 그룹 목록
+    group_holdings = []
+
+    # When: 대시보드를 렌더링
+    render_dashboard(console, group_holdings)
+
+    # Then: 안내 메시지가 표시됨
+    output = console.export_text()
+    assert "No groups" in output or "no groups" in output

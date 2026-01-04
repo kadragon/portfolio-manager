@@ -13,6 +13,10 @@ def render_main_menu(console: Console) -> None:
 
 def render_dashboard(console: Console, group_holdings: list[GroupHoldings]) -> None:
     """Render dashboard with groups and their stock holdings."""
+    if not group_holdings:
+        console.print("No groups found. Create a group to get started.")
+        return
+
     for group_holding in group_holdings:
         if not group_holding.stock_holdings:
             continue
