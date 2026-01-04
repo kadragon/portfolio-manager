@@ -1,6 +1,8 @@
 import httpx
 
-from portfolio_manager.services.exim_exchange_rate_client import EximExchangeRateClient
+from portfolio_manager.services.exchange.exim_exchange_rate_client import (
+    EximExchangeRateClient,
+)
 
 
 def test_exim_exchange_rate_client_fetches_usd_rate_for_date():

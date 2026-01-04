@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from portfolio_manager.services.kis_price_parser import PriceQuote
+from portfolio_manager.services.kis.kis_price_parser import PriceQuote
 
 
 @dataclass(frozen=True)

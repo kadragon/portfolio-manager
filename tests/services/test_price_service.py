@@ -3,7 +3,7 @@
 from decimal import Decimal
 from unittest.mock import Mock
 
-from portfolio_manager.services.kis_price_parser import PriceQuote
+from portfolio_manager.services.kis.kis_price_parser import PriceQuote
 from portfolio_manager.services.price_service import PriceService
 
 

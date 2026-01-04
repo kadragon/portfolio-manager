@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from rich.console import Console
 
-from portfolio_manager.cli.rich_stocks import (
+from portfolio_manager.cli.stocks import (
     add_stock_flow,
     delete_stock_flow,
     render_stocks_for_group,
@@ -171,7 +171,7 @@ def test_run_stock_menu_add_flow_invokes_add_stock():
     chooser = MagicMock(side_effect=["add", "back"])
 
     with patch(
-        "portfolio_manager.cli.rich_stocks.add_stock_flow",
+        "portfolio_manager.cli.stocks.add_stock_flow",
     ) as add_stock_flow:
         run_stock_menu(
             console,
@@ -200,11 +200,11 @@ def test_run_stock_menu_delete_flow_invokes_delete_stock():
     chooser = MagicMock(side_effect=["delete", "back"])
 
     with patch(
-        "portfolio_manager.cli.rich_stocks.choose_stock_from_list",
+        "portfolio_manager.cli.stocks.choose_stock_from_list",
         return_value=stock_id,
     ):
         with patch(
-            "portfolio_manager.cli.rich_stocks.delete_stock_flow",
+            "portfolio_manager.cli.stocks.delete_stock_flow",
         ) as delete_stock_flow:
             run_stock_menu(
                 console,
@@ -233,11 +233,11 @@ def test_run_stock_menu_edit_flow_invokes_update_stock():
     chooser = MagicMock(side_effect=["edit", "back"])
 
     with patch(
-        "portfolio_manager.cli.rich_stocks.choose_stock_from_list",
+        "portfolio_manager.cli.stocks.choose_stock_from_list",
         return_value=stock_id,
     ):
         with patch(
-            "portfolio_manager.cli.rich_stocks.update_stock_flow",
+            "portfolio_manager.cli.stocks.update_stock_flow",
         ) as update_stock_flow:
             run_stock_menu(
                 console,
@@ -281,15 +281,15 @@ def test_run_stock_menu_move_flow_invokes_move_stock():
     chooser = MagicMock(side_effect=["move", "back"])
 
     with patch(
-        "portfolio_manager.cli.rich_stocks.choose_stock_from_list",
+        "portfolio_manager.cli.stocks.choose_stock_from_list",
         return_value=stock_id,
     ):
         with patch(
-            "portfolio_manager.cli.rich_stocks.choose_group_from_list",
+            "portfolio_manager.cli.stocks.choose_group_from_list",
             return_value=target_group.id,
         ):
             with patch(
-                "portfolio_manager.cli.rich_stocks.move_stock_flow",
+                "portfolio_manager.cli.stocks.move_stock_flow",
             ) as move_stock_flow:
                 run_stock_menu(
                     console,

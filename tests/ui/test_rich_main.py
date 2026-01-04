@@ -4,13 +4,13 @@ from unittest.mock import MagicMock, patch
 
 from rich.console import Console
 
-from portfolio_manager.cli.rich_app import (
+from portfolio_manager.cli.app import (
     handle_main_menu_key,
     render_main_menu,
     select_main_menu_option,
 )
-from portfolio_manager.cli.rich_menu import render_menu_options
-from portfolio_manager.cli.rich_groups import select_group_menu_option
+from portfolio_manager.cli.menu import render_menu_options
+from portfolio_manager.cli.groups import select_group_menu_option
 from portfolio_manager.cli import main as main_app
 from portfolio_manager.cli.prompt_select import choose_main_menu
 

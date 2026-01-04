@@ -10,7 +10,7 @@ import httpx
 SRC_PATH = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC_PATH))
 
-from portfolio_manager.services.exim_exchange_rate_client import (  # noqa: E402
+from portfolio_manager.services.exchange.exim_exchange_rate_client import (  # noqa: E402
     EximExchangeRateClient,
 )
 

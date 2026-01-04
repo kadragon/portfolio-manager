@@ -2,8 +2,10 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import Mock, call
 
-import portfolio_manager.services.exchange_rate_service as exchange_rate_service
-from portfolio_manager.services.exchange_rate_service import ExchangeRateService
+import portfolio_manager.services.exchange.exchange_rate_service as exchange_rate_service
+from portfolio_manager.services.exchange.exchange_rate_service import (
+    ExchangeRateService,
+)
 
 
 def test_exchange_rate_service_falls_back_to_previous_day_when_rate_missing(

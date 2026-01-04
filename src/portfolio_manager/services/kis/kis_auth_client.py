@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import httpx
 
 from portfolio_manager.services.auth_client import AuthClient
-from portfolio_manager.services.kis_token_store import TokenData
+from portfolio_manager.services.kis.kis_token_store import TokenData
 
 
 @dataclass(frozen=True)

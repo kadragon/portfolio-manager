@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from rich.console import Console
 
-from portfolio_manager.cli.rich_groups import (
+from portfolio_manager.cli.groups import (
     add_group_flow,
     delete_group_flow,
     render_group_list,

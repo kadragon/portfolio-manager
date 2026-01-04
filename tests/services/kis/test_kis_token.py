@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from portfolio_manager.services.auth_client import AuthClient
-from portfolio_manager.services.kis_token_manager import TokenManager
-from portfolio_manager.services.kis_token_store import (
+from portfolio_manager.services.kis.kis_token_manager import TokenManager
+from portfolio_manager.services.kis.kis_token_store import (
     TokenData,
     MemoryTokenStore,
     FileTokenStore,

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from portfolio_manager.services.kis_token_store import TokenData
+    from portfolio_manager.services.kis.kis_token_store import TokenData
 
 
 class AuthClient(ABC):

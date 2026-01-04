@@ -10,7 +10,9 @@ from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
 
 if TYPE_CHECKING:
-    from portfolio_manager.services.exchange_rate_service import ExchangeRateService
+    from portfolio_manager.services.exchange.exchange_rate_service import (
+        ExchangeRateService,
+    )
     from portfolio_manager.services.price_service import PriceService
 
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from portfolio_manager.services.exim_exchange_rate_client import (
+from portfolio_manager.services.exchange.exim_exchange_rate_client import (
     EximExchangeRateClient,
 )
 

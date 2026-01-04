@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from rich.console import Console
 
-from portfolio_manager.cli.rich_holdings import (
+from portfolio_manager.cli.holdings import (
     add_holding_flow,
     delete_holding_flow,
     render_holdings_for_account,
@@ -386,11 +386,11 @@ def test_run_holdings_menu_uses_group_name_in_selection_label():
         return None
 
     with patch(
-        "portfolio_manager.cli.rich_holdings.choose_holding_menu",
+        "portfolio_manager.cli.holdings.choose_holding_menu",
         side_effect=["delete", "back"],
     ):
         with patch(
-            "portfolio_manager.cli.rich_holdings.choose_holding_from_list",
+            "portfolio_manager.cli.holdings.choose_holding_from_list",
             side_effect=_chooser,
         ):
             run_holdings_menu(
@@ -425,15 +425,15 @@ def test_run_holdings_menu_edit_flow_invokes_update_holding():
     repo.list_by_account.return_value = [holding]
 
     with patch(
-        "portfolio_manager.cli.rich_holdings.choose_holding_menu",
+        "portfolio_manager.cli.holdings.choose_holding_menu",
         side_effect=["edit", "back"],
     ):
         with patch(
-            "portfolio_manager.cli.rich_holdings.choose_holding_from_list",
+            "portfolio_manager.cli.holdings.choose_holding_from_list",
             return_value=holding.id,
         ):
             with patch(
-                "portfolio_manager.cli.rich_holdings.update_holding_flow",
+                "portfolio_manager.cli.holdings.update_holding_flow",
             ) as update_holding_flow:
                 run_holdings_menu(
                     console,

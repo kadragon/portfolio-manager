@@ -3,7 +3,7 @@ from datetime import datetime
 
 import httpx
 
-from portfolio_manager.services.kis_auth_client import KisAuthClient
+from portfolio_manager.services.kis.kis_auth_client import KisAuthClient
 
 
 def test_access_token_request_posts_client_credentials():

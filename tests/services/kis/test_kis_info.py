@@ -1,6 +1,6 @@
 import httpx
 
-from portfolio_manager.services.kis_domestic_info_client import (
+from portfolio_manager.services.kis.kis_domestic_info_client import (
     DomesticStockInfo,
     KisDomesticInfoClient,
 )

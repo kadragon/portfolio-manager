@@ -1,239 +1,78 @@
 # plan.md
 
-# 기본 프로젝트 구축 계획 (Python + Rich 기반 CLI, 한국투자증권 API)
+# 프로젝트 관리 및 리팩토링 계획
 
 ## 목표
+- Python + Rich 기반의 CLI 주식관리 프로그램 고도화
+- 코드 품질 개선, 모듈화 강화, 중복 제거
+- TDD 및 Tidy First 원칙 준수
 
-- Python + Rich 기반의 CLI 주식관리 프로그램 구축
-- 한국투자증권(KIS) API를 통해 한국/미국 주식 시세 수집
-- 향후 기능 확장을 고려한 모듈형 아키텍처 설계
-
-## 0. 의사결정(확인 필요)
-
-## 0. 의사결정(확정)
-
-- Python 버전: 최신 안정(stable) 버전 사용 (실제 설치 시점에 확인)
-- 패키지 매니저: uv
-- 데이터 저장: Supabase (Postgres)
-- 배포 방식: 배포 없음, 로컬 실행용 (개인 프로젝트)
-
-## 1. 초기 구조 설계
-
-- 폴더 구조
-  - src/
-    - portfolio_manager/
-      - cli/ # Rich 기반 CLI
-      - core/ # 도메인 로직
-      - services/ # KIS API 연동
-      - storage/ # 로컬 저장소
-      - config/ # 환경설정
-  - tests/
-  - docs/
-
-## 2. 의존성 선정
-
-- CLI 프레임워크: rich + typer
-- HTTP 요청: httpx
-- 환경변수: python-dotenv
-- 테스트: pytest
-- 데이터 저장: sqlite3 또는 SQLAlchemy
-
-## 3. KIS API 연동 설계
-
-- 인증 흐름 (Access Token 발급/갱신)
-- 한국 주식 시세 조회
-- 미국 주식 시세 조회
-- 응답 파싱 및 공통 모델 정의
-
-## 4. 핵심 기능 MVP
-
-- 종목 등록/삭제
-- 종목 목록 조회
-- 시세 조회 (KR/US)
-- 가격 히스토리 저장
-
-## 5. 테스트 전략
-
-- API 연동 Mock 테스트
-- 핵심 도메인 로직 테스트
-- CLI 명령어 단위 테스트
-
-## 6. TDD 진행 방식
-
-- 테스트 1개 작성 → 실패 확인 → 최소 구현 → 리팩터
-- 구조적 변경과 행동 변경 분리
-- 커밋 메시지에 structural/behavioral 구분
-
-## 7. 문서화
-
-- README: 설치/사용법/API 키 설정
-- docs/: 설계 요약, API 연동 가이드
-
-## 테스트 체크리스트 (TDD 순서)
-
-- [x] KIS 인증 토큰을 저장/로드하는 서비스가 동작한다
-- [x] KIS 한국 주식 현재가 조회가 공통 모델로 변환된다
-- [x] KIS 미국 주식 현재가 조회가 공통 모델로 변환된다
-- [x] 특정일 USD 환율 조회 로직이 동작한다
-
-## 추가: KIS 실제 API 호출
-
-- [x] KIS access token 요청이 /oauth2/tokenP로 POST 되며, 토큰 응답을 파싱한다
-- [x] KIS 국내주식 기본정보 조회가 요청/파싱된다
-- [x] KIS 국내주식 현재가 시세 조회가 요청/파싱된다
-- [x] KIS 토큰이 유효하면 재사용하고, 만료 시 자동 재발급한다
-- [x] KIS 해외주식 현재가(미국) 실호출 스크립트가 동작한다
+## 0. 현재 상태 및 분석 (2026-01-04)
+- **MVP 단계 완료**: 기본적인 CRUD 및 시세 조회 기능 동작
+- **구조적 문제**: 
+  - `services/` 폴더에 KIS 관련 파일이 과도하게 밀집됨
+  - `cli/` 폴더 내 파일명에 `rich_` 접두사가 중복 사용됨
+  - `main.py`가 초기화 로직과 UI 루프를 모두 담당하여 복잡도가 높음
+  - KIS 국내/해외 시세 클라이언트 간 코드 중복 존재
 
 ---
 
-## Rich-only TUI 리펙토링 계획 (Textual 제거)
+## 1. 리팩토링 계획 (Phase 1: Structural Changes)
+*Behavioral 변화 없이 구조만 개선 (Tidy First)*
 
-### 목표
+### 1.1 CLI 모듈 정리
+- [x] `src/portfolio_manager/cli/` 내 `rich_*.py` 파일명 변경
+  - `rich_accounts.py` -> `accounts.py`
+  - `rich_groups.py` -> `groups.py`
+  - `rich_holdings.py` -> `holdings.py`
+  - `rich_stocks.py` -> `stocks.py`
+  - `rich_menu.py` -> `menu.py`
+  - `rich_app.py` -> `app.py`
+- [x] 관련 import 문 전체 수정
 
-- Textual 의존성 제거 후 Rich 기반 인터랙티브 CLI로 재구성
-- 기존 기능(그룹/스톡 관리, 네비게이션, 삭제/추가 흐름) 유지
-- 테스트는 Rich 기반 흐름에 맞게 재정의 및 갱신
+### 1.2 Services 모듈 구조화
+- [x] `src/portfolio_manager/services/kis/` 서브 패키지 생성 및 이동:
+  - `kis_auth_client.py`, `kis_domestic_info_client.py`, `kis_domestic_price_client.py`, `kis_overseas_price_client.py`, `kis_price_parser.py`, `kis_token_manager.py`, `kis_token_store.py`, `kis_unified_price_client.py`
+- [x] `src/portfolio_manager/services/exchange/` 서브 패키지 생성 및 이동:
+  - `exchange_rate_service.py`, `exim_exchange_rate_client.py`
+- [x] 관련 import 문 전체 수정
 
-### 설계 방향
-
-- 단일 콘솔 루프 + 상태 머신 방식의 화면 전환
-- 메뉴/입력은 `rich.prompt.Prompt`/`Confirm` 기반
-- 목록 렌더링은 `Table` 또는 `Panel` 기반
-- 키 입력은 Rich 내장 입력(`Console.input`) 중심, 단축키는 명령 입력 방식으로 대체
-
-### 마이그레이션 단계
-
-1. Textual 기반 TUI 모듈 격리 및 대체 인터페이스 정의
-2. Rich 기반 화면 렌더링/입력 흐름 구현
-3. 테스트를 Rich 중심의 CLI 플로우로 교체
-4. Textual 의존성 및 관련 코드 제거
-
-### 테스트 체크리스트 (Rich 전환 후 TDD 순서)
-
-- [x] 메인 메뉴가 Rich로 렌더링된다
-- [x] 메인 메뉴에서 그룹 관리로 이동한다
-- [x] 그룹 목록이 비어 있을 때 안내 메시지를 표시한다
-- [x] 그룹 추가 플로우가 동작한다
-- [x] 그룹 삭제 플로우가 동작한다
-- [x] 그룹 선택 시 해당 스톡 목록이 표시된다
-- [x] 스톡 추가 플로우가 동작한다
-- [x] 스톡 삭제 플로우가 동작한다
-- [x] 뒤로가기(메인/그룹) 흐름이 동작한다
+### 1.3 초기화 로직 분리
+- [ ] `src/portfolio_manager/core/container.py` (또는 factory) 생성
+- [ ] `main.py`의 서비스 및 리포지토리 초기화 로직을 컨테이너로 이동
 
 ---
 
-## Rich CLI 입력 계획
+## 2. 리팩토링 계획 (Phase 2: Behavioral/Internal Changes)
+*기능적 개선 및 중복 제거*
 
-### 목표
+### 2.x 대시보드 해외주식 표시 개선
+- [ ] 대시보드에 미국주식명, 가격이 조회되지 않은 문제 수정
+- [ ] 대시보드에서 해외주식 quantity 표기 시 소수점 첫번째 자리에서 반올림하여 정수로만 표기
 
-- 텍스트 중심의 CLI 입력으로 모든 기능 제어
-- 키보드 이동(↑/↓, Enter) 기반 선택 UI 제공 (prompt_toolkit)
+### 2.1 KIS 클라이언트 추상화
+- [ ] `KisBaseClient` 추상 클래스 도입
+- [ ] 공통 헤더 처리, 환경 변수 기반 TR ID 매핑 로직 통합
 
-### 구현 계획
-
-#### 1. 메인 메뉴
-- [x] 메뉴 선택으로 그룹 관리로 이동
-- [x] 메뉴 선택으로 앱 종료
-
-#### 2. 그룹 메뉴
-- [x] 메뉴 선택으로 메인 메뉴로 돌아가기
-- [x] 메뉴 선택으로 그룹 추가
-- [x] 메뉴 선택으로 그룹 삭제
-- [x] 메뉴 선택으로 그룹 선택 → 스톡 목록 보기
-- [x] 메뉴 선택으로 그룹 수정
-
-#### 3. 스톡 메뉴
-- [x] 메뉴 선택으로 그룹 메뉴로 돌아가기
-- [x] 메뉴 선택으로 스톡 추가
-- [x] 메뉴 선택으로 스톡 삭제
-- [x] 메뉴 선택으로 스톡 수정
-- [x] 메뉴 선택으로 스톡 그룹 변경(이동)
-
-### TDD 진행 순서
-1. 메인 메뉴 선택 테스트 → 구현 (prompt_toolkit choice)
-2. 그룹 메뉴 선택 테스트 → 구현
-3. 그룹 선택 메뉴 테스트 → 구현
-4. 스톡 메뉴 선택 테스트 → 구현
-
-### 전환 체크리스트
-- [x] 메인 메뉴가 prompt_toolkit 선택 리스트로 동작한다
-- [x] 그룹 메뉴가 prompt_toolkit 선택 리스트로 동작한다
-- [x] 스톡 메뉴가 prompt_toolkit 선택 리스트로 동작한다
-- [x] 계좌 메뉴가 prompt_toolkit 선택 리스트로 동작한다
-- [x] 보유 메뉴가 prompt_toolkit 선택 리스트로 동작한다
-
----
-## 계좌/보유 종목 기능 계획
-
-### 요구사항
-- 계좌 테이블: `id`, `name`, `cash_balance(예수금)`
-- 보유 종목: `account_id` + `stock_id` FK, 수량은 소수점 허용
-- 계좌 삭제 시 보유 종목 함께 삭제 (CASCADE)
-
-### 데이터 모델
-- `accounts`: id (UUID), name (TEXT), cash_balance (NUMERIC), timestamps
-- `holdings`: id (UUID), account_id (UUID FK), stock_id (UUID FK), quantity (NUMERIC), timestamps
-- 인덱스: `holdings.account_id`, `holdings.stock_id`
-
-### TDD 체크리스트
-- [x] 계좌 생성/조회가 동작한다
-- [x] 계좌 삭제 시 보유 종목이 함께 삭제된다
-- [x] 보유 종목 생성/조회가 동작한다 (account_id + stock_id)
-- [x] 보유 종목 수량이 소수점으로 저장된다
-
-### CLI 메뉴 체크리스트
-- [x] 메인 메뉴에서 계좌 관리로 이동한다
-- [x] 계좌 목록이 비어 있을 때 안내 메시지를 표시한다
-- [x] 계좌 추가 플로우가 동작한다
-- [x] 계좌 삭제 플로우가 동작한다
-- [x] 계좌 선택 시 보유 종목 목록이 표시된다
-- [x] 보유 종목 추가 플로우가 동작한다
-- [x] 보유 종목 삭제 플로우가 동작한다
-- [x] 계좌 수정 플로우가 동작한다
-- [x] 보유 종목 수정 플로우가 동작한다
+### 2.2 시장 감지 로직 개선
+- [ ] `KisUnifiedPriceClient`의 티커 길이 기반 감지 로직을 보다 명확한 유틸리티로 분리
 
 ---
 
-## 대시보드 기능 계획
-
-### 요구사항
-
-- 메인 메뉴 화면에서 모든 등록된 주식을 그룹별로 정리하여 표시
-- 같은 주식이 여러 계좌에 있으면 수량을 합산하여 표시
-- 각 주식의 현재 가격을 KIS API를 통해 조회하여 표시
-- 평가금액(수량 × 현재가) 계산하여 표시
-- Rich Table을 사용하여 깔끔한 UI 제공
-
-### 데이터 구조
-
-- 그룹별로 주식 목록
-- 각 주식마다: ticker, 합산 수량, 현재가, 평가금액
-
-### TDD 체크리스트
-
-- [x] 모든 계좌에서 동일 주식의 보유 수량을 합산하는 로직이 동작한다
-- [x] 그룹별로 주식과 합산 수량을 조회하는 로직이 동작한다
-- [x] 메인 메뉴에서 그룹별 주식 대시보드를 표시한다
-- [x] 그룹이 없을 때 안내 메시지를 표시한다
-- [x] 주식이 없는 그룹도 표시한다
-
-### 개선 요구사항 (단일 테이블 + 가격 정보)
-
-- 하나의 통합 테이블로 모든 주식 표시
-- 각 주식의 현재가 표시
-- 평가금액(수량 × 현재가) 계산 및 표시
-- 총 평가금액 합계 표시
-
-### TDD 체크리스트 (단일 테이블)
-
-- [x] 단일 테이블로 모든 주식과 그룹명을 표시한다
-- [x] 주식의 현재가를 조회하는 로직이 동작한다
-- [x] 평가금액(수량 × 현재가)을 계산한다
-- [x] 총 평가금액을 계산하여 표시한다
+## 3. 테스트 및 검증
+- [ ] 각 리팩토링 단계 후 `pytest` 실행
+- [ ] CLI 정상 동작 확인 (통합 테스트)
 
 ---
 
-## Next Action ("go" 시 시작)
+## 기존 체크리스트 (참고용)
 
-- plan.md에서 아직 체크되지 않은 첫 테스트부터 작성
-- TDD 사이클로 구현
+### MVP 완료 항목
+- [x] KIS 인증 및 토큰 관리
+- [x] 국내/해외 주식 시세 조회
+- [x] 계좌/그룹/보유종목 CRUD
+- [x] 통합 대시보드 출력
+
+### Next Action ("go" 시 시작)
+1. **CLI 모듈 파일명 변경 및 import 수정**
+2. **Services 폴더 구조화**

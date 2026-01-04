@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from portfolio_manager.services.auth_client import AuthClient
-from portfolio_manager.services.kis_token_store import TokenStore
+from portfolio_manager.services.kis.kis_token_store import TokenStore
 
 
 @dataclass(frozen=True)

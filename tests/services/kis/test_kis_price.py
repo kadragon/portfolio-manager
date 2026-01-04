@@ -1,15 +1,19 @@
 import httpx
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
-from portfolio_manager.services.kis_domestic_price_client import (
+from portfolio_manager.services.kis.kis_domestic_price_client import (
     KisDomesticPriceClient,
     PriceQuote,
 )
-from portfolio_manager.services.kis_overseas_price_client import KisOverseasPriceClient
-from portfolio_manager.services.kis_unified_price_client import KisUnifiedPriceClient
-from portfolio_manager.services.kis_domestic_info_client import DomesticStockInfo
-from portfolio_manager.services.kis_price_parser import (
+from portfolio_manager.services.kis.kis_overseas_price_client import (
+    KisOverseasPriceClient,
+)
+from portfolio_manager.services.kis.kis_unified_price_client import (
+    KisUnifiedPriceClient,
+)
+from portfolio_manager.services.kis.kis_domestic_info_client import DomesticStockInfo
+from portfolio_manager.services.kis.kis_price_parser import (
     parse_korea_price,
     parse_us_price,
 )
@@ -176,6 +180,33 @@ def test_detects_alphabetic_ticker_as_overseas(
 
     mock_overseas_client.fetch_current_price.assert_called_once_with("NAS", "AAPL")
     mock_domestic_client.fetch_current_price.assert_not_called()
+
+
+def test_overseas_price_falls_back_to_other_exchange_when_empty(
+    mock_domestic_client,
+):
+    """해외 시세가 비어있으면 다른 거래소로 재시도한다."""
+    overseas_client = MagicMock()
+    overseas_client.fetch_current_price.side_effect = [
+        PriceQuote(symbol="SPY", name="", price=0.0, market="US", currency="USD"),
+        PriceQuote(
+            symbol="SPY",
+            name="SPDR S&P 500 ETF Trust",
+            price=470.0,
+            market="US",
+            currency="USD",
+        ),
+    ]
+    unified = KisUnifiedPriceClient(mock_domestic_client, overseas_client)
+
+    quote = unified.get_price("SPY")
+
+    assert quote.name == "SPDR S&P 500 ETF Trust"
+    assert quote.price == 470.0
+    assert overseas_client.fetch_current_price.call_count == 2
+    overseas_client.fetch_current_price.assert_has_calls(
+        [call("NAS", "SPY"), call("NYS", "SPY")]
+    )
 
 
 def test_detects_6_digit_alphanumeric_ticker_as_domestic(

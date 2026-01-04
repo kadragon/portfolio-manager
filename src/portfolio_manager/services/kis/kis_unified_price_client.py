@@ -1,9 +1,15 @@
 """Unified KIS price client for both domestic and overseas stocks."""
 
-from portfolio_manager.services.kis_domestic_info_client import KisDomesticInfoClient
-from portfolio_manager.services.kis_domestic_price_client import KisDomesticPriceClient
-from portfolio_manager.services.kis_overseas_price_client import KisOverseasPriceClient
-from portfolio_manager.services.kis_price_parser import PriceQuote
+from portfolio_manager.services.kis.kis_domestic_info_client import (
+    KisDomesticInfoClient,
+)
+from portfolio_manager.services.kis.kis_domestic_price_client import (
+    KisDomesticPriceClient,
+)
+from portfolio_manager.services.kis.kis_overseas_price_client import (
+    KisOverseasPriceClient,
+)
+from portfolio_manager.services.kis.kis_price_parser import PriceQuote
 
 
 class KisUnifiedPriceClient:
@@ -44,4 +50,8 @@ class KisUnifiedPriceClient:
             )
         # US stocks are alphabetic symbols (e.g., "AAPL")
         else:
-            return self.overseas_client.fetch_current_price("NAS", ticker)
+            quote = self.overseas_client.fetch_current_price("NAS", ticker)
+            if quote.price == 0 and not quote.name:
+                # Fallback to NYSE
+                return self.overseas_client.fetch_current_price("NYS", ticker)
+            return quote

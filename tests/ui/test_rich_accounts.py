@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from rich.console import Console
 
-from portfolio_manager.cli.rich_accounts import (
+from portfolio_manager.cli.accounts import (
     add_account_flow,
     delete_account_flow,
     render_account_list,
@@ -17,7 +17,7 @@ from portfolio_manager.cli.prompt_select import (
     choose_account_from_list,
     choose_account_menu,
 )
-from portfolio_manager.cli.rich_app import select_main_menu_option
+from portfolio_manager.cli.app import select_main_menu_option
 from portfolio_manager.models import Account
 
 
@@ -95,7 +95,7 @@ def test_run_account_menu_renders_list_and_allows_back():
     chooser = MagicMock(side_effect=["select", "back"])
 
     with patch(
-        "portfolio_manager.cli.rich_accounts.choose_account_from_list",
+        "portfolio_manager.cli.accounts.choose_account_from_list",
         return_value=account.id,
     ):
         run_account_menu(
@@ -131,11 +131,11 @@ def test_run_account_menu_edit_flow_invokes_update_account():
     chooser = MagicMock(side_effect=["edit", "back"])
 
     with patch(
-        "portfolio_manager.cli.rich_accounts.choose_account_from_list",
+        "portfolio_manager.cli.accounts.choose_account_from_list",
         return_value=account.id,
     ):
         with patch(
-            "portfolio_manager.cli.rich_accounts.update_account_flow",
+            "portfolio_manager.cli.accounts.update_account_flow",
         ) as update_account_flow:
             run_account_menu(
                 console,

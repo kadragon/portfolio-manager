@@ -10,7 +10,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from portfolio_manager.models import Account
-from portfolio_manager.cli.rich_holdings import run_holdings_menu
+from portfolio_manager.cli.holdings import run_holdings_menu
 from portfolio_manager.cli.prompt_select import (
     choose_account_from_list,
     choose_account_menu,

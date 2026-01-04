@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from rich.console import Console
 
-from portfolio_manager.cli.rich_app import render_dashboard
+from portfolio_manager.cli.app import render_dashboard
 from portfolio_manager.models import Group, Stock
 from portfolio_manager.services.portfolio_service import (
     GroupHoldings,

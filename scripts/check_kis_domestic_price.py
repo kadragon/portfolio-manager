@@ -9,14 +9,14 @@ import httpx
 SRC_PATH = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC_PATH))
 
-from portfolio_manager.services.kis_auth_client import (  # noqa: E402
+from portfolio_manager.services.kis.kis_auth_client import (  # noqa: E402
     KisAuthClient,
 )
-from portfolio_manager.services.kis_domestic_price_client import (  # noqa: E402
+from portfolio_manager.services.kis.kis_domestic_price_client import (  # noqa: E402
     KisDomesticPriceClient,
 )
-from portfolio_manager.services.kis_token_manager import TokenManager  # noqa: E402
-from portfolio_manager.services.kis_token_store import FileTokenStore  # noqa: E402
+from portfolio_manager.services.kis.kis_token_manager import TokenManager  # noqa: E402
+from portfolio_manager.services.kis.kis_token_store import FileTokenStore  # noqa: E402
 
 
 def load_dotenv(path: Path) -> None:

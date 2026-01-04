@@ -15,8 +15,8 @@ from rich import box
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from portfolio_manager.cli.rich_app import render_dashboard, render_main_menu
-from portfolio_manager.cli.rich_groups import (
+from portfolio_manager.cli.app import render_dashboard, render_main_menu
+from portfolio_manager.cli.groups import (
     add_group_flow,
     delete_group_flow,
     render_group_list,
@@ -27,24 +27,36 @@ from portfolio_manager.cli.prompt_select import (
     choose_group_menu,
     choose_main_menu,
 )
-from portfolio_manager.cli.rich_accounts import run_account_menu
-from portfolio_manager.cli.rich_stocks import run_stock_menu
+from portfolio_manager.cli.accounts import run_account_menu
+from portfolio_manager.cli.stocks import run_stock_menu
 from portfolio_manager.models import Group
 from portfolio_manager.repositories.account_repository import AccountRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
-from portfolio_manager.services.kis_auth_client import KisAuthClient
-from portfolio_manager.services.kis_domestic_info_client import KisDomesticInfoClient
-from portfolio_manager.services.kis_domestic_price_client import KisDomesticPriceClient
-from portfolio_manager.services.kis_overseas_price_client import KisOverseasPriceClient
-from portfolio_manager.services.kis_token_manager import TokenManager
-from portfolio_manager.services.kis_token_store import FileTokenStore
-from portfolio_manager.services.kis_unified_price_client import KisUnifiedPriceClient
+from portfolio_manager.services.kis.kis_auth_client import KisAuthClient
+from portfolio_manager.services.kis.kis_domestic_info_client import (
+    KisDomesticInfoClient,
+)
+from portfolio_manager.services.kis.kis_domestic_price_client import (
+    KisDomesticPriceClient,
+)
+from portfolio_manager.services.kis.kis_overseas_price_client import (
+    KisOverseasPriceClient,
+)
+from portfolio_manager.services.kis.kis_token_manager import TokenManager
+from portfolio_manager.services.kis.kis_token_store import FileTokenStore
+from portfolio_manager.services.kis.kis_unified_price_client import (
+    KisUnifiedPriceClient,
+)
 from portfolio_manager.services.portfolio_service import PortfolioService
 from portfolio_manager.services.price_service import PriceService
-from portfolio_manager.services.exim_exchange_rate_client import EximExchangeRateClient
-from portfolio_manager.services.exchange_rate_service import ExchangeRateService
+from portfolio_manager.services.exchange.exim_exchange_rate_client import (
+    EximExchangeRateClient,
+)
+from portfolio_manager.services.exchange.exchange_rate_service import (
+    ExchangeRateService,
+)
 from portfolio_manager.services.supabase_client import get_supabase_client
 
 
