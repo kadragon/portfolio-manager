@@ -20,6 +20,15 @@ from portfolio_manager.services.kis.kis_price_parser import PriceQuote
 class KisUnifiedPriceClient:
     """Unified price client that routes to domestic or overseas client."""
 
+    @staticmethod
+    def _get_prioritized_exchanges(preferred_exchange: str | None) -> list[str]:
+        exchanges = ["NAS", "NYS", "AMS"]
+        if preferred_exchange in exchanges:
+            return [preferred_exchange] + [
+                excd for excd in exchanges if excd != preferred_exchange
+            ]
+        return exchanges
+
     def __init__(
         self,
         domestic_client: KisDomesticPriceClient,
@@ -57,11 +66,7 @@ class KisUnifiedPriceClient:
             )
         # US stocks are alphabetic symbols (e.g., "AAPL")
         else:
-            exchanges = ["NAS", "NYS", "AMS"]
-            if preferred_exchange in exchanges:
-                exchanges = [preferred_exchange] + [
-                    excd for excd in exchanges if excd != preferred_exchange
-                ]
+            exchanges = self._get_prioritized_exchanges(preferred_exchange)
             best_quote: PriceQuote | None = None
             for excd in exchanges:
                 try:
@@ -91,11 +96,7 @@ class KisUnifiedPriceClient:
                     fid_input_iscd=ticker, target_date=target_date
                 )
             )
-        exchanges = ["NAS", "NYS", "AMS"]
-        if preferred_exchange in exchanges:
-            exchanges = [preferred_exchange] + [
-                excd for excd in exchanges if excd != preferred_exchange
-            ]
+        exchanges = self._get_prioritized_exchanges(preferred_exchange)
         best_close = 0.0
         for excd in exchanges:
             try:
