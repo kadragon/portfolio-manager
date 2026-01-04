@@ -1,6 +1,7 @@
 """Portfolio service for aggregating holdings data."""
 
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -62,6 +63,8 @@ class PortfolioSummary:
     total_assets: Decimal = Decimal("0")
     total_invested: Decimal = Decimal("0")
     return_rate: Decimal | None = None
+    first_deposit_date: date | None = None
+    annualized_return_rate: Decimal | None = None
 
 
 class PortfolioService:
@@ -149,6 +152,7 @@ class PortfolioService:
 
         total_cash_balance = Decimal("0")
         total_invested = Decimal("0")
+        first_deposit_date = None
 
         if self.account_repository:
             accounts = self.account_repository.list_all()
@@ -156,12 +160,21 @@ class PortfolioService:
 
         if self.deposit_repository:
             total_invested = self.deposit_repository.get_total()
+            first_deposit_date = self.deposit_repository.get_first_deposit_date()
 
         total_assets = total_stock_value + total_cash_balance
 
         return_rate = None
+        annualized_return_rate = None
         if total_invested > 0:
             return_rate = (total_assets - total_invested) / total_invested * 100
+
+            if first_deposit_date:
+                days_elapsed = (date.today() - first_deposit_date).days
+                if days_elapsed > 0:
+                    ratio = float(total_assets / total_invested)
+                    annualized_ratio = ratio ** (365 / days_elapsed)
+                    annualized_return_rate = Decimal(str((annualized_ratio - 1) * 100))
 
         return PortfolioSummary(
             holdings=holdings,
@@ -171,4 +184,6 @@ class PortfolioService:
             total_assets=total_assets,
             total_invested=total_invested,
             return_rate=return_rate,
+            first_deposit_date=first_deposit_date,
+            annualized_return_rate=annualized_return_rate,
         )

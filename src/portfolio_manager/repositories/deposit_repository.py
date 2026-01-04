@@ -92,6 +92,21 @@ class DepositRepository:
         deposits = self.list_all()
         return sum((d.amount for d in deposits), Decimal("0"))
 
+    def get_first_deposit_date(self) -> date | None:
+        """Get the earliest deposit date."""
+        response = (
+            self.client.table("deposits")
+            .select("deposit_date")
+            .order("deposit_date", desc=False)
+            .limit(1)
+            .execute()
+        )
+
+        if not response.data:
+            return None
+
+        return datetime.strptime(response.data[0]["deposit_date"], "%Y-%m-%d").date()
+
     def _to_domain(self, item: dict) -> Deposit:
         return Deposit(
             id=UUID(item["id"]),

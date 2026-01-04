@@ -163,6 +163,7 @@ def test_portfolio_summary_calculates_total_value():
     account_repo.list_all.return_value = []
     deposit_repo = Mock()
     deposit_repo.get_total.return_value = Decimal("0")
+    deposit_repo.get_first_deposit_date.return_value = None
 
     portfolio_service = PortfolioService(
         group_repo,
@@ -233,6 +234,7 @@ def test_portfolio_summary_sets_value_krw_for_usd_holdings():
     account_repo.list_all.return_value = []
     deposit_repo = Mock()
     deposit_repo.get_total.return_value = Decimal("0")
+    deposit_repo.get_first_deposit_date.return_value = None
 
     portfolio_service = PortfolioService(
         group_repo,
@@ -282,6 +284,7 @@ def test_portfolio_summary_calculates_return_rate():
     ]
     deposit_repo = Mock()
     deposit_repo.get_total.return_value = Decimal("1000000")
+    deposit_repo.get_first_deposit_date.return_value = None
 
     portfolio_service = PortfolioService(
         group_repo,

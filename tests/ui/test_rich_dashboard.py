@@ -1,5 +1,6 @@
 """Tests for Rich-based dashboard rendering."""
 
+from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 
@@ -711,3 +712,106 @@ def test_dashboard_truncates_long_stock_names():
     assert "Apple Inc." in output
     # 전체 이름은 표시되지 않음
     assert "Apple Inc. Corporation Limited" not in output
+
+
+def test_dashboard_displays_annualized_return_rate():
+    """연환산 수익률을 표시한다."""
+    console = Console(record=True, width=120)
+
+    group = Group(
+        id=uuid4(),
+        name="Tech",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="AAPL",
+        group_id=group.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    holdings = [
+        (
+            group,
+            StockHoldingWithPrice(
+                stock=stock,
+                quantity=Decimal("10"),
+                price=Decimal("150.0"),
+                currency="USD",
+                name="Apple Inc.",
+                value_krw=Decimal("1950000"),
+            ),
+        ),
+    ]
+    summary = PortfolioSummary(
+        holdings=holdings,
+        total_value=Decimal("1950000"),
+        total_stock_value=Decimal("1950000"),
+        total_cash_balance=Decimal("0"),
+        total_assets=Decimal("1950000"),
+        total_invested=Decimal("1500000"),
+        return_rate=Decimal("30.0"),
+        first_deposit_date=date(2024, 1, 15),
+        annualized_return_rate=Decimal("25.5"),
+    )
+
+    render_dashboard(console, summary)
+
+    output = console.export_text()
+    assert "Annualized" in output
+    assert "25.5" in output
+
+
+def test_dashboard_displays_investment_summary_panel():
+    """투자 요약을 Panel로 표시한다."""
+    console = Console(record=True, width=120)
+
+    group = Group(
+        id=uuid4(),
+        name="Tech",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="AAPL",
+        group_id=group.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+
+    holdings = [
+        (
+            group,
+            StockHoldingWithPrice(
+                stock=stock,
+                quantity=Decimal("10"),
+                price=Decimal("150.0"),
+                currency="USD",
+                name="Apple Inc.",
+                value_krw=Decimal("1950000"),
+            ),
+        ),
+    ]
+    summary = PortfolioSummary(
+        holdings=holdings,
+        total_value=Decimal("1950000"),
+        total_stock_value=Decimal("1950000"),
+        total_cash_balance=Decimal("50000"),
+        total_assets=Decimal("2000000"),
+        total_invested=Decimal("1500000"),
+        return_rate=Decimal("33.33"),
+    )
+
+    render_dashboard(console, summary)
+
+    output = console.export_text()
+    # Panel 형태인지 확인 (테두리 존재)
+    assert "━" in output or "─" in output or "═" in output
+    # 필수 정보가 표시되는지 확인
+    assert "1,950,000" in output  # Stock Value
+    assert "50,000" in output  # Cash Balance
+    assert "2,000,000" in output  # Total Assets
+    assert "1,500,000" in output  # Total Invested

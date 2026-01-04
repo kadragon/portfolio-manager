@@ -28,10 +28,10 @@
   - `StockRepository`: create(), list_by_group()
   - `AccountRepository`: create(), list_all(), delete_with_holdings()
   - `HoldingRepository`: create(), list_by_account(), delete_by_account(), get_aggregated_holdings_by_stock()
-  - `DepositRepository`: create(), update(), list_all(), get_by_date(), delete(), get_total()
+  - `DepositRepository`: create(), update(), list_all(), get_by_date(), delete(), get_total(), get_first_deposit_date()
 - Services implemented:
   - `PortfolioService`: get_holdings_by_group() - aggregates holdings across accounts by stock and groups them by group
-  - `PortfolioService`: get_portfolio_summary() - aggregates holdings with real-time price and valuation
+  - `PortfolioService`: get_portfolio_summary() - aggregates holdings with real-time price, valuation, return rates (including annualized)
   - `PriceService`: get_stock_price(ticker) - fetches current stock price from price client
   - `KisUnifiedPriceClient`: get_price(ticker) - routes to domestic/overseas KIS API based on ticker format
 - Supabase client factory: `src/portfolio_manager/services/supabase_client.py`
@@ -65,3 +65,4 @@
 - KIS 클라이언트는 공통 `KisBaseClient`에서 헤더 구성 및 환경별 TR ID 매핑을 공유한다.
 - 투자 원금 합계는 계좌별 합산이 아니라 전체 deposits 합계로 계산된다.
 - KIS API 토큰 만료 시 자동 갱신: `is_token_expired_error()`로 500 에러 중 토큰 만료(msg_cd: 'EGW00123')를 감지하고, `KisDomesticPriceClient`와 `KisOverseasPriceClient`는 `token_manager`가 제공되면 자동으로 토큰 재발급 및 재시도를 수행한다. 이를 통해 토큰 만료로 인한 일시적 실패를 사용자 개입 없이 복구한다.
+- 대시보드 투자 요약(Total Summary)을 Rich Panel로 개선하고, 연환산 수익률(Annualized Return Rate) 표시 기능을 추가했다. 최초 입금일로부터 경과 일수를 기준으로 ((총자산/투자원금)^(365/경과일수) - 1) × 100 공식으로 계산한다.

@@ -3,6 +3,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from portfolio_manager.models import Group
@@ -135,35 +136,49 @@ def render_dashboard(
 
         console.print(summary_table)
 
-        # Total Summary Section
-        console.print("\n[bold]Total Summary[/bold]")
-        total_summary_table = Table(show_header=False, box=None)
-        total_summary_table.add_column(justify="left")
-        total_summary_table.add_column(justify="right")
+        # Total Summary Section with Panel
+        def get_return_color(rate: Decimal | None) -> str:
+            if rate is None:
+                return "white"
+            return "green" if rate > 0 else "red" if rate < 0 else "white"
 
-        total_summary_table.add_row("Stock Value:", f"₩{data.total_stock_value:,.0f}")
-        total_summary_table.add_row("Cash Balance:", f"₩{data.total_cash_balance:,.0f}")
-        total_summary_table.add_row(
-            "Total Assets:", f"[bold]₩{data.total_assets:,.0f}[/bold]"
+        # Build summary content
+        summary_lines = []
+
+        # Asset breakdown
+        summary_lines.append(
+            f"[dim]Stock Value[/dim]     ₩{data.total_stock_value:>14,.0f}"
+        )
+        summary_lines.append(
+            f"[dim]Cash Balance[/dim]    ₩{data.total_cash_balance:>14,.0f}"
+        )
+        summary_lines.append("─" * 32)
+        summary_lines.append(
+            f"[bold]Total Assets[/bold]    ₩{data.total_assets:>14,.0f}"
         )
 
         if data.total_invested > 0:
-            total_summary_table.add_row(
-                "Total Invested:", f"₩{data.total_invested:,.0f}"
+            summary_lines.append("")
+            summary_lines.append(
+                f"[dim]Total Invested[/dim]  ₩{data.total_invested:>14,.0f}"
             )
+
             if data.return_rate is not None:
-                color = (
-                    "green"
-                    if data.return_rate > 0
-                    else "red"
-                    if data.return_rate < 0
-                    else "white"
-                )
-                total_summary_table.add_row(
-                    "Return Rate:", f"[{color}]{data.return_rate:,.2f}%[/{color}]"
+                color = get_return_color(data.return_rate)
+                sign = "+" if data.return_rate > 0 else ""
+                summary_lines.append(
+                    f"[bold]Return Rate[/bold]     [{color}]{sign}{data.return_rate:>13.2f}%[/{color}]"
                 )
 
-        console.print(total_summary_table)
+            if data.annualized_return_rate is not None:
+                color = get_return_color(data.annualized_return_rate)
+                sign = "+" if data.annualized_return_rate > 0 else ""
+                summary_lines.append(
+                    f"[bold]Annualized[/bold]      [{color}]{sign}{data.annualized_return_rate:>13.2f}%[/{color}]"
+                )
+
+        summary_text = "\n".join(summary_lines)
+        console.print(Panel(summary_text, title="💰 Investment Summary", expand=False))
         return
 
     # Handle list[GroupHoldings]
