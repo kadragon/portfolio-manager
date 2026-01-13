@@ -64,7 +64,7 @@ def test_historical_close_request_params_for_domestic_and_overseas():
         captured_overseas["headers"] = dict(request.headers)
         return httpx.Response(
             status_code=200,
-            json={"output2": [{"close": "150.0"}]},
+            json={"output2": [{"xymd": "20240115", "clos": "150.0"}]},
         )
 
     overseas_client = httpx.Client(
@@ -92,7 +92,7 @@ def test_historical_close_request_params_for_domestic_and_overseas():
         "EXCD": "NAS",
         "SYMB": "AAPL",
         "GUBN": "0",
-        "BYMD": "20240115",
+        "BYMD": "20240122",  # target_date (20240115) + 7 days
         "MODP": "0",
     }
     assert captured_overseas["headers"]["tr_id"] == "HHDFS76240000"
