@@ -76,10 +76,19 @@ class KisOverseasPriceClient(KisBaseClient):
     def fetch_historical_close(
         self, excd: str, symb: str, target_date: date, auth: str = ""
     ) -> float:
-        """Fetch historical close price for a given date."""
+        """Fetch historical close price for a given date.
+
+        The KIS dailyprice API returns up to 100 trading days of data ending at BYMD.
+        We set BYMD to target_date + 7 days to ensure target_date is within the range,
+        then search the output2 array for the matching date.
+        """
+        from datetime import timedelta
+
         tr_id = KisBaseClient._tr_id_for_env(
             self.env, real_id="HHDFS76240000", demo_id="HHDFS76240000"
         )
+        # Set BYMD to after target_date to ensure target is in the returned range
+        bymd = target_date + timedelta(days=7)
         response = self.client.get(
             "/uapi/overseas-price/v1/quotations/dailyprice",
             params={
@@ -87,20 +96,29 @@ class KisOverseasPriceClient(KisBaseClient):
                 "EXCD": excd,
                 "SYMB": symb,
                 "GUBN": "0",
-                "BYMD": target_date.strftime("%Y%m%d"),
+                "BYMD": bymd.strftime("%Y%m%d"),
                 "MODP": "0",
             },
             headers=self._build_headers(tr_id),
         )
         response.raise_for_status()
         data = response.json()
-        output = data.get("output2") or data.get("output") or []
-        if isinstance(output, list):
-            item = output[0] if output else {}
-        else:
-            item = output or {}
-        raw_close = (item.get("close") or item.get("last") or "0").strip()
-        return float(raw_close) if raw_close else 0.0
+        output2 = data.get("output2") or []
+        if not isinstance(output2, list):
+            output2 = [output2] if output2 else []
+
+        target_str = target_date.strftime("%Y%m%d")
+        for item in output2:
+            if item.get("xymd") == target_str:
+                raw_close = (item.get("clos") or "0").strip()
+                return float(raw_close) if raw_close else 0.0
+
+        # If exact date not found, return first available close as fallback
+        if output2:
+            raw_close = (output2[0].get("clos") or "0").strip()
+            return float(raw_close) if raw_close else 0.0
+
+        return 0.0
 
     def fetch_current_price_with_retry(
         self, excd: str, symb: str, token_manager: TokenManager, auth: str = ""
