@@ -1,9 +1,51 @@
 """prompt_toolkit-based menu selection helpers."""
 
+from decimal import Decimal
 from typing import Callable, Iterable
 from uuid import UUID
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.key_binding import KeyBindings
+
 from portfolio_manager.models import Account, Group, Holding, Stock
+
+
+def _create_esc_bindings() -> KeyBindings:
+    """Create key bindings that abort on ESC."""
+    bindings = KeyBindings()
+
+    @bindings.add("escape")
+    def _(event):
+        event.app.exit(exception=EOFError())
+
+    return bindings
+
+
+def cancellable_prompt(
+    message: str,
+    *,
+    default: str = "",
+    session: PromptSession | None = None,
+) -> str | None:
+    """Prompt for input with ESC and Ctrl+C cancellation support.
+
+    Returns None if user cancels (ESC, Ctrl+C, Ctrl+D).
+    """
+    if session is None:
+        session = PromptSession(key_bindings=_create_esc_bindings())
+
+    try:
+        return session.prompt(f"{message} ", default=default)
+    except (KeyboardInterrupt, EOFError):
+        return None
+
+
+def prompt_decimal(message: str, default: str = "") -> Decimal | None:
+    """Prompt for a decimal value with cancellation support."""
+    value = cancellable_prompt(message, default=default)
+    if value is None:
+        return None
+    return Decimal(value)
 
 
 OptionList = Iterable[tuple[str, str]]

@@ -6,14 +6,16 @@ from typing import Callable
 from rich.console import Console
 from rich import box
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm
 from rich.table import Table
 
 from portfolio_manager.models import Account
 from portfolio_manager.cli.holdings import run_holdings_menu
 from portfolio_manager.cli.prompt_select import (
+    cancellable_prompt,
     choose_account_from_list,
     choose_account_menu,
+    prompt_decimal,
 )
 
 
@@ -35,13 +37,21 @@ def render_account_list(console: Console, accounts: list[Account]) -> None:
 def add_account_flow(
     console: Console,
     repository,
-    prompt_name: Callable[[], str] | None = None,
-    prompt_cash: Callable[[], Decimal] | None = None,
+    prompt_name: Callable[[], str | None] | None = None,
+    prompt_cash: Callable[[], Decimal | None] | None = None,
 ) -> None:
     """Add an account via prompts and render confirmation."""
-    name_func = prompt_name or (lambda: Prompt.ask("Account name"))
-    cash_func = prompt_cash or (lambda: Decimal(Prompt.ask("Cash balance")))
-    account = repository.create(name=name_func(), cash_balance=cash_func())
+    name_func = prompt_name or (lambda: cancellable_prompt("Account name:"))
+    cash_func = prompt_cash or (lambda: prompt_decimal("Cash balance:"))
+    name = name_func()
+    if name is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+    cash = cash_func()
+    if cash is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+    account = repository.create(name=name, cash_balance=cash)
     console.print(f"Added account: {account.name}")
 
 
@@ -49,16 +59,24 @@ def update_account_flow(
     console: Console,
     repository,
     account: Account,
-    prompt_name: Callable[[], str] | None = None,
-    prompt_cash: Callable[[], Decimal] | None = None,
+    prompt_name: Callable[[], str | None] | None = None,
+    prompt_cash: Callable[[], Decimal | None] | None = None,
 ) -> None:
     """Update an account via prompts and render confirmation."""
-    name_func = prompt_name or (lambda: Prompt.ask("New account name"))
-    cash_func = prompt_cash or (lambda: Decimal(Prompt.ask("New cash balance")))
+    name_func = prompt_name or (lambda: cancellable_prompt("New account name:"))
+    cash_func = prompt_cash or (lambda: prompt_decimal("New cash balance:"))
+    name = name_func()
+    if name is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+    cash = cash_func()
+    if cash is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
     updated = repository.update(
         account.id,
-        name=name_func(),
-        cash_balance=cash_func(),
+        name=name,
+        cash_balance=cash,
     )
     console.print(f"Updated account: {updated.name}")
 
@@ -83,7 +101,7 @@ def delete_account_flow(
 def quick_update_cash_flow(
     console: Console,
     repository,
-    prompt_cash: Callable[[str], Decimal] | None = None,
+    prompt_cash: Callable[[str], Decimal | None] | None = None,
 ) -> None:
     """Update cash balance for all accounts in sequence."""
     accounts = repository.list_all()
@@ -92,11 +110,14 @@ def quick_update_cash_flow(
         return
 
     cash_func = prompt_cash or (
-        lambda name: Decimal(Prompt.ask(f"Cash balance for {name}"))
+        lambda name: prompt_decimal(f"Cash balance for {name}:")
     )
 
     for account in accounts:
         new_balance = cash_func(account.name)
+        if new_balance is None:
+            console.print("[yellow]Cancelled[/yellow]")
+            return
         repository.update(account.id, name=account.name, cash_balance=new_balance)
         console.print(f"Updated {account.name}: {new_balance}")
 
@@ -122,7 +143,9 @@ def run_account_menu(
 ) -> None:
     """Run the account management menu loop."""
     selected_account: Account | None = None
-    holding_prompt_func = holding_prompt or (lambda: Prompt.ask("Holdings menu"))
+    holding_prompt_func = holding_prompt or (
+        lambda: cancellable_prompt("Holdings menu:")
+    )
     while True:
         accounts = repository.list_all()
         render_account_list(console, accounts)

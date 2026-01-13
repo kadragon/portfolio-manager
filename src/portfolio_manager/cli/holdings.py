@@ -7,14 +7,16 @@ from uuid import UUID
 from rich.console import Console
 from rich import box
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm
 from rich.table import Table
 
 from portfolio_manager.models import Account, Holding
 from portfolio_manager.cli.prompt_select import (
+    cancellable_prompt,
     choose_group_from_list,
     choose_holding_from_list,
     choose_holding_menu,
+    prompt_decimal,
 )
 
 
@@ -40,22 +42,25 @@ def add_holding_flow(
     console: Console,
     repository,
     account: Account,
-    prompt_stock: Callable[[], UUID | str] | None = None,
-    prompt_quantity: Callable[[], Decimal] | None = None,
+    prompt_stock: Callable[[], UUID | str | None] | None = None,
+    prompt_quantity: Callable[[], Decimal | None] | None = None,
     stock_repository=None,
     group_repository=None,
     group_chooser: Callable | None = None,
-    prompt_group_name: Callable[[], str] | None = None,
+    prompt_group_name: Callable[[], str | None] | None = None,
 ) -> None:
     """Add a holding via prompts and render confirmation."""
     if prompt_stock is None:
 
-        def stock_func() -> UUID | str:
-            return Prompt.ask("Stock ID or Ticker")
+        def stock_func() -> UUID | str | None:
+            return cancellable_prompt("Stock ID or Ticker:")
     else:
         stock_func = prompt_stock
-    quantity_func = prompt_quantity or (lambda: Decimal(Prompt.ask("Quantity")))
+    quantity_func = prompt_quantity or (lambda: prompt_decimal("Quantity:"))
     stock_value = stock_func()
+    if stock_value is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
     try:
         stock_id = (
             stock_value if isinstance(stock_value, UUID) else UUID(str(stock_value))
@@ -72,8 +77,13 @@ def add_holding_flow(
             groups = group_repository.list_all()
             if not groups:
                 console.print("[yellow]No groups found. Creating one now.[/yellow]")
-                name_func = prompt_group_name or (lambda: Prompt.ask("Group name"))
+                name_func = prompt_group_name or (
+                    lambda: cancellable_prompt("Group name:")
+                )
                 group_name = name_func()
+                if group_name is None:
+                    console.print("[yellow]Cancelled[/yellow]")
+                    return
                 group = group_repository.create(group_name)
                 group_id = group.id
                 console.print(
@@ -92,10 +102,14 @@ def add_holding_flow(
                     return
             stock = stock_repository.create(str(stock_value), group_id)
         stock_id = stock.id
+    quantity = quantity_func()
+    if quantity is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
     holding = repository.create(
         account_id=account.id,
         stock_id=stock_id,
-        quantity=quantity_func(),
+        quantity=quantity,
     )
     console.print(f"Added holding: {holding.quantity}")
 
@@ -105,11 +119,15 @@ def update_holding_flow(
     repository,
     account: Account,
     holding: Holding,
-    prompt_quantity: Callable[[], Decimal] | None = None,
+    prompt_quantity: Callable[[], Decimal | None] | None = None,
 ) -> None:
     """Update a holding quantity via prompt and render confirmation."""
-    quantity_func = prompt_quantity or (lambda: Decimal(Prompt.ask("New quantity")))
-    updated = repository.update(holding.id, quantity=quantity_func())
+    quantity_func = prompt_quantity or (lambda: prompt_decimal("New quantity:"))
+    quantity = quantity_func()
+    if quantity is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+    updated = repository.update(holding.id, quantity=quantity)
     console.print(f"Updated holding: {updated.quantity}")
 
 
@@ -143,7 +161,7 @@ def run_holdings_menu(
     console: Console,
     repository,
     account: Account,
-    prompt: Callable[[], str],
+    prompt: Callable[[], str | None],
     stock_repository=None,
     chooser: Callable | None = None,
     group_repository=None,

@@ -2,22 +2,33 @@
 
 from datetime import datetime, date
 from decimal import Decimal
+from typing import Callable
 
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from portfolio_manager.models import Deposit
-from portfolio_manager.cli.prompt_select import choose_deposit_menu
+from portfolio_manager.cli.prompt_select import cancellable_prompt, choose_deposit_menu
 
 
 def get_date_input(
-    prompt_text: str = "Date (YYYY-MM-DD)", default: date | None = None
-) -> date:
-    """Prompt for a date input."""
+    prompt_text: str = "Date (YYYY-MM-DD)",
+    default: date | None = None,
+    prompt_func: Callable[[], str | None] | None = None,
+) -> date | None:
+    """Prompt for a date input. Returns None if cancelled."""
     default_str = default.isoformat() if default else date.today().isoformat()
+
+    def default_prompt() -> str | None:
+        return cancellable_prompt(f"{prompt_text}:", default=default_str)
+
+    actual_func = prompt_func if prompt_func is not None else default_prompt
+
     while True:
-        value = Prompt.ask(prompt_text, default=default_str)
+        value = actual_func()
+        if value is None:
+            return None
         try:
             return datetime.strptime(value, "%Y-%m-%d").date()
         except ValueError:
@@ -55,9 +66,15 @@ def render_deposit_list(console: Console, deposits: list[Deposit]) -> None:
 def add_deposit_flow(
     console: Console,
     deposit_repository,
+    prompt_date=None,
+    prompt_amount=None,
+    prompt_note=None,
 ) -> None:
     """Add a deposit."""
-    deposit_date = get_date_input()
+    deposit_date = get_date_input(prompt_func=prompt_date)
+    if deposit_date is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
 
     existing = deposit_repository.get_by_date(deposit_date)
     if existing:
@@ -66,15 +83,23 @@ def add_deposit_flow(
             update_deposit_flow(console, deposit_repository, existing)
         return
 
+    amount_func = prompt_amount or (lambda: cancellable_prompt("Amount:"))
     while True:
         try:
-            amount_str = Prompt.ask("Amount")
+            amount_str = amount_func()
+            if amount_str is None:
+                console.print("[yellow]Cancelled[/yellow]")
+                return
             amount = Decimal(amount_str)
             break
         except Exception:
             console.print("[red]Invalid amount[/red]")
 
-    note = Prompt.ask("Note", default="")
+    note_func = prompt_note or (lambda: cancellable_prompt("Note:", default=""))
+    note = note_func()
+    if note is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
 
     deposit_repository.create(
         amount=amount, deposit_date=deposit_date, note=note if note else None
@@ -86,18 +111,32 @@ def update_deposit_flow(
     console: Console,
     deposit_repository,
     deposit: Deposit,
+    prompt_amount=None,
+    prompt_note=None,
 ) -> None:
     """Update a deposit."""
     console.print(f"Updating deposit for {deposit.deposit_date}")
 
-    amount_str = Prompt.ask("New Amount", default=str(deposit.amount))
+    amount_func = prompt_amount or (
+        lambda: cancellable_prompt("New Amount:", default=str(deposit.amount))
+    )
+    amount_str = amount_func()
+    if amount_str is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
     try:
         amount = Decimal(amount_str)
     except Exception:
         console.print("[red]Invalid amount, keeping original[/red]")
         amount = deposit.amount
 
-    note = Prompt.ask("New Note", default=deposit.note or "")
+    note_func = prompt_note or (
+        lambda: cancellable_prompt("New Note:", default=deposit.note or "")
+    )
+    note = note_func()
+    if note is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
 
     deposit_repository.update(deposit.id, amount=amount, note=note if note else None)
     console.print("[green]Updated deposit[/green]")
