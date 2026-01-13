@@ -5,11 +5,12 @@ from typing import Callable
 from rich.console import Console
 from rich import box
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm
 from rich.table import Table
 
 from portfolio_manager.models import Group, Stock
 from portfolio_manager.cli.prompt_select import (
+    cancellable_prompt,
     choose_group_from_list,
     choose_stock_from_list,
     choose_stock_menu,
@@ -31,11 +32,14 @@ def add_stock_flow(
     console: Console,
     repository,
     group: Group,
-    prompt: Callable[[], str] | None = None,
+    prompt: Callable[[], str | None] | None = None,
 ) -> None:
     """Add a stock via prompt and render confirmation."""
-    prompt_func = prompt or (lambda: Prompt.ask("Stock ticker"))
+    prompt_func = prompt or (lambda: cancellable_prompt("Stock ticker:"))
     ticker = prompt_func()
+    if ticker is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
     stock = repository.create(ticker, group.id)
     console.print(f"Added stock: {stock.ticker}")
 
@@ -44,11 +48,14 @@ def update_stock_flow(
     console: Console,
     repository,
     stock: Stock,
-    prompt: Callable[[], str] | None = None,
+    prompt: Callable[[], str | None] | None = None,
 ) -> None:
     """Update a stock ticker via prompt and render confirmation."""
-    prompt_func = prompt or (lambda: Prompt.ask("New stock ticker"))
+    prompt_func = prompt or (lambda: cancellable_prompt("New stock ticker:"))
     ticker = prompt_func()
+    if ticker is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
     updated = repository.update(stock.id, ticker)
     console.print(f"Updated stock: {updated.ticker}")
 

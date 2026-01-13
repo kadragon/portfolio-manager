@@ -331,3 +331,21 @@ def test_choose_stock_from_list_returns_stock_id():
 
     chooser.assert_called_once()
     assert result == stock_id
+
+
+def test_add_stock_flow_cancelled_does_not_create():
+    """Should not create stock when user cancels input."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    group = Group(
+        id=uuid4(),
+        name="Tech Stocks",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+
+    add_stock_flow(console, repo, group, prompt=lambda: None)
+
+    repo.create.assert_not_called()
+    output = console.export_text()
+    assert "Cancelled" in output

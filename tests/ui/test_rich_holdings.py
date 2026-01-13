@@ -502,3 +502,28 @@ def test_choose_holding_from_list_uses_stock_label_lookup():
     options = kwargs["options"]
     assert options[0][0] == holding_id
     assert options[0][1] == "AAPL (2.0)"
+
+
+def test_add_holding_flow_cancelled_does_not_create():
+    """Should not create holding when user cancels stock input."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    account = Account(
+        id=uuid4(),
+        name="Brokerage",
+        cash_balance=Decimal("1000.25"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+
+    add_holding_flow(
+        console,
+        repo,
+        account,
+        prompt_stock=lambda: None,
+        prompt_quantity=lambda: Decimal("5.5"),
+    )
+
+    repo.create.assert_not_called()
+    output = console.export_text()
+    assert "Cancelled" in output

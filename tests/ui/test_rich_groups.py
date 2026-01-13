@@ -256,3 +256,40 @@ def test_update_group_flow_updates_group_and_reports_changes():
     output = console.export_text()
     assert "New Name" in output
     assert "20.0%" in output
+
+
+def test_add_group_flow_cancelled_does_not_create():
+    """Should not create group when user cancels input."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+
+    # First prompt returns None (cancelled)
+    prompt_mock = MagicMock(return_value=None)
+
+    add_group_flow(console, repo, prompt=prompt_mock)
+
+    repo.create.assert_not_called()
+    output = console.export_text()
+    assert "Cancelled" in output
+
+
+def test_update_group_flow_cancelled_does_not_update():
+    """Should not update group when user cancels input."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    group = Group(
+        id=uuid4(),
+        name="Old Name",
+        target_percentage=10.0,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+
+    # First prompt returns None (cancelled)
+    prompt_mock = MagicMock(return_value=None)
+
+    update_group_flow(console, repo, group, prompt=prompt_mock)
+
+    repo.update.assert_not_called()
+    output = console.export_text()
+    assert "Cancelled" in output

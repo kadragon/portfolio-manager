@@ -4,8 +4,9 @@ from typing import Callable
 
 from rich.console import Console
 from rich.table import Table
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm
 
+from portfolio_manager.cli.prompt_select import cancellable_prompt
 from portfolio_manager.models import Group
 
 
@@ -24,15 +25,21 @@ def render_group_list(console: Console, groups: list[Group]) -> None:
 
 
 def add_group_flow(
-    console: Console, repository, prompt: Callable[[], str] | None = None
+    console: Console, repository, prompt: Callable[[], str | None] | None = None
 ) -> None:
     """Add a group via prompt and render confirmation."""
     if prompt:
         name = prompt()
         target_str = prompt()
     else:
-        name = Prompt.ask("Group name")
-        target_str = Prompt.ask("Target Percentage", default="0.0")
+        name = cancellable_prompt("Group name:")
+        target_str = cancellable_prompt("Target Percentage:", default="0.0")
+    if name is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+    if target_str is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
 
     try:
         target_percentage = float(target_str)
@@ -48,7 +55,7 @@ def update_group_flow(
     console: Console,
     repository,
     group: Group,
-    prompt: Callable[[], str] | None = None,
+    prompt: Callable[[], str | None] | None = None,
 ) -> None:
     """Update a group name via prompt and render confirmation."""
     current_target = group.target_percentage
@@ -57,8 +64,16 @@ def update_group_flow(
         name = prompt()
         target_str = prompt()
     else:
-        name = Prompt.ask("New group name", default=group.name)
-        target_str = Prompt.ask("New target percentage", default=str(current_target))
+        name = cancellable_prompt("New group name:", default=group.name)
+        target_str = cancellable_prompt(
+            "New target percentage:", default=str(current_target)
+        )
+    if name is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+    if target_str is None:
+        console.print("[yellow]Cancelled[/yellow]")
+        return
 
     try:
         target_percentage = float(target_str)

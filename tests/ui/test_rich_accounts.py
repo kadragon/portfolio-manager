@@ -183,3 +183,20 @@ def test_choose_account_from_list_returns_account_id():
 
     chooser.assert_called_once()
     assert result == account_id
+
+
+def test_add_account_flow_cancelled_does_not_create():
+    """Should not create account when user cancels name input."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+
+    add_account_flow(
+        console,
+        repo,
+        prompt_name=lambda: None,
+        prompt_cash=lambda: Decimal("1000.25"),
+    )
+
+    repo.create.assert_not_called()
+    output = console.export_text()
+    assert "Cancelled" in output
