@@ -1,5 +1,6 @@
 """prompt_toolkit-based menu selection helpers."""
 
+from decimal import Decimal
 from typing import Callable, Iterable
 from uuid import UUID
 
@@ -37,6 +38,14 @@ def cancellable_prompt(
         return session.prompt(f"{message} ", default=default)
     except (KeyboardInterrupt, EOFError):
         return None
+
+
+def prompt_decimal(message: str, default: str = "") -> Decimal | None:
+    """Prompt for a decimal value with cancellation support."""
+    value = cancellable_prompt(message, default=default)
+    if value is None:
+        return None
+    return Decimal(value)
 
 
 OptionList = Iterable[tuple[str, str]]

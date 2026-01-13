@@ -16,6 +16,7 @@ from portfolio_manager.cli.prompt_select import (
     choose_group_from_list,
     choose_holding_from_list,
     choose_holding_menu,
+    prompt_decimal,
 )
 
 
@@ -37,14 +38,6 @@ def render_holdings_for_account(
     console.print(table)
 
 
-def _prompt_decimal(message: str, default: str = "") -> Decimal | None:
-    """Prompt for a decimal value with cancellation support."""
-    value = cancellable_prompt(message, default=default)
-    if value is None:
-        return None
-    return Decimal(value)
-
-
 def add_holding_flow(
     console: Console,
     repository,
@@ -63,7 +56,7 @@ def add_holding_flow(
             return cancellable_prompt("Stock ID or Ticker:")
     else:
         stock_func = prompt_stock
-    quantity_func = prompt_quantity or (lambda: _prompt_decimal("Quantity:"))
+    quantity_func = prompt_quantity or (lambda: prompt_decimal("Quantity:"))
     stock_value = stock_func()
     if stock_value is None:
         console.print("[yellow]Cancelled[/yellow]")
@@ -129,7 +122,7 @@ def update_holding_flow(
     prompt_quantity: Callable[[], Decimal | None] | None = None,
 ) -> None:
     """Update a holding quantity via prompt and render confirmation."""
-    quantity_func = prompt_quantity or (lambda: _prompt_decimal("New quantity:"))
+    quantity_func = prompt_quantity or (lambda: prompt_decimal("New quantity:"))
     quantity = quantity_func()
     if quantity is None:
         console.print("[yellow]Cancelled[/yellow]")

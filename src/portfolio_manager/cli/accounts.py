@@ -15,6 +15,7 @@ from portfolio_manager.cli.prompt_select import (
     cancellable_prompt,
     choose_account_from_list,
     choose_account_menu,
+    prompt_decimal,
 )
 
 
@@ -33,14 +34,6 @@ def render_account_list(console: Console, accounts: list[Account]) -> None:
     console.print(table)
 
 
-def _prompt_decimal(message: str, default: str = "") -> Decimal | None:
-    """Prompt for a decimal value with cancellation support."""
-    value = cancellable_prompt(message, default=default)
-    if value is None:
-        return None
-    return Decimal(value)
-
-
 def add_account_flow(
     console: Console,
     repository,
@@ -49,7 +42,7 @@ def add_account_flow(
 ) -> None:
     """Add an account via prompts and render confirmation."""
     name_func = prompt_name or (lambda: cancellable_prompt("Account name:"))
-    cash_func = prompt_cash or (lambda: _prompt_decimal("Cash balance:"))
+    cash_func = prompt_cash or (lambda: prompt_decimal("Cash balance:"))
     name = name_func()
     if name is None:
         console.print("[yellow]Cancelled[/yellow]")
@@ -71,7 +64,7 @@ def update_account_flow(
 ) -> None:
     """Update an account via prompts and render confirmation."""
     name_func = prompt_name or (lambda: cancellable_prompt("New account name:"))
-    cash_func = prompt_cash or (lambda: _prompt_decimal("New cash balance:"))
+    cash_func = prompt_cash or (lambda: prompt_decimal("New cash balance:"))
     name = name_func()
     if name is None:
         console.print("[yellow]Cancelled[/yellow]")
@@ -117,7 +110,7 @@ def quick_update_cash_flow(
         return
 
     cash_func = prompt_cash or (
-        lambda name: _prompt_decimal(f"Cash balance for {name}:")
+        lambda name: prompt_decimal(f"Cash balance for {name}:")
     )
 
     for account in accounts:
