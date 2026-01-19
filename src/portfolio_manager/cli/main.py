@@ -14,6 +14,10 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from portfolio_manager.cli.app import render_dashboard, render_main_menu
+from portfolio_manager.services.supabase_project import (
+    check_and_restore_project,
+    ProjectStatus,
+)
 from portfolio_manager.cli.deposits import run_deposit_menu
 from portfolio_manager.cli.rebalance import render_rebalance_recommendations
 from portfolio_manager.cli.groups import (
@@ -191,10 +195,45 @@ def run_group_menu(console: Console, container: ServiceContainer) -> None:
             continue
 
 
+def _ensure_supabase_ready(console: Console) -> bool:
+    """Check and restore Supabase project if needed.
+
+    Returns:
+        True if project is ready, False if startup should abort.
+    """
+    result = check_and_restore_project(
+        on_status_update=lambda msg: console.print(f"[cyan]{msg}[/cyan]")
+    )
+
+    if result.status == ProjectStatus.ACTIVE:
+        if result.restored:
+            console.print("[green]Supabase project restored and ready![/green]")
+        return True
+
+    if result.error:
+        if "ACCESS_TOKEN not set" in (result.error or ""):
+            # Access token not configured - skip auto-restore silently
+            return True
+        console.print(f"[yellow]Warning: {result.error}[/yellow]")
+
+    if result.status in (ProjectStatus.PAUSED, ProjectStatus.RESTORING):
+        console.print(
+            "[red]Supabase project is not ready. "
+            "Please restore from dashboard: https://supabase.com/dashboard[/red]"
+        )
+        return False
+
+    return True
+
+
 def main() -> None:
     """CLI entrypoint."""
     load_dotenv()
     console = Console()
+
+    if not _ensure_supabase_ready(console):
+        return
+
     container = ServiceContainer(console)
     container.setup()
 
