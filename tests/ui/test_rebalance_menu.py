@@ -156,6 +156,42 @@ class TestRebalanceRecommendationsRendering:
         assert "17" in output
         assert "23" in output
 
+    def test_render_rebalance_recommendations_shows_account_columns(self) -> None:
+        """Should render sell and buy account columns with same account."""
+        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+
+        console = Console(record=True, width=120)
+
+        sell_recommendations = [
+            RebalanceRecommendation(
+                ticker="AAPL",
+                action=RebalanceAction.SELL,
+                amount=Decimal("2000000"),
+                priority=1,
+                currency="USD",
+                group_name="US Stocks",
+            ),
+        ]
+        buy_recommendations = [
+            RebalanceRecommendation(
+                ticker="005930",
+                action=RebalanceAction.BUY,
+                amount=Decimal("3000000"),
+                priority=1,
+                currency="KRW",
+                group_name="KR Stocks",
+            ),
+        ]
+
+        render_rebalance_recommendations(
+            console, sell_recommendations, buy_recommendations
+        )
+
+        output = console.export_text()
+        assert "Sell Account" in output
+        assert "Buy Account" in output
+        assert "Same Account" in output
+
     def test_render_rebalance_recommendations_shows_stock_names(self) -> None:
         """Should render stock names next to tickers."""
         from portfolio_manager.cli.rebalance import render_rebalance_recommendations
