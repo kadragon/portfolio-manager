@@ -8,6 +8,8 @@ from rich.table import Table
 
 from portfolio_manager.models.rebalance import RebalanceRecommendation
 
+ACCOUNT_LABEL = "Same Account"
+
 
 def render_rebalance_recommendations(
     console: Console,
@@ -25,8 +27,6 @@ def render_rebalance_recommendations(
     def format_stock_name(stock_name: str | None, ticker: str) -> str:
         name = stock_name or ticker
         return name.replace("증권상장지수투자신탁(주식)", "").strip()
-
-    account_label = "Same Account"
 
     if not sell_recommendations and not buy_recommendations:
         console.print(
@@ -53,7 +53,7 @@ def render_rebalance_recommendations(
                 rec.ticker,
                 format_stock_name(rec.stock_name, rec.ticker),
                 rec.group_name or "-",
-                account_label,
+                ACCOUNT_LABEL,
                 format_quantity(rec.quantity),
                 f"{currency_symbol}{rec.amount:,.0f}",
             )
@@ -75,7 +75,7 @@ def render_rebalance_recommendations(
                 rec.ticker,
                 format_stock_name(rec.stock_name, rec.ticker),
                 rec.group_name or "-",
-                account_label,
+                ACCOUNT_LABEL,
                 format_quantity(rec.quantity),
                 f"{currency_symbol}{rec.amount:,.0f}",
             )

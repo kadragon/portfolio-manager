@@ -3,10 +3,39 @@
 from decimal import Decimal
 from unittest.mock import MagicMock
 
+import pytest
 from rich.console import Console
 
 from portfolio_manager.cli.prompt_select import choose_main_menu
 from portfolio_manager.models.rebalance import RebalanceAction, RebalanceRecommendation
+
+
+@pytest.fixture
+def sample_sell_recommendations() -> list[RebalanceRecommendation]:
+    return [
+        RebalanceRecommendation(
+            ticker="AAPL",
+            action=RebalanceAction.SELL,
+            amount=Decimal("2000000"),
+            priority=1,
+            currency="USD",
+            group_name="US Stocks",
+        ),
+    ]
+
+
+@pytest.fixture
+def sample_buy_recommendations() -> list[RebalanceRecommendation]:
+    return [
+        RebalanceRecommendation(
+            ticker="005930",
+            action=RebalanceAction.BUY,
+            amount=Decimal("3000000"),
+            priority=1,
+            currency="KRW",
+            group_name="KR Stocks",
+        ),
+    ]
 
 
 class TestMainMenuRebalanceOption:
@@ -30,87 +59,48 @@ class TestMainMenuRebalanceOption:
 class TestRebalanceRecommendationsRendering:
     """Test rebalance recommendations table rendering."""
 
-    def test_render_rebalance_recommendations_shows_sell_section(self) -> None:
+    def test_render_rebalance_recommendations_shows_sell_section(
+        self,
+        sample_sell_recommendations: list[RebalanceRecommendation],
+    ) -> None:
         """Should render sell recommendations with overseas priority."""
         from portfolio_manager.cli.rebalance import render_rebalance_recommendations
 
         console = Console(record=True, width=120)
 
-        sell_recommendations = [
-            RebalanceRecommendation(
-                ticker="AAPL",
-                action=RebalanceAction.SELL,
-                amount=Decimal("2000000"),
-                priority=1,
-                currency="USD",
-                group_name="US Stocks",
-            ),
-        ]
-        buy_recommendations = []
-
-        render_rebalance_recommendations(
-            console, sell_recommendations, buy_recommendations
-        )
+        render_rebalance_recommendations(console, sample_sell_recommendations, [])
 
         output = console.export_text()
         assert "Sell" in output or "SELL" in output
         assert "AAPL" in output
 
-    def test_render_rebalance_recommendations_shows_buy_section(self) -> None:
+    def test_render_rebalance_recommendations_shows_buy_section(
+        self,
+        sample_buy_recommendations: list[RebalanceRecommendation],
+    ) -> None:
         """Should render buy recommendations with domestic priority."""
         from portfolio_manager.cli.rebalance import render_rebalance_recommendations
 
         console = Console(record=True, width=120)
 
-        sell_recommendations = []
-        buy_recommendations = [
-            RebalanceRecommendation(
-                ticker="005930",
-                action=RebalanceAction.BUY,
-                amount=Decimal("3000000"),
-                priority=1,
-                currency="KRW",
-                group_name="KR Stocks",
-            ),
-        ]
-
-        render_rebalance_recommendations(
-            console, sell_recommendations, buy_recommendations
-        )
+        render_rebalance_recommendations(console, [], sample_buy_recommendations)
 
         output = console.export_text()
         assert "Buy" in output or "BUY" in output
         assert "005930" in output
 
-    def test_render_rebalance_recommendations_shows_amounts(self) -> None:
+    def test_render_rebalance_recommendations_shows_amounts(
+        self,
+        sample_sell_recommendations: list[RebalanceRecommendation],
+        sample_buy_recommendations: list[RebalanceRecommendation],
+    ) -> None:
         """Should render amounts with currency symbols."""
         from portfolio_manager.cli.rebalance import render_rebalance_recommendations
 
         console = Console(record=True, width=120)
 
-        sell_recommendations = [
-            RebalanceRecommendation(
-                ticker="AAPL",
-                action=RebalanceAction.SELL,
-                amount=Decimal("2000000"),
-                priority=1,
-                currency="USD",
-                group_name="US Stocks",
-            ),
-        ]
-        buy_recommendations = [
-            RebalanceRecommendation(
-                ticker="005930",
-                action=RebalanceAction.BUY,
-                amount=Decimal("3000000"),
-                priority=1,
-                currency="KRW",
-                group_name="KR Stocks",
-            ),
-        ]
-
         render_rebalance_recommendations(
-            console, sell_recommendations, buy_recommendations
+            console, sample_sell_recommendations, sample_buy_recommendations
         )
 
         output = console.export_text()
@@ -156,35 +146,18 @@ class TestRebalanceRecommendationsRendering:
         assert "17" in output
         assert "23" in output
 
-    def test_render_rebalance_recommendations_shows_account_columns(self) -> None:
+    def test_render_rebalance_recommendations_shows_account_columns(
+        self,
+        sample_sell_recommendations: list[RebalanceRecommendation],
+        sample_buy_recommendations: list[RebalanceRecommendation],
+    ) -> None:
         """Should render sell and buy account columns with same account."""
         from portfolio_manager.cli.rebalance import render_rebalance_recommendations
 
         console = Console(record=True, width=120)
 
-        sell_recommendations = [
-            RebalanceRecommendation(
-                ticker="AAPL",
-                action=RebalanceAction.SELL,
-                amount=Decimal("2000000"),
-                priority=1,
-                currency="USD",
-                group_name="US Stocks",
-            ),
-        ]
-        buy_recommendations = [
-            RebalanceRecommendation(
-                ticker="005930",
-                action=RebalanceAction.BUY,
-                amount=Decimal("3000000"),
-                priority=1,
-                currency="KRW",
-                group_name="KR Stocks",
-            ),
-        ]
-
         render_rebalance_recommendations(
-            console, sell_recommendations, buy_recommendations
+            console, sample_sell_recommendations, sample_buy_recommendations
         )
 
         output = console.export_text()
