@@ -92,3 +92,14 @@
 - PriceService now reuses cached prices for the day and caches non-zero quotes from live fetches.
 - Historical close lookups now use the same daily cache and skip cache writes on errors or zero prices.
 - Supabase 자동 resume: `get_supabase_client()`가 연결 실패 시 `SUPABASE_ACCESS_TOKEN`이 설정되어 있으면 Management API로 paused 프로젝트를 자동 복구하고 재연결을 시도한다.
+
+## 2026-01-29
+
+### Decision/Learning
+KIS domestic historical close fetches a 7-day range ending on the target date and selects the matching date or the most recent available close.
+
+### Reason
+The domestic daily API can omit prices on holidays; a range ensures a prior trading day is returned.
+
+### Impact
+Tests and callers should expect `FID_INPUT_DATE_1` to be `target_date - 7 days`.

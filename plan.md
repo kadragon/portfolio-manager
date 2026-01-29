@@ -129,6 +129,14 @@
 - [x] **Implementation**: PriceService가 preferred_exchange를 전달하고 exchange를 반환한다
 - [x] **Implementation**: PortfolioService가 exchange 캐시를 갱신한다
 
+### 2.9 포트폴리오 정렬 및 국내 1Y 수익률 수정
+- [x] **Test**: PortfolioService가 holdings를 value_krw 기준 내림차순 정렬한다
+- [x] **Implementation**: get_portfolio_summary에서 return 전 holdings 정렬
+- [x] **Test**: 그룹 요약 테이블이 총 평가액 기준 내림차순 정렬된다
+- [x] **Implementation**: app.py에서 group_totals를 정렬하여 출력
+- [x] **Test**: KisDomesticPriceClient.fetch_historical_close가 휴장일에도 직전 영업일 종가를 반환한다
+- [x] **Implementation**: fetch_historical_close에 date range + fallback 로직 추가
+
 ---
 
 ## 3. 테스트 및 검증

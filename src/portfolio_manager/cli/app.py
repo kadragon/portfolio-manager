@@ -116,7 +116,9 @@ def render_dashboard(
         summary_table.add_column("Amount", style="white", justify="right", no_wrap=True)
 
         total_value = data.total_value
-        for group_key, group_total in group_totals.items():
+        for group_key, group_total in sorted(
+            group_totals.items(), key=lambda item: item[1], reverse=True
+        ):
             group = group_lookup[group_key]
             if total_value > 0:
                 actual_percent = (group_total / total_value) * Decimal("100")

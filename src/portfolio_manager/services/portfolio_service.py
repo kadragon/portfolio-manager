@@ -192,6 +192,14 @@ class PortfolioService:
                     annualized_ratio = ratio ** (365 / days_elapsed)
                     annualized_return_rate = Decimal(str((annualized_ratio - 1) * 100))
 
+        # Sort holdings by value_krw descending (treat missing conversion as zero)
+        holdings.sort(
+            key=lambda h: (
+                h[1].value_krw if h[1].value_krw is not None else Decimal("0")
+            ),
+            reverse=True,
+        )
+
         return PortfolioSummary(
             holdings=holdings,
             total_value=total_stock_value,
