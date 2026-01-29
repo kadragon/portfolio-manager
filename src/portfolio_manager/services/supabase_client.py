@@ -1,5 +1,6 @@
 """Supabase client factory with auto-resume for paused projects."""
 
+import logging
 import os
 import re
 import time
@@ -11,6 +12,8 @@ from supabase import Client, create_client
 T = TypeVar("T")
 
 SUPABASE_MANAGEMENT_API_URL = "https://api.supabase.com"
+
+logger = logging.getLogger(__name__)
 
 
 def extract_project_ref(supabase_url: str) -> str:
@@ -46,7 +49,7 @@ def restore_paused_project(project_ref: str, access_token: str) -> bool:
             f"/v1/projects/{project_ref}/restore",
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        return response.status_code == 200
+        return response.status_code == 201
 
 
 def wait_for_project_ready(
@@ -78,13 +81,18 @@ def wait_for_project_ready(
                 data = response.json()
                 status = data.get("status", "")
                 if status != last_status:
-                    print(f"[Supabase] Project status: {status}")
+                    logger.info("[Supabase] Project status: %s", status)
                     last_status = status
                 if status == "ACTIVE_HEALTHY":
                     return True
+            else:
+                logger.warning(
+                    "[Supabase] Failed to get project status (HTTP %d). Retrying...",
+                    response.status_code,
+                )
             time.sleep(poll_interval)
             elapsed += poll_interval
-            print(f"[Supabase] Waiting... ({elapsed}/{max_wait_seconds}s)")
+            logger.debug("[Supabase] Waiting... (%d/%ds)", elapsed, max_wait_seconds)
         return False
 
 
@@ -131,8 +139,9 @@ def with_auto_resume(func: Callable[[], T]) -> T:
             ) from e
 
         project_ref = extract_project_ref(url)
-        print(
-            f"[Supabase] Project appears paused. Attempting to restore {project_ref}..."
+        logger.info(
+            "[Supabase] Project appears paused. Attempting to restore %s...",
+            project_ref,
         )
 
         if not restore_paused_project(project_ref, access_token):
@@ -141,14 +150,16 @@ def with_auto_resume(func: Callable[[], T]) -> T:
                 "Check your SUPABASE_ACCESS_TOKEN permissions."
             ) from e
 
-        print("[Supabase] Restore request sent. Waiting for project to be ready...")
+        logger.info(
+            "[Supabase] Restore request sent. Waiting for project to be ready..."
+        )
 
         if not wait_for_project_ready(project_ref, access_token):
             raise RuntimeError(
                 f"Timeout waiting for Supabase project {project_ref} to be ready."
             ) from e
 
-        print("[Supabase] Project restored successfully. Retrying connection...")
+        logger.info("[Supabase] Project restored successfully. Retrying connection...")
         return func()
 
 
