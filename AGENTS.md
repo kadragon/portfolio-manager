@@ -10,6 +10,7 @@
 
 ## Supabase Integration
 - Supabase credentials stored in `.env`: `SUPABASE_URL` and `SUPABASE_KEY`.
+- Auto-resume for paused projects: Set `SUPABASE_ACCESS_TOKEN` (Personal Access Token from https://supabase.com/dashboard/account/tokens) to automatically restore paused Supabase projects on connection failure.
 - Database schema:
   - `groups` table: stores stock groups (id, name, target_percentage, created_at, updated_at)
   - `stocks` table: stores stock tickers (id, ticker, group_id, created_at, updated_at)
@@ -90,3 +91,4 @@
 - Added `stock_prices` table and repositories to cache daily price snapshots per ticker/date.
 - PriceService now reuses cached prices for the day and caches non-zero quotes from live fetches.
 - Historical close lookups now use the same daily cache and skip cache writes on errors or zero prices.
+- Supabase 자동 resume: `get_supabase_client()`가 연결 실패 시 `SUPABASE_ACCESS_TOKEN`이 설정되어 있으면 Management API로 paused 프로젝트를 자동 복구하고 재연결을 시도한다.
