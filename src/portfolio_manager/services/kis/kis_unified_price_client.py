@@ -50,7 +50,7 @@ class KisUnifiedPriceClient:
         if is_domestic_ticker(ticker):
             try:
                 quote = self.domestic_client.fetch_current_price("J", ticker)
-            except httpx.HTTPStatusError:
+            except httpx.HTTPError:
                 return PriceQuote(
                     symbol=ticker,
                     name="",
@@ -81,7 +81,7 @@ class KisUnifiedPriceClient:
             for excd in exchanges:
                 try:
                     quote = self.overseas_client.fetch_current_price(excd, ticker)
-                except httpx.HTTPStatusError:
+                except httpx.HTTPError:
                     continue
                 if best_quote is None:
                     best_quote = quote
@@ -114,7 +114,7 @@ class KisUnifiedPriceClient:
                         fid_input_iscd=ticker, target_date=target_date
                     )
                 )
-            except httpx.HTTPStatusError:
+            except httpx.HTTPError:
                 return 0.0
         exchanges = self._get_prioritized_exchanges(preferred_exchange)
         best_close = 0.0
@@ -123,7 +123,7 @@ class KisUnifiedPriceClient:
                 close_price = self.overseas_client.fetch_historical_close(
                     excd=excd, symb=ticker, target_date=target_date
                 )
-            except httpx.HTTPStatusError:
+            except httpx.HTTPError:
                 continue
             if close_price:
                 return float(close_price)
