@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 import httpx
 
@@ -9,6 +9,9 @@ from portfolio_manager.services.kis.kis_base_client import KisBaseClient
 from portfolio_manager.services.kis.kis_error_handler import is_token_expired_error
 from portfolio_manager.services.kis.kis_price_parser import PriceQuote
 from portfolio_manager.services.kis.kis_token_manager import TokenManager
+
+
+_DATE_FETCH_BUFFER_DAYS = 7
 
 
 @dataclass(frozen=True)
@@ -62,12 +65,13 @@ class KisDomesticPriceClient(KisBaseClient):
         tr_id = KisBaseClient._tr_id_for_env(
             self.env, real_id="FHKST03010100", demo_id="FHKST03010100"
         )
+        start_date = target_date - timedelta(days=_DATE_FETCH_BUFFER_DAYS)
         response = self.client.get(
             "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
             params={
                 "FID_COND_MRKT_DIV_CODE": fid_cond_mrkt_div_code,
                 "FID_INPUT_ISCD": fid_input_iscd,
-                "FID_INPUT_DATE_1": target_date.strftime("%Y%m%d"),
+                "FID_INPUT_DATE_1": start_date.strftime("%Y%m%d"),
                 "FID_INPUT_DATE_2": target_date.strftime("%Y%m%d"),
                 "FID_PERIOD_DIV_CODE": "D",
                 "FID_ORG_ADJ_PRC": "1",
@@ -77,10 +81,17 @@ class KisDomesticPriceClient(KisBaseClient):
         response.raise_for_status()
         data = response.json()
         output = data.get("output2") or data.get("output") or []
+        target_str = target_date.strftime("%Y%m%d")
+        item: dict[str, str] = {}
         if isinstance(output, list):
-            item = output[0] if output else {}
-        else:
-            item = output or {}
+            for candidate in output:
+                if candidate.get("stck_bsop_date") == target_str:
+                    item = candidate
+                    break
+            if not item and output:
+                item = output[0]
+        elif output:
+            item = output
         raw_close = (item.get("stck_clpr") or item.get("stck_prpr") or "0").strip()
         return int(raw_close) if raw_close else 0
 
