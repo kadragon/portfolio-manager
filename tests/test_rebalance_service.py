@@ -595,3 +595,84 @@ class TestGroupRebalanceLogicV2:
         assert len(actions) == 1
         assert actions[0].group == group
         assert actions[0].action == GroupRebalanceAction.NO_ACTION
+
+    def test_zero_total_value_returns_no_action(self) -> None:
+        """Groups with zero total portfolio value should return NO_ACTION."""
+        group = make_group("Empty Portfolio", target_percentage=50.0)
+        stock = make_stock("AAPL", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("0"),
+            price=Decimal("150"),
+            currency="USD",
+            value_krw=Decimal("0"),
+        )
+
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("0"),
+        )
+
+        service = RebalanceService()
+        actions = service.get_group_actions_v2(summary)
+
+        assert len(actions) == 1
+        assert actions[0].group == group
+        assert actions[0].action == GroupRebalanceAction.NO_ACTION
+        assert actions[0].delta == Decimal("0")
+
+    def test_missing_metrics_keys_defaults_to_no_action(self) -> None:
+        """Groups with incomplete metrics should not trigger SELL_CANDIDATE."""
+        group = make_group("Overseas Growth", target_percentage=50.0)
+        stock = make_stock("AAPL", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("10"),
+            price=Decimal("150"),
+            currency="USD",
+            value_krw=Decimal("5500000"),
+        )
+
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("10000000"),
+        )
+
+        # Metrics missing return_since_rebalance and momentum_6m
+        group_metrics = {
+            group.id: {
+                "asset_class": "standard",
+            }
+        }
+
+        service = RebalanceService()
+        actions = service.get_group_actions_v2(summary, group_metrics=group_metrics)
+
+        assert len(actions) == 1
+        assert actions[0].group == group
+        # Should be NO_ACTION because SELL gates require metrics
+        assert actions[0].action == GroupRebalanceAction.NO_ACTION
+
+    def test_signal_includes_delta_value(self) -> None:
+        """GroupRebalanceSignal should include the computed delta."""
+        group = make_group("US Stocks", target_percentage=40.0)
+        stock = make_stock("AAPL", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("10"),
+            price=Decimal("150"),
+            currency="USD",
+            value_krw=Decimal("5000000"),  # 50% of total
+        )
+
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("10000000"),
+        )
+
+        service = RebalanceService()
+        actions = service.get_group_actions_v2(summary)
+
+        assert len(actions) == 1
+        # 50% current - 40% target = +10% delta
+        assert actions[0].delta == Decimal("10")
