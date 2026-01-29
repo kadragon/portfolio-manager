@@ -1,10 +1,17 @@
 """Rebalance service for generating stock recommendations."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
+from uuid import UUID
 
 from portfolio_manager.models import Group
-from portfolio_manager.models.rebalance import RebalanceAction, RebalanceRecommendation
+from portfolio_manager.models.rebalance import (
+    GroupRebalanceAction,
+    GroupRebalanceSignal,
+    RebalanceAction,
+    RebalanceRecommendation,
+)
 from portfolio_manager.services.portfolio_service import (
     PortfolioSummary,
     StockHoldingWithPrice,
@@ -75,6 +82,71 @@ class RebalanceService:
             )
 
         return differences
+
+    def get_group_actions_v2(
+        self,
+        summary: PortfolioSummary,
+        group_metrics: Mapping[UUID, Mapping[str, Decimal | str]] | None = None,
+    ) -> list[GroupRebalanceSignal]:
+        """Get group-level rebalancing signals using v2 tolerance bands."""
+        differences = self.calculate_group_differences(summary)
+        total_value = summary.total_value
+        actions: list[GroupRebalanceSignal] = []
+
+        for diff in differences:
+            if total_value == 0:
+                current_weight = Decimal("0")
+            else:
+                current_weight = (diff.current_value / total_value) * Decimal("100")
+
+            target_percentage = Decimal(str(diff.group.target_percentage))
+            delta = current_weight - target_percentage
+            metrics = (
+                group_metrics.get(diff.group.id) if group_metrics is not None else None
+            )
+            return_since_rebalance = (
+                metrics.get("return_since_rebalance") if metrics else None
+            )
+            momentum_6m = metrics.get("momentum_6m") if metrics else None
+            asset_class = metrics.get("asset_class") if metrics else None
+
+            if not isinstance(return_since_rebalance, Decimal):
+                return_since_rebalance = None
+            if not isinstance(momentum_6m, Decimal):
+                momentum_6m = None
+            is_dividend = asset_class == "dividend"
+
+            sell_threshold = Decimal("4")
+            if asset_class == "growth":
+                sell_threshold = Decimal("6")
+
+            if delta <= Decimal("-2"):
+                action = GroupRebalanceAction.BUY
+                manual_review_required = False
+            elif (
+                delta >= sell_threshold
+                and return_since_rebalance is not None
+                and momentum_6m is not None
+                and return_since_rebalance >= Decimal("20")
+                and momentum_6m < Decimal("0")
+                and not is_dividend
+            ):
+                # SELL is gated by multiple conditions and always manual review.
+                action = GroupRebalanceAction.SELL_CANDIDATE
+                manual_review_required = True
+            else:
+                action = GroupRebalanceAction.NO_ACTION
+                manual_review_required = False
+
+            actions.append(
+                GroupRebalanceSignal(
+                    group=diff.group,
+                    action=action,
+                    manual_review_required=manual_review_required,
+                )
+            )
+
+        return actions
 
     def get_sell_recommendations(
         self, summary: PortfolioSummary

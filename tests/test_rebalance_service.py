@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from portfolio_manager.models import Group, Stock
-from portfolio_manager.models.rebalance import RebalanceAction
+from portfolio_manager.models.rebalance import RebalanceAction, GroupRebalanceAction
 from portfolio_manager.services.portfolio_service import (
     PortfolioSummary,
     StockHoldingWithPrice,
@@ -438,3 +438,160 @@ class TestBuyRecommendations:
         for rec in recommendations:
             assert rec.currency == "KRW"
             assert rec.action == RebalanceAction.BUY
+
+
+class TestGroupRebalanceLogicV2:
+    """Test portfolio rebalancing logic v2 at group level."""
+
+    def test_group_under_target_by_two_percent_is_buy(self) -> None:
+        """Groups at target -2% or lower should be BUY."""
+        group = make_group("Overseas Growth", target_percentage=50.0)
+        stock = make_stock("AAPL", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("10"),
+            price=Decimal("150"),
+            currency="USD",
+            value_krw=Decimal("4800000"),
+        )
+
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("10000000"),
+        )
+
+        service = RebalanceService()
+        actions = service.get_group_actions_v2(summary)
+
+        assert len(actions) == 1
+        assert actions[0].group == group
+        assert actions[0].action == GroupRebalanceAction.BUY
+
+    def test_group_over_target_by_two_to_four_percent_is_no_action(self) -> None:
+        """Groups at target +2%~+4% should be NO_ACTION."""
+        group = make_group("Overseas Growth", target_percentage=50.0)
+        stock = make_stock("AAPL", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("10"),
+            price=Decimal("150"),
+            currency="USD",
+            value_krw=Decimal("5300000"),
+        )
+
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("10000000"),
+        )
+
+        group_metrics = {
+            group.id: {
+                "return_since_rebalance": Decimal("25"),
+                "momentum_6m": Decimal("-0.05"),
+            }
+        }
+
+        service = RebalanceService()
+        actions = service.get_group_actions_v2(summary, group_metrics=group_metrics)
+
+        assert len(actions) == 1
+        assert actions[0].group == group
+        assert actions[0].action == GroupRebalanceAction.NO_ACTION
+
+    def test_group_over_target_by_four_percent_with_metrics_is_sell_candidate(
+        self,
+    ) -> None:
+        """Groups over target +4% with return/momentum gates should be SELL_CANDIDATE."""
+        group = make_group("Overseas Growth", target_percentage=50.0)
+        stock = make_stock("AAPL", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("10"),
+            price=Decimal("150"),
+            currency="USD",
+            value_krw=Decimal("5500000"),
+        )
+
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("10000000"),
+        )
+
+        group_metrics = {
+            group.id: {
+                "return_since_rebalance": Decimal("25"),
+                "momentum_6m": Decimal("-0.02"),
+            }
+        }
+
+        service = RebalanceService()
+        actions = service.get_group_actions_v2(summary, group_metrics=group_metrics)
+
+        assert len(actions) == 1
+        assert actions[0].group == group
+        assert actions[0].action == GroupRebalanceAction.SELL_CANDIDATE
+        assert actions[0].manual_review_required is True
+
+    def test_dividend_group_never_sell_candidate(self) -> None:
+        """Dividend groups should never return SELL_CANDIDATE."""
+        group = make_group("Dividend Income", target_percentage=50.0)
+        stock = make_stock("DVY", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("10"),
+            price=Decimal("100"),
+            currency="USD",
+            value_krw=Decimal("5600000"),
+        )
+
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("10000000"),
+        )
+
+        group_metrics = {
+            group.id: {
+                "return_since_rebalance": Decimal("30"),
+                "momentum_6m": Decimal("-0.05"),
+                "asset_class": "dividend",
+            }
+        }
+
+        service = RebalanceService()
+        actions = service.get_group_actions_v2(summary, group_metrics=group_metrics)
+
+        assert len(actions) == 1
+        assert actions[0].group == group
+        assert actions[0].action == GroupRebalanceAction.NO_ACTION
+
+    def test_growth_group_wide_sell_band_requires_above_five_percent(self) -> None:
+        """Growth groups require a wider sell band than +5% to be SELL_CANDIDATE."""
+        group = make_group("Overseas Growth", target_percentage=50.0)
+        stock = make_stock("QQQ", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("10"),
+            price=Decimal("100"),
+            currency="USD",
+            value_krw=Decimal("5500000"),
+        )
+
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("10000000"),
+        )
+
+        group_metrics = {
+            group.id: {
+                "return_since_rebalance": Decimal("25"),
+                "momentum_6m": Decimal("-0.03"),
+                "asset_class": "growth",
+            }
+        }
+
+        service = RebalanceService()
+        actions = service.get_group_actions_v2(summary, group_metrics=group_metrics)
+
+        assert len(actions) == 1
+        assert actions[0].group == group
+        assert actions[0].action == GroupRebalanceAction.NO_ACTION
