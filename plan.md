@@ -105,6 +105,7 @@
   - [x] Impl: choose_main_menu에 rebalance 옵션
   - [x] Test: 리밸런싱 추천 테이블 렌더링
 - [x] Impl: render_rebalance_recommendations 함수
+  - [x] Test: 리밸런싱 추천 표에 매도/매수 계좌를 동일 계좌로 표시
 
 ### 2.7 주식별 과거 대비 변동률 표시 (1Y/6M/1M)
 - [x] **Test**: PriceService가 1Y/6M/1M 변동률을 계산한다

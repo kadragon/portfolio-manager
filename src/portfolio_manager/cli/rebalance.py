@@ -8,6 +8,8 @@ from rich.table import Table
 
 from portfolio_manager.models.rebalance import RebalanceRecommendation
 
+ACCOUNT_LABEL = "Same Account"
+
 
 def render_rebalance_recommendations(
     console: Console,
@@ -41,6 +43,7 @@ def render_rebalance_recommendations(
         sell_table.add_column("Ticker", style="red")
         sell_table.add_column("Name", style="white")
         sell_table.add_column("Group", style="blue")
+        sell_table.add_column("Sell Account", style="cyan")
         sell_table.add_column("Quantity", style="magenta", justify="right")
         sell_table.add_column("Amount", style="yellow", justify="right")
 
@@ -50,6 +53,7 @@ def render_rebalance_recommendations(
                 rec.ticker,
                 format_stock_name(rec.stock_name, rec.ticker),
                 rec.group_name or "-",
+                ACCOUNT_LABEL,
                 format_quantity(rec.quantity),
                 f"{currency_symbol}{rec.amount:,.0f}",
             )
@@ -61,6 +65,7 @@ def render_rebalance_recommendations(
         buy_table.add_column("Ticker", style="green")
         buy_table.add_column("Name", style="white")
         buy_table.add_column("Group", style="blue")
+        buy_table.add_column("Buy Account", style="cyan")
         buy_table.add_column("Quantity", style="magenta", justify="right")
         buy_table.add_column("Amount", style="yellow", justify="right")
 
@@ -70,6 +75,7 @@ def render_rebalance_recommendations(
                 rec.ticker,
                 format_stock_name(rec.stock_name, rec.ticker),
                 rec.group_name or "-",
+                ACCOUNT_LABEL,
                 format_quantity(rec.quantity),
                 f"{currency_symbol}{rec.amount:,.0f}",
             )
