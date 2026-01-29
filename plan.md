@@ -137,6 +137,13 @@
 - [x] **Test**: KisDomesticPriceClient.fetch_historical_close가 휴장일에도 직전 영업일 종가를 반환한다
 - [x] **Implementation**: fetch_historical_close에 date range + fallback 로직 추가
 
+### 2.10 포트폴리오 리밸런싱 로직 v2
+- [x] **Test**: 목표 대비 -2% 이하인 그룹은 BUY로 표시된다
+- [x] **Test**: 목표 대비 +2%~+4% 범위의 그룹은 NO_ACTION이다
+- [x] **Test**: 목표 대비 +4% 이상이면서 수익률/모멘텀 조건을 만족하면 SELL_CANDIDATE이며 manual review 플래그가 설정된다
+- [x] **Test**: Dividend 그룹은 조건을 만족하더라도 SELL_CANDIDATE를 반환하지 않는다
+- [x] **Test**: Growth 그룹은 넓은 Sell 밴드를 적용하여 +5% 초과만으로는 SELL_CANDIDATE가 아니다
+
 ---
 
 ## 3. 테스트 및 검증

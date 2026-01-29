@@ -103,3 +103,14 @@ The domestic daily API can omit prices on holidays; a range ensures a prior trad
 
 ### Impact
 Tests and callers should expect `FID_INPUT_DATE_1` to be `target_date - 7 days`.
+
+## 2026-01-29 (Rebalance v2)
+
+### Decision/Learning
+Introduced `GroupRebalanceAction` and `GroupRebalanceSignal` for group-level rebalancing outcomes distinct from per-stock `RebalanceRecommendation`.
+
+### Reason
+Portfolio Rebalancing Logic v2 requires tolerance-band decisions at the group level before mapping to tickers.
+
+### Impact
+Use `RebalanceService.get_group_actions_v2()` for group-level signals and keep stock-level recommendations separate.
