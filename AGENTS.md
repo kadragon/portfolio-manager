@@ -128,3 +128,14 @@ Dashboard navigation and screen transitions cause repeated API calls for the sam
 - `PriceService._change_rates_cache`: Caches 1Y/6M/1M change rate dicts by (ticker, as_of) tuple
 - `ExchangeRateService._cached_rate`: Caches USD/KRW rate (converted from frozen dataclass to regular class)
 - Cache flow: Memory cache -> DB cache -> API call
+
+## 2026-01-31 (Integration Tests)
+
+### Decision/Learning
+Marked the KIS script test as `integration` and default pytest runs exclude integration; the test skips if KIS credentials are missing.
+
+### Reason
+External network tests are flaky and require secrets that are not always available.
+
+### Impact
+Run integration tests explicitly with `-m integration` once credentials are configured.

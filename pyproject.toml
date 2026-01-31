@@ -26,11 +26,14 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -m \"not integration\""
 testpaths = ["tests"]
 filterwarnings = [
   "ignore::DeprecationWarning:pyiceberg.*",
   "ignore::pydantic.warnings.PydanticDeprecatedSince212:pyiceberg.*",
+]
+markers = [
+  "integration: tests that hit external services",
 ]
 
 [tool.pyright]
