@@ -64,3 +64,30 @@ def test_get_usd_krw_rate_uses_memory_cache(monkeypatch):
     exim_client.fetch_usd_rate.assert_called_once()
     assert result1 == result2
     assert result1 == Decimal("1400.0")
+
+
+def test_get_usd_krw_rate_caches_by_specific_date():
+    """특정 날짜로 조회 시 해당 날짜별로 캐시한다."""
+    exim_client = Mock()
+
+    def side_effect(search_date: str):
+        if search_date == "20260101":
+            return 1400.0
+        if search_date == "20260102":
+            return 1410.0
+        raise AssertionError(f"unexpected search_date: {search_date}")
+
+    exim_client.fetch_usd_rate.side_effect = side_effect
+
+    service = ExchangeRateService(exim_client=exim_client)
+
+    # When: 다른 날짜로 각각 두 번씩 조회
+    result1_jan1 = service.get_usd_krw_rate(search_date="20260101")
+    result2_jan1 = service.get_usd_krw_rate(search_date="20260101")
+    result1_jan2 = service.get_usd_krw_rate(search_date="20260102")
+    result2_jan2 = service.get_usd_krw_rate(search_date="20260102")
+
+    # Then: 각 날짜별로 한 번씩만 API 호출
+    assert exim_client.fetch_usd_rate.call_count == 2
+    assert result1_jan1 == result2_jan1 == Decimal("1400.0")
+    assert result1_jan2 == result2_jan2 == Decimal("1410.0")
