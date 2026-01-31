@@ -3,8 +3,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 
+
+@pytest.mark.integration
 def test_overseas_price_script_runs():
+    if not os.getenv("KIS_APP_KEY") or not os.getenv("KIS_APP_SECRET"):
+        pytest.skip("KIS credentials not configured")
     script = (
         Path(__file__).resolve().parents[3] / "scripts" / "check_kis_overseas_price.py"
     )
