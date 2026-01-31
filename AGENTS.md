@@ -114,3 +114,17 @@ Portfolio Rebalancing Logic v2 requires tolerance-band decisions at the group le
 
 ### Impact
 Use `RebalanceService.get_group_actions_v2()` for group-level signals and keep stock-level recommendations separate.
+
+## 2026-01-31 (In-memory Caching)
+
+### Decision/Learning
+Added in-memory caching to `PriceService` and `ExchangeRateService` for API responses within a single program execution.
+
+### Reason
+Dashboard navigation and screen transitions cause repeated API calls for the same data. In-memory cache eliminates redundant API and DB queries during a session.
+
+### Impact
+- `PriceService._price_cache`: Caches (price, currency, name, exchange) tuples by ticker
+- `PriceService._change_rates_cache`: Caches 1Y/6M/1M change rate dicts by (ticker, as_of) tuple
+- `ExchangeRateService._cached_rate`: Caches USD/KRW rate (converted from frozen dataclass to regular class)
+- Cache flow: Memory cache -> DB cache -> API call

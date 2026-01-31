@@ -144,6 +144,14 @@
 - [x] **Test**: Dividend 그룹은 조건을 만족하더라도 SELL_CANDIDATE를 반환하지 않는다
 - [x] **Test**: Growth 그룹은 넓은 Sell 밴드를 적용하여 +5% 초과만으로는 SELL_CANDIDATE가 아니다
 
+### 2.11 KIS API 인메모리 캐싱
+- [x] **Test**: PriceService.get_stock_price가 메모리 캐시를 사용한다
+- [x] **Implementation**: PriceService에 `_price_cache` 딕셔너리 추가
+- [x] **Test**: PriceService.get_stock_change_rates가 메모리 캐시를 사용한다
+- [x] **Implementation**: PriceService에 `_change_rates_cache` 딕셔너리 추가
+- [x] **Test**: ExchangeRateService.get_usd_krw_rate가 메모리 캐시를 사용한다
+- [x] **Implementation**: ExchangeRateService를 일반 클래스로 변환하고 `_cached_rate` 추가
+
 ---
 
 ## 3. 테스트 및 검증
