@@ -226,6 +226,7 @@ class TestGroupRebalanceLogicV2:
         assert len(actions) == 1
         assert actions[0].group == group
         assert actions[0].action == GroupRebalanceAction.NO_ACTION
+        assert actions[0].reason == "Within tolerance band"
 
     def test_group_over_target_by_four_percent_with_metrics_is_sell_candidate(
         self,

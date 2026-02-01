@@ -124,6 +124,13 @@ class TestRebalanceGroupActionsRendering:
                 delta=Decimal("6.2"),
                 manual_review_required=True,
             ),
+            GroupRebalanceSignal(
+                group=group_two,
+                action=GroupRebalanceAction.NO_ACTION,
+                delta=Decimal("1.0"),
+                manual_review_required=False,
+                reason="Within tolerance band",
+            ),
         ]
 
         render_rebalance_actions(console, actions)
@@ -133,11 +140,13 @@ class TestRebalanceGroupActionsRendering:
         assert "Action" in output
         assert "Delta" in output
         assert "Manual" in output
+        assert "Reason" in output
         assert "US Stocks" in output
         assert "KR Stocks" in output
         assert "BUY" in output
         assert "SELL" in output
         assert "Yes" in output
+        assert "Within tolerance band" in output
 
     def test_render_rebalance_actions_empty_shows_balanced_message(self) -> None:
         """Empty actions should show a balanced message."""

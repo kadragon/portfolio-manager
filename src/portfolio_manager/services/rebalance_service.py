@@ -100,19 +100,21 @@ class RebalanceService:
 
     def _determine_group_action(
         self, delta: Decimal, metrics: GroupMetrics
-    ) -> tuple[GroupRebalanceAction, bool]:
+    ) -> tuple[GroupRebalanceAction, bool, str | None]:
         """Determine the rebalance action for a group based on delta and metrics.
 
         Returns:
-            Tuple of (action, manual_review_required)
+            Tuple of (action, manual_review_required, reason)
         """
         if delta <= _BUY_THRESHOLD:
-            return GroupRebalanceAction.BUY, False
+            return GroupRebalanceAction.BUY, False, None
 
-        if delta >= metrics.sell_threshold and metrics.meets_sell_gates():
-            return GroupRebalanceAction.SELL_CANDIDATE, True
+        if delta >= metrics.sell_threshold:
+            if metrics.meets_sell_gates():
+                return GroupRebalanceAction.SELL_CANDIDATE, True, None
+            return GroupRebalanceAction.NO_ACTION, False, "Sell gates not met"
 
-        return GroupRebalanceAction.NO_ACTION, False
+        return GroupRebalanceAction.NO_ACTION, False, "Within tolerance band"
 
     def calculate_group_differences(
         self, summary: PortfolioSummary
@@ -171,6 +173,7 @@ class RebalanceService:
                         action=GroupRebalanceAction.NO_ACTION,
                         delta=Decimal("0"),
                         manual_review_required=False,
+                        reason="No portfolio value",
                     )
                 )
                 continue
@@ -184,7 +187,7 @@ class RebalanceService:
             metrics = self._extract_group_metrics(diff.group.id, group_metrics)
 
             # Determine action based on delta and metrics
-            action, manual_review_required = self._determine_group_action(
+            action, manual_review_required, reason = self._determine_group_action(
                 delta, metrics
             )
 
@@ -194,6 +197,7 @@ class RebalanceService:
                     action=action,
                     delta=delta,
                     manual_review_required=manual_review_required,
+                    reason=reason,
                 )
             )
 

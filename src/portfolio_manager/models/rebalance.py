@@ -23,3 +23,4 @@ class GroupRebalanceSignal:
     action: GroupRebalanceAction
     delta: Decimal = Decimal("0")  # Current weight - target percentage
     manual_review_required: bool = False
+    reason: str | None = None

@@ -26,11 +26,15 @@ def render_rebalance_actions(
     table.add_column("Action", style="white")
     table.add_column("Delta", style="magenta", justify="right")
     table.add_column("Manual Review", style="yellow")
+    table.add_column("Reason", style="white")
 
     for signal in actions:
         action_label = signal.action.name.replace("_", " ")
         delta_label = f"{signal.delta:.2f}%"
         manual_label = "Yes" if signal.manual_review_required else "No"
-        table.add_row(signal.group.name, action_label, delta_label, manual_label)
+        reason_label = signal.reason or "-"
+        table.add_row(
+            signal.group.name, action_label, delta_label, manual_label, reason_label
+        )
 
     console.print(table)
