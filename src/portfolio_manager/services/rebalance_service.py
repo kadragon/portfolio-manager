@@ -17,6 +17,10 @@ _BUY_THRESHOLD = Decimal("-2")  # Groups at target -2% or lower trigger BUY
 _DEFAULT_SELL_THRESHOLD = Decimal("4")  # Default: target +4% to consider sell
 _GROWTH_SELL_THRESHOLD = Decimal("6")  # Growth assets: wider band at +6%
 _RETURN_THRESHOLD = Decimal("20")  # Minimum return since rebalance to consider sell
+# Rebalance action reasons
+REASON_SELL_GATES_NOT_MET = "Sell gates not met"
+REASON_WITHIN_TOLERANCE = "Within tolerance band"
+REASON_NO_PORTFOLIO_VALUE = "No portfolio value"
 
 
 @dataclass
@@ -112,9 +116,9 @@ class RebalanceService:
         if delta >= metrics.sell_threshold:
             if metrics.meets_sell_gates():
                 return GroupRebalanceAction.SELL_CANDIDATE, True, None
-            return GroupRebalanceAction.NO_ACTION, False, "Sell gates not met"
+            return GroupRebalanceAction.NO_ACTION, False, REASON_SELL_GATES_NOT_MET
 
-        return GroupRebalanceAction.NO_ACTION, False, "Within tolerance band"
+        return GroupRebalanceAction.NO_ACTION, False, REASON_WITHIN_TOLERANCE
 
     def calculate_group_differences(
         self, summary: PortfolioSummary
@@ -173,7 +177,7 @@ class RebalanceService:
                         action=GroupRebalanceAction.NO_ACTION,
                         delta=Decimal("0"),
                         manual_review_required=False,
-                        reason="No portfolio value",
+                        reason=REASON_NO_PORTFOLIO_VALUE,
                     )
                 )
                 continue

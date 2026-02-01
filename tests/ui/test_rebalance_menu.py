@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from rich.console import Console
 
 from portfolio_manager.cli.prompt_select import choose_main_menu
+from portfolio_manager.services.rebalance_service import REASON_WITHIN_TOLERANCE
 
 
 class TestMainMenuRebalanceOption:
@@ -129,7 +130,7 @@ class TestRebalanceGroupActionsRendering:
                 action=GroupRebalanceAction.NO_ACTION,
                 delta=Decimal("1.0"),
                 manual_review_required=False,
-                reason="Within tolerance band",
+                reason=REASON_WITHIN_TOLERANCE,
             ),
         ]
 
@@ -146,7 +147,7 @@ class TestRebalanceGroupActionsRendering:
         assert "BUY" in output
         assert "SELL" in output
         assert "Yes" in output
-        assert "Within tolerance band" in output
+        assert REASON_WITHIN_TOLERANCE in output
 
     def test_render_rebalance_actions_empty_shows_balanced_message(self) -> None:
         """Empty actions should show a balanced message."""

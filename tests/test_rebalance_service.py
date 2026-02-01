@@ -10,7 +10,10 @@ from portfolio_manager.services.portfolio_service import (
     PortfolioSummary,
     StockHoldingWithPrice,
 )
-from portfolio_manager.services.rebalance_service import RebalanceService
+from portfolio_manager.services.rebalance_service import (
+    REASON_WITHIN_TOLERANCE,
+    RebalanceService,
+)
 
 
 def make_group(name: str, target_percentage: float) -> Group:
@@ -226,7 +229,7 @@ class TestGroupRebalanceLogicV2:
         assert len(actions) == 1
         assert actions[0].group == group
         assert actions[0].action == GroupRebalanceAction.NO_ACTION
-        assert actions[0].reason == "Within tolerance band"
+        assert actions[0].reason == REASON_WITHIN_TOLERANCE
 
     def test_group_over_target_by_four_percent_with_metrics_is_sell_candidate(
         self,
