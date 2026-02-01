@@ -2,40 +2,9 @@
 
 from decimal import Decimal
 from unittest.mock import MagicMock
-
-import pytest
 from rich.console import Console
 
 from portfolio_manager.cli.prompt_select import choose_main_menu
-from portfolio_manager.models.rebalance import RebalanceAction, RebalanceRecommendation
-
-
-@pytest.fixture
-def sample_sell_recommendations() -> list[RebalanceRecommendation]:
-    return [
-        RebalanceRecommendation(
-            ticker="AAPL",
-            action=RebalanceAction.SELL,
-            amount=Decimal("2000000"),
-            priority=1,
-            currency="USD",
-            group_name="US Stocks",
-        ),
-    ]
-
-
-@pytest.fixture
-def sample_buy_recommendations() -> list[RebalanceRecommendation]:
-    return [
-        RebalanceRecommendation(
-            ticker="005930",
-            action=RebalanceAction.BUY,
-            amount=Decimal("3000000"),
-            priority=1,
-            currency="KRW",
-            group_name="KR Stocks",
-        ),
-    ]
 
 
 class TestMainMenuRebalanceOption:
@@ -56,222 +25,187 @@ class TestMainMenuRebalanceOption:
         assert action == "rebalance"
 
 
-class TestRebalanceRecommendationsRendering:
-    """Test rebalance recommendations table rendering."""
+class TestRebalanceMenuUsesV2:
+    """Test rebalance menu uses v2 signals."""
 
-    def test_render_rebalance_recommendations_shows_sell_section(
-        self,
-        sample_sell_recommendations: list[RebalanceRecommendation],
-    ) -> None:
-        """Should render sell recommendations with overseas priority."""
-        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+    def test_run_rebalance_menu_uses_group_actions_v2(self, monkeypatch) -> None:
+        """Rebalance menu should call v2 group actions."""
+        from portfolio_manager.cli import main as cli_main
 
-        console = Console(record=True, width=120)
+        summary = MagicMock()
 
-        render_rebalance_recommendations(console, sample_sell_recommendations, [])
+        class FakePortfolioService:
+            def get_portfolio_summary(self):
+                return summary
 
-        output = console.export_text()
-        assert "Sell" in output or "SELL" in output
-        assert "AAPL" in output
+        class FakeContainer:
+            price_service = object()
 
-    def test_render_rebalance_recommendations_shows_buy_section(
-        self,
-        sample_buy_recommendations: list[RebalanceRecommendation],
-    ) -> None:
-        """Should render buy recommendations with domestic priority."""
-        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+            def get_portfolio_service(self):
+                return FakePortfolioService()
 
-        console = Console(record=True, width=120)
+        class FakeRebalanceService:
+            def __init__(self):
+                self.group_actions_called = False
 
-        render_rebalance_recommendations(console, [], sample_buy_recommendations)
+            def get_group_actions_v2(self, summary_arg):
+                assert summary_arg is summary
+                self.group_actions_called = True
+                return ["signal"]
 
-        output = console.export_text()
-        assert "Buy" in output or "BUY" in output
-        assert "005930" in output
+        fake_service = FakeRebalanceService()
+        render_mock = MagicMock()
 
-    def test_render_rebalance_recommendations_shows_amounts(
-        self,
-        sample_sell_recommendations: list[RebalanceRecommendation],
-        sample_buy_recommendations: list[RebalanceRecommendation],
-    ) -> None:
-        """Should render amounts with currency symbols."""
-        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+        monkeypatch.setattr(cli_main, "RebalanceService", lambda: fake_service)
+        monkeypatch.setattr(cli_main, "render_rebalance_actions", render_mock)
+        monkeypatch.setattr(cli_main, "Prompt", MagicMock())
 
         console = Console(record=True, width=120)
 
-        render_rebalance_recommendations(
-            console, sample_sell_recommendations, sample_buy_recommendations
+        cli_main.run_rebalance_menu(console, FakeContainer())  # type: ignore[arg-type]
+
+        assert fake_service.group_actions_called
+
+
+class TestLegacyRebalanceMethodRemoval:
+    """Test legacy rebalance method removal."""
+
+    def test_rebalance_service_has_no_v1_methods(self) -> None:
+        """RebalanceService should not expose v1 recommendation methods."""
+        from portfolio_manager.services.rebalance_service import RebalanceService
+
+        service = RebalanceService()
+        assert not hasattr(service, "get_sell_recommendations")
+        assert not hasattr(service, "get_buy_recommendations")
+
+
+class TestRebalanceGroupActionsRendering:
+    """Test rebalance group action table rendering."""
+
+    def test_render_rebalance_actions_shows_group_actions(self) -> None:
+        """Should render group actions with delta and manual review flag."""
+        from datetime import datetime
+        from uuid import uuid4
+
+        from portfolio_manager.cli.rebalance import render_rebalance_actions
+        from portfolio_manager.models import Group
+        from portfolio_manager.models.rebalance import (
+            GroupRebalanceAction,
+            GroupRebalanceSignal,
         )
 
-        output = console.export_text()
-        # Should show amounts
-        assert "2,000,000" in output or "2000000" in output
-        assert "3,000,000" in output or "3000000" in output
+        console = Console(record=True, width=120)
 
-    def test_render_rebalance_recommendations_shows_quantities(self) -> None:
-        """Should render share quantities."""
-        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+        group_one = Group(
+            id=uuid4(),
+            name="US Stocks",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            target_percentage=60.0,
+        )
+        group_two = Group(
+            id=uuid4(),
+            name="KR Stocks",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            target_percentage=40.0,
+        )
+
+        actions = [
+            GroupRebalanceSignal(
+                group=group_one,
+                action=GroupRebalanceAction.BUY,
+                delta=Decimal("-3.5"),
+                manual_review_required=False,
+            ),
+            GroupRebalanceSignal(
+                group=group_two,
+                action=GroupRebalanceAction.SELL_CANDIDATE,
+                delta=Decimal("6.2"),
+                manual_review_required=True,
+            ),
+        ]
+
+        render_rebalance_actions(console, actions)
+
+        output = console.export_text()
+        assert "Group" in output
+        assert "Action" in output
+        assert "Delta" in output
+        assert "Manual" in output
+        assert "US Stocks" in output
+        assert "KR Stocks" in output
+        assert "BUY" in output
+        assert "SELL" in output
+        assert "Yes" in output
+
+    def test_render_rebalance_actions_empty_shows_balanced_message(self) -> None:
+        """Empty actions should show a balanced message."""
+        from portfolio_manager.cli.rebalance import render_rebalance_actions
 
         console = Console(record=True, width=120)
 
-        sell_recommendations = [
-            RebalanceRecommendation(
-                ticker="AAPL",
-                action=RebalanceAction.SELL,
-                amount=Decimal("2000000"),
-                priority=1,
-                currency="USD",
-                quantity=Decimal("17"),
-                group_name="US Stocks",
-            ),
-        ]
-        buy_recommendations = [
-            RebalanceRecommendation(
-                ticker="005930",
-                action=RebalanceAction.BUY,
-                amount=Decimal("3000000"),
-                priority=1,
-                currency="KRW",
-                quantity=Decimal("23"),
-                group_name="KR Stocks",
-            ),
-        ]
+        render_rebalance_actions(console, [])
 
-        render_rebalance_recommendations(
-            console, sell_recommendations, buy_recommendations
-        )
+        output = console.export_text().lower()
+        assert "balanced" in output or "no rebalancing" in output
 
-        output = console.export_text()
-        assert "Quantity" in output
-        assert "17" in output
-        assert "23" in output
 
-    def test_render_rebalance_recommendations_shows_account_columns(
+class TestRebalanceMenuEmptyPortfolio:
+    """Test rebalance menu empty portfolio handling."""
+
+    def test_run_rebalance_menu_handles_missing_price_service_and_empty_portfolio(
         self,
-        sample_sell_recommendations: list[RebalanceRecommendation],
-        sample_buy_recommendations: list[RebalanceRecommendation],
+        monkeypatch,
     ) -> None:
-        """Should render sell and buy account columns with same account."""
-        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+        """Should warn without prices and still render empty v2 actions."""
+        from portfolio_manager.cli import main as cli_main
 
         console = Console(record=True, width=120)
 
-        render_rebalance_recommendations(
-            console, sample_sell_recommendations, sample_buy_recommendations
+        class NoPriceContainer:
+            price_service = None
+
+            def get_portfolio_service(self):
+                return MagicMock()
+
+        cli_main.run_rebalance_menu(console, NoPriceContainer())  # type: ignore[arg-type]
+
+        output = console.export_text()
+        assert "Price service not available" in output
+
+        class EmptyPortfolioService:
+            def get_portfolio_summary(self):
+                summary = MagicMock()
+                summary.total_value = Decimal("0")
+                summary.holdings = []
+                return summary
+
+        class WithPriceContainer:
+            price_service = object()
+
+            def get_portfolio_service(self):
+                return EmptyPortfolioService()
+
+        render_mock = MagicMock()
+        monkeypatch.setattr(
+            cli_main, "render_rebalance_actions", render_mock, raising=False
         )
-
-        output = console.export_text()
-        assert "Sell Account" in output
-        assert "Buy Account" in output
-        assert "Same Account" in output
-
-    def test_render_rebalance_recommendations_shows_stock_names(self) -> None:
-        """Should render stock names next to tickers."""
-        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+        monkeypatch.setattr(cli_main, "Prompt", MagicMock())
 
         console = Console(record=True, width=120)
+        cli_main.run_rebalance_menu(console, WithPriceContainer())  # type: ignore[arg-type]
 
-        sell_recommendations = [
-            RebalanceRecommendation(
-                ticker="AAPL",
-                action=RebalanceAction.SELL,
-                amount=Decimal("2000000"),
-                priority=1,
-                currency="USD",
-                stock_name="Apple Inc.",
-                group_name="US Stocks",
-            ),
-        ]
-        buy_recommendations = [
-            RebalanceRecommendation(
-                ticker="005930",
-                action=RebalanceAction.BUY,
-                amount=Decimal("3000000"),
-                priority=1,
-                currency="KRW",
-                stock_name="Samsung Electronics",
-                group_name="KR Stocks",
-            ),
-        ]
+        render_mock.assert_called_once()
+        actions = render_mock.call_args[0][1]
+        assert actions == []
 
-        render_rebalance_recommendations(
-            console, sell_recommendations, buy_recommendations
-        )
 
-        output = console.export_text()
-        assert "Name" in output
-        assert "Apple Inc." in output
-        assert "Samsung Electronics" in output
+class TestLegacyRebalanceRenderRemoval:
+    """Test legacy rebalance render helper removal."""
 
-    def test_render_rebalance_recommendations_hides_priority(self) -> None:
-        """Should not render priority column."""
-        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+    def test_render_recommendations_removed(self) -> None:
+        """render_rebalance_recommendations should be removed."""
+        import portfolio_manager.cli.rebalance as rebalance
 
-        console = Console(record=True, width=120)
-
-        sell_recommendations = [
-            RebalanceRecommendation(
-                ticker="AAPL",
-                action=RebalanceAction.SELL,
-                amount=Decimal("2000000"),
-                priority=1,
-                currency="USD",
-                stock_name="Apple Inc.",
-                group_name="US Stocks",
-            ),
-        ]
-        buy_recommendations = [
-            RebalanceRecommendation(
-                ticker="005930",
-                action=RebalanceAction.BUY,
-                amount=Decimal("3000000"),
-                priority=1,
-                currency="KRW",
-                stock_name="Samsung Electronics",
-                group_name="KR Stocks",
-            ),
-        ]
-
-        render_rebalance_recommendations(
-            console, sell_recommendations, buy_recommendations
-        )
-
-        output = console.export_text()
-        assert "Priority" not in output
-
-    def test_render_rebalance_recommendations_strips_etf_suffix(self) -> None:
-        """Should strip ETF suffix from stock names."""
-        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
-
-        console = Console(record=True, width=120)
-
-        sell_recommendations = [
-            RebalanceRecommendation(
-                ticker="069500",
-                action=RebalanceAction.SELL,
-                amount=Decimal("2000000"),
-                priority=1,
-                currency="KRW",
-                stock_name="KODEX 200 증권상장지수투자신탁(주식)",
-                group_name="KR ETF",
-            ),
-        ]
-
-        render_rebalance_recommendations(console, sell_recommendations, [])
-
-        output = console.export_text()
-        assert "증권상장지수투자신탁(주식)" not in output
-        assert "KODEX 200" in output
-
-    def test_render_rebalance_recommendations_empty_shows_balanced_message(
-        self,
-    ) -> None:
-        """Should show message when portfolio is balanced."""
-        from portfolio_manager.cli.rebalance import render_rebalance_recommendations
-
-        console = Console(record=True, width=120)
-
-        render_rebalance_recommendations(console, [], [])
-
-        output = console.export_text()
-        assert "balanced" in output.lower() or "no" in output.lower()
+        assert not hasattr(rebalance, "render_rebalance_recommendations")

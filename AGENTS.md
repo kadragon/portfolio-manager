@@ -139,3 +139,14 @@ External network tests are flaky and require secrets that are not always availab
 
 ### Impact
 Run integration tests explicitly with `-m integration` once credentials are configured.
+
+## 2026-02-01 (Rebalance v2 Cleanup)
+
+### Decision/Learning
+Removed v1 rebalance recommendations and rendering in favor of group-level v2 signals only.
+
+### Reason
+V1 buy/sell recommendation flows are no longer used by the CLI and duplicated v2 behavior.
+
+### Impact
+Use `RebalanceService.get_group_actions_v2()` and `render_rebalance_actions()`; v1 methods/models are removed.

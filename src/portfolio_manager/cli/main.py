@@ -13,7 +13,7 @@ from rich.prompt import Prompt
 
 from portfolio_manager.cli.app import render_dashboard, render_main_menu
 from portfolio_manager.cli.deposits import run_deposit_menu
-from portfolio_manager.cli.rebalance import render_rebalance_recommendations
+from portfolio_manager.cli.rebalance import render_rebalance_actions
 from portfolio_manager.cli.groups import (
     add_group_flow,
     delete_group_flow,
@@ -76,10 +76,9 @@ def run_rebalance_menu(console: Console, container: ServiceContainer) -> None:
         return
 
     rebalance_service = RebalanceService()
-    sell_recommendations = rebalance_service.get_sell_recommendations(summary)
-    buy_recommendations = rebalance_service.get_buy_recommendations(summary)
+    actions = rebalance_service.get_group_actions_v2(summary)
 
-    render_rebalance_recommendations(console, sell_recommendations, buy_recommendations)
+    render_rebalance_actions(console, actions)
 
     Prompt.ask("Press Enter to continue")
 

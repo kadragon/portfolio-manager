@@ -9,13 +9,8 @@ from portfolio_manager.models import Group
 from portfolio_manager.models.rebalance import (
     GroupRebalanceAction,
     GroupRebalanceSignal,
-    RebalanceAction,
-    RebalanceRecommendation,
 )
-from portfolio_manager.services.portfolio_service import (
-    PortfolioSummary,
-    StockHoldingWithPrice,
-)
+from portfolio_manager.services.portfolio_service import PortfolioSummary
 
 # Tolerance band thresholds for group-level rebalancing
 _BUY_THRESHOLD = Decimal("-2")  # Groups at target -2% or lower trigger BUY
@@ -67,20 +62,6 @@ class GroupDifference:
 
 class RebalanceService:
     """Service for calculating rebalancing recommendations."""
-
-    def _calculate_quantity(
-        self, amount: Decimal, holding: StockHoldingWithPrice
-    ) -> Decimal | None:
-        if holding.quantity <= 0:
-            return None
-
-        total_value = (
-            holding.value_krw if holding.value_krw is not None else holding.value
-        )
-        if total_value == 0:
-            return None
-
-        return (amount / total_value) * holding.quantity
 
     def _extract_group_metrics(
         self,
@@ -217,99 +198,3 @@ class RebalanceService:
             )
 
         return actions
-
-    def get_sell_recommendations(
-        self, summary: PortfolioSummary
-    ) -> list[RebalanceRecommendation]:
-        """Get sell recommendations for overweight groups, overseas stocks first."""
-        differences = self.calculate_group_differences(summary)
-
-        recommendations: list[RebalanceRecommendation] = []
-
-        for diff in differences:
-            if diff.difference <= 0:
-                # Not overweight, no sell needed
-                continue
-
-            amount_to_sell = diff.difference
-
-            # Get holdings for this group
-            group_holdings: list[tuple[StockHoldingWithPrice, Decimal]] = []
-            for group, holding in summary.holdings:
-                if str(group.id) == str(diff.group.id):
-                    value = holding.value_krw if holding.value_krw else holding.value
-                    group_holdings.append((holding, value))
-
-            # Sort: overseas (USD) first, then domestic (KRW)
-            group_holdings.sort(key=lambda x: (0 if x[0].currency == "USD" else 1))
-
-            remaining = amount_to_sell
-            priority = 1
-
-            for holding, value in group_holdings:
-                if remaining <= 0:
-                    break
-
-                sell_amount = min(value, remaining)
-                recommendations.append(
-                    RebalanceRecommendation(
-                        ticker=holding.stock.ticker,
-                        action=RebalanceAction.SELL,
-                        amount=sell_amount,
-                        priority=priority,
-                        currency=holding.currency,
-                        quantity=self._calculate_quantity(sell_amount, holding),
-                        stock_name=holding.name or holding.stock.ticker,
-                        group_name=diff.group.name,
-                    )
-                )
-                remaining -= sell_amount
-                priority += 1
-
-        return recommendations
-
-    def get_buy_recommendations(
-        self, summary: PortfolioSummary
-    ) -> list[RebalanceRecommendation]:
-        """Get buy recommendations for underweight groups, domestic stocks first."""
-        differences = self.calculate_group_differences(summary)
-
-        recommendations: list[RebalanceRecommendation] = []
-
-        for diff in differences:
-            if diff.difference >= 0:
-                # Not underweight, no buy needed
-                continue
-
-            amount_to_buy = abs(diff.difference)
-
-            # Get holdings for this group
-            group_holdings: list[tuple[StockHoldingWithPrice, Decimal]] = []
-            for group, holding in summary.holdings:
-                if str(group.id) == str(diff.group.id):
-                    value = holding.value_krw if holding.value_krw else holding.value
-                    group_holdings.append((holding, value))
-
-            # Sort: domestic (KRW) first, then overseas (USD)
-            group_holdings.sort(key=lambda x: (0 if x[0].currency == "KRW" else 1))
-
-            priority = 1
-
-            for holding, _value in group_holdings:
-                recommendations.append(
-                    RebalanceRecommendation(
-                        ticker=holding.stock.ticker,
-                        action=RebalanceAction.BUY,
-                        amount=amount_to_buy,
-                        priority=priority,
-                        currency=holding.currency,
-                        quantity=self._calculate_quantity(amount_to_buy, holding),
-                        stock_name=holding.name or holding.stock.ticker,
-                        group_name=diff.group.name,
-                    )
-                )
-                priority += 1
-                # For buy, just recommend the first stock (domestic priority)
-                break
-
-        return recommendations
