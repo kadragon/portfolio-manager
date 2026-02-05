@@ -94,10 +94,7 @@ class PortfolioService:
     def get_holdings_by_group(self) -> list[GroupHoldings]:
         """Get holdings aggregated by group."""
         groups = self.group_repository.list_all()
-        stocks = self.stock_repository.list_all()
-        stocks_by_group: dict[str, list[Stock]] = defaultdict(list)
-        for stock in stocks:
-            stocks_by_group[str(stock.group_id)].append(stock)
+        stocks_by_group = self._get_stocks_by_group_id()
         aggregated_holdings = self.holding_repository.get_aggregated_holdings_by_stock()
 
         result = []
@@ -123,10 +120,7 @@ class PortfolioService:
             return name.replace("증권상장지수투자신탁(주식)", "").strip()
 
         groups = self.group_repository.list_all()
-        stocks = self.stock_repository.list_all()
-        stocks_by_group: dict[str, list[Stock]] = defaultdict(list)
-        for stock in stocks:
-            stocks_by_group[str(stock.group_id)].append(stock)
+        stocks_by_group = self._get_stocks_by_group_id()
         aggregated_holdings = self.holding_repository.get_aggregated_holdings_by_stock()
 
         holdings = []
@@ -224,3 +218,10 @@ class PortfolioService:
             first_deposit_date=first_deposit_date,
             annualized_return_rate=annualized_return_rate,
         )
+
+    def _get_stocks_by_group_id(self) -> dict[str, list[Stock]]:
+        stocks = self.stock_repository.list_all()
+        stocks_by_group: dict[str, list[Stock]] = defaultdict(list)
+        for stock in stocks:
+            stocks_by_group[str(stock.group_id)].append(stock)
+        return stocks_by_group
