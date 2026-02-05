@@ -171,7 +171,7 @@ Holding aggregation now relies on Supabase RPC `aggregate_holdings_by_stock`.
 Server-side aggregation avoids loading the full holdings table on each dashboard render.
 
 ### Impact
-Ensure the RPC exists in Supabase and returns `stock_id` and `quantity`.
+Migration adds `aggregate_holdings_by_stock` RPC; it must return `stock_id` and `quantity`.
 
 ## 2026-02-05 (Preferred Exchange Fallback)
 

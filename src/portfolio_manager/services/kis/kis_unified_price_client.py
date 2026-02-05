@@ -126,22 +126,36 @@ class KisUnifiedPriceClient:
                     f"Failed to fetch domestic historical close for {ticker}: {e}"
                 )
                 return 0.0
+        if preferred_exchange is not None:
+            try:
+                close_price = self.overseas_client.fetch_historical_close(
+                    excd=preferred_exchange, symb=ticker, target_date=target_date
+                )
+                return float(close_price)
+            except httpx.HTTPError as e:
+                logging.warning(
+                    "Failed to fetch overseas historical close for %s from %s: %s",
+                    ticker,
+                    preferred_exchange,
+                    e,
+                )
+
         exchanges = self._get_prioritized_exchanges(preferred_exchange)
-        best_close = 0.0
         for excd in exchanges:
+            if excd == preferred_exchange:
+                continue
             try:
                 close_price = self.overseas_client.fetch_historical_close(
                     excd=excd, symb=ticker, target_date=target_date
                 )
             except httpx.HTTPError as e:
                 logging.warning(
-                    f"Failed to fetch overseas historical close for {ticker} from {excd}: {e}"
+                    "Failed to fetch overseas historical close for %s from %s: %s",
+                    ticker,
+                    excd,
+                    e,
                 )
                 continue
             if close_price:
                 return float(close_price)
-            if best_close == 0.0 and close_price:
-                best_close = float(close_price)
-            if preferred_exchange is not None:
-                return float(best_close)
-        return float(best_close)
+        return 0.0

@@ -526,6 +526,24 @@ def test_unified_historical_close_does_not_fallback_when_preferred_exchange_succ
     )
 
 
+def test_unified_historical_close_does_not_fallback_when_preferred_returns_zero(
+    mock_domestic_client, mock_overseas_client
+):
+    """선호 거래소가 0을 반환해도 추가 거래소는 조회하지 않는다."""
+    mock_overseas_client.fetch_historical_close.return_value = 0.0
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    close_price = unified.get_historical_close(
+        "AAPL", target_date=date(2024, 1, 15), preferred_exchange="NYS"
+    )
+
+    assert close_price == 0.0
+    assert mock_overseas_client.fetch_historical_close.call_count == 1
+    mock_overseas_client.fetch_historical_close.assert_called_once_with(
+        excd="NYS", symb="AAPL", target_date=date(2024, 1, 15)
+    )
+
+
 def test_unified_historical_close_skips_http_errors(
     mock_domestic_client, mock_overseas_client
 ):

@@ -150,6 +150,11 @@ def main() -> None:
     summary_cache: PortfolioSummary | None = None
     summary_cached_at: float | None = None
 
+    def invalidate_summary_cache() -> None:
+        nonlocal summary_cache, summary_cached_at
+        summary_cache = None
+        summary_cached_at = None
+
     try:
         while True:
             render_main_menu(console)
@@ -187,6 +192,7 @@ def main() -> None:
             action = choose_main_menu()
             if action == "groups":
                 run_group_menu(console, container)
+                invalidate_summary_cache()
                 continue
             if action == "accounts":
                 run_account_menu(
@@ -197,15 +203,18 @@ def main() -> None:
                     stock_repository=container.stock_repository,
                     group_repository=container.group_repository,
                 )
+                invalidate_summary_cache()
                 continue
             if action == "deposits":
                 run_deposit_menu(
                     console,
                     container.deposit_repository,
                 )
+                invalidate_summary_cache()
                 continue
             if action == "rebalance":
                 run_rebalance_menu(console, container)
+                invalidate_summary_cache()
                 continue
             if action == "quit":
                 return
