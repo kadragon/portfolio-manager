@@ -1,5 +1,6 @@
 """Portfolio service for aggregating holdings data."""
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -93,11 +94,15 @@ class PortfolioService:
     def get_holdings_by_group(self) -> list[GroupHoldings]:
         """Get holdings aggregated by group."""
         groups = self.group_repository.list_all()
+        stocks = self.stock_repository.list_all()
+        stocks_by_group: dict[str, list[Stock]] = defaultdict(list)
+        for stock in stocks:
+            stocks_by_group[str(stock.group_id)].append(stock)
         aggregated_holdings = self.holding_repository.get_aggregated_holdings_by_stock()
 
         result = []
         for group in groups:
-            stocks = self.stock_repository.list_by_group(group.id)
+            stocks = stocks_by_group.get(str(group.id), [])
             stock_holdings = []
             for stock in stocks:
                 quantity = aggregated_holdings.get(stock.id, Decimal("0"))
@@ -107,7 +112,9 @@ class PortfolioService:
 
         return result
 
-    def get_portfolio_summary(self) -> PortfolioSummary:
+    def get_portfolio_summary(
+        self, *, include_change_rates: bool = True
+    ) -> PortfolioSummary:
         """Get portfolio summary with valuations."""
         if self.price_service is None:
             raise ValueError("Price service is required for portfolio summary")
@@ -116,6 +123,10 @@ class PortfolioService:
             return name.replace("증권상장지수투자신탁(주식)", "").strip()
 
         groups = self.group_repository.list_all()
+        stocks = self.stock_repository.list_all()
+        stocks_by_group: dict[str, list[Stock]] = defaultdict(list)
+        for stock in stocks:
+            stocks_by_group[str(stock.group_id)].append(stock)
         aggregated_holdings = self.holding_repository.get_aggregated_holdings_by_stock()
 
         holdings = []
@@ -123,7 +134,7 @@ class PortfolioService:
         usd_krw_rate: Decimal | None = None
 
         for group in groups:
-            stocks = self.stock_repository.list_by_group(group.id)
+            stocks = stocks_by_group.get(str(group.id), [])
             for stock in stocks:
                 quantity = aggregated_holdings.get(stock.id, Decimal("0"))
                 if quantity > 0:
@@ -148,9 +159,11 @@ class PortfolioService:
                         value_krw = holding_value * usd_krw_rate
                     else:
                         value_krw = holding_value
-                    change_rates = self.price_service.get_stock_change_rates(
-                        stock.ticker, preferred_exchange=stock.exchange
-                    )
+                    change_rates = None
+                    if include_change_rates:
+                        change_rates = self.price_service.get_stock_change_rates(
+                            stock.ticker, preferred_exchange=stock.exchange
+                        )
                     if exchange and exchange != stock.exchange:
                         self.stock_repository.update_exchange(stock.id, exchange)
                     holding_with_price = StockHoldingWithPrice(

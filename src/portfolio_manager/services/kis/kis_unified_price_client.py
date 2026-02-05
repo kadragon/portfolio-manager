@@ -94,6 +94,8 @@ class KisUnifiedPriceClient:
                     return quote
                 if best_quote.price == 0 and quote.price > 0:
                     best_quote = quote
+                if preferred_exchange is not None:
+                    return best_quote
             if best_quote is None:
                 return PriceQuote(
                     symbol=ticker,
@@ -140,4 +142,6 @@ class KisUnifiedPriceClient:
                 return float(close_price)
             if best_close == 0.0 and close_price:
                 best_close = float(close_price)
+            if preferred_exchange is not None:
+                return float(best_close)
         return float(best_close)

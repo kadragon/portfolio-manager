@@ -77,6 +77,24 @@ class StockRepository:
             for item in cast(list[dict[str, Any]], response.data)
         ]
 
+    def list_all(self) -> list[Stock]:
+        """List all stocks."""
+        response = self.client.table("stocks").select("*").execute()
+        if not response.data:
+            return []
+
+        return [
+            Stock(
+                id=UUID(str(item["id"])),
+                ticker=str(item["ticker"]),
+                group_id=UUID(str(item["group_id"])),
+                created_at=datetime.fromisoformat(str(item["created_at"])),
+                updated_at=datetime.fromisoformat(str(item["updated_at"])),
+                exchange=str(item["exchange"]) if item.get("exchange") else None,
+            )
+            for item in cast(list[dict[str, Any]], response.data)
+        ]
+
     def delete(self, stock_id: UUID) -> None:
         """Delete a stock by ID.
 

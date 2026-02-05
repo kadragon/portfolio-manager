@@ -128,3 +128,80 @@ External network tests are flaky and require secrets that are not always availab
 
 ### Impact
 Run integration tests explicitly with `-m integration` once credentials are configured.
+
+## 2026-02-05 (Performance Flags)
+
+### Decision/Learning
+Added an `include_change_rates` flag to `PortfolioService.get_portfolio_summary` to allow callers to skip change-rate lookups.
+
+### Reason
+Change-rate lookups can trigger multiple historical price requests per holding, which is expensive for dashboard renders.
+
+### Impact
+Callers can disable change-rate fetching when fast rendering is preferred.
+
+## 2026-02-05 (Dashboard Performance)
+
+### Decision/Learning
+Main dashboard rendering in `cli.main` now skips change-rate lookups by default.
+
+### Reason
+Change-rate lookups require multiple historical price requests per holding and slow down the main loop.
+
+### Impact
+If change-rate data is needed, callers must explicitly enable it.
+
+## 2026-02-05 (Stock Loading)
+
+### Decision/Learning
+PortfolioService now loads all stocks once and groups them in memory to avoid per-group queries.
+
+### Reason
+Fetching stocks per group caused N+1 Supabase calls on each dashboard render.
+
+### Impact
+Provide `StockRepository.list_all()` and use it for portfolio aggregation.
+
+## 2026-02-05 (Holding Aggregation)
+
+### Decision/Learning
+Holding aggregation now relies on Supabase RPC `aggregate_holdings_by_stock`.
+
+### Reason
+Server-side aggregation avoids loading the full holdings table on each dashboard render.
+
+### Impact
+Ensure the RPC exists in Supabase and returns `stock_id` and `quantity`.
+
+## 2026-02-05 (Preferred Exchange Fallback)
+
+### Decision/Learning
+Overseas quote lookup now returns after the preferred exchange succeeds without falling back to other exchanges.
+
+### Reason
+Fallbacks on non-error responses multiply HTTP calls and slow down dashboard pricing.
+
+### Impact
+Preferred exchange is treated as authoritative unless it errors.
+
+## 2026-02-05 (Preferred Exchange Historical Close)
+
+### Decision/Learning
+Historical close lookup now stops after a successful preferred exchange response.
+
+### Reason
+Fallbacks on non-error responses multiply HTTP calls during change-rate calculations.
+
+### Impact
+Preferred exchange is authoritative for historical closes unless it errors.
+
+## 2026-02-05 (Dashboard TTL Cache)
+
+### Decision/Learning
+Main dashboard summary is cached for a short TTL to avoid recomputing on every loop iteration.
+
+### Reason
+Repeated summary builds trigger multiple DB/API calls and slow down menu navigation.
+
+### Impact
+Summary refresh is time-based; set TTL with `_SUMMARY_CACHE_TTL_SECONDS` in `cli.main`.

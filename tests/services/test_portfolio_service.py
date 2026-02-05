@@ -36,27 +36,22 @@ def test_get_holdings_by_group():
     ]
 
     stock_repo = Mock()
-    stock_repo.list_by_group.side_effect = lambda group_id: (
-        [
-            Stock(
-                id=stock1_id,
-                ticker="AAPL",
-                group_id=group1_id,
-                created_at=None,  # type: ignore[arg-type]
-                updated_at=None,  # type: ignore[arg-type]
-            )
-        ]
-        if group_id == group1_id
-        else [
-            Stock(
-                id=stock2_id,
-                ticker="JPM",
-                group_id=group2_id,
-                created_at=None,  # type: ignore[arg-type]
-                updated_at=None,  # type: ignore[arg-type]
-            )
-        ]
-    )
+    stock_repo.list_all.return_value = [
+        Stock(
+            id=stock1_id,
+            ticker="AAPL",
+            group_id=group1_id,
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        ),
+        Stock(
+            id=stock2_id,
+            ticker="JPM",
+            group_id=group2_id,
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        ),
+    ]
 
     holding_repo = Mock()
     holding_repo.get_aggregated_holdings_by_stock.return_value = {
@@ -125,7 +120,7 @@ def test_portfolio_summary_calculates_total_value():
     ]
 
     stock_repo = Mock()
-    stock_repo.list_by_group.return_value = [
+    stock_repo.list_all.return_value = [
         Stock(
             id=stock1_id,
             ticker="AAPL",
@@ -207,7 +202,7 @@ def test_portfolio_summary_sets_value_krw_for_usd_holdings():
     ]
 
     stock_repo = Mock()
-    stock_repo.list_by_group.return_value = [
+    stock_repo.list_all.return_value = [
         Stock(
             id=stock_id,
             ticker="VYM",
@@ -271,7 +266,7 @@ def test_portfolio_summary_strips_etf_suffix_from_name():
     ]
 
     stock_repo = Mock()
-    stock_repo.list_by_group.return_value = [
+    stock_repo.list_all.return_value = [
         Stock(
             id=stock_id,
             ticker="069500",
@@ -333,7 +328,7 @@ def test_portfolio_summary_calculates_return_rate():
         Group(id=group_id, name="G", created_at=now, updated_at=now)
     ]
     stock_repo = Mock()
-    stock_repo.list_by_group.return_value = [
+    stock_repo.list_all.return_value = [
         Stock(
             id=stock_id, ticker="S", group_id=group_id, created_at=now, updated_at=now
         )
@@ -394,7 +389,7 @@ def test_portfolio_summary_includes_change_rates():
     ]
 
     stock_repo = Mock()
-    stock_repo.list_by_group.return_value = [
+    stock_repo.list_all.return_value = [
         Stock(
             id=stock_id,
             ticker="AAPL",
@@ -443,6 +438,123 @@ def test_portfolio_summary_includes_change_rates():
     }
 
 
+def test_portfolio_summary_skips_change_rates_when_disabled():
+    """변동률 비활성화 시 조회를 건너뛰고 None으로 설정한다."""
+    group_id = uuid4()
+    stock_id = uuid4()
+
+    group_repo = Mock()
+    group_repo.list_all.return_value = [
+        Group(
+            id=group_id,
+            name="Tech",
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+
+    stock_repo = Mock()
+    stock_repo.list_all.return_value = [
+        Stock(
+            id=stock_id,
+            ticker="005930",
+            group_id=group_id,
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+
+    holding_repo = Mock()
+    holding_repo.get_aggregated_holdings_by_stock.return_value = {
+        stock_id: Decimal("5"),
+    }
+
+    price_service = Mock()
+    price_service.get_stock_price.return_value = (
+        Decimal("70000"),
+        "KRW",
+        "Samsung",
+        None,
+    )
+    price_service.get_stock_change_rates = Mock()
+
+    portfolio_service = PortfolioService(
+        group_repo,
+        stock_repo,
+        holding_repo,
+        price_service,
+        None,
+    )
+
+    summary = portfolio_service.get_portfolio_summary(include_change_rates=False)
+
+    holding = summary.holdings[0][1]
+    assert holding.change_rates is None
+    price_service.get_stock_change_rates.assert_not_called()
+
+
+def test_portfolio_summary_uses_single_stock_list_call():
+    """전체 stocks 목록을 한 번 조회해 N+1을 피한다."""
+    group1_id = uuid4()
+    group2_id = uuid4()
+    stock1_id = uuid4()
+    stock2_id = uuid4()
+
+    group_repo = Mock()
+    group_repo.list_all.return_value = [
+        Group(
+            id=group1_id,
+            name="Tech",
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        ),
+        Group(
+            id=group2_id,
+            name="Finance",
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        ),
+    ]
+
+    stock_repo = Mock()
+    stock_repo.list_all.return_value = [
+        Stock(
+            id=stock1_id,
+            ticker="AAPL",
+            group_id=group1_id,
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        ),
+        Stock(
+            id=stock2_id,
+            ticker="JPM",
+            group_id=group2_id,
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        ),
+    ]
+    stock_repo.list_by_group = Mock()
+
+    holding_repo = Mock()
+    holding_repo.get_aggregated_holdings_by_stock.return_value = {
+        stock1_id: Decimal("3"),
+        stock2_id: Decimal("4"),
+    }
+
+    price_service = Mock()
+    price_service.get_stock_price.side_effect = [
+        (Decimal("150"), "KRW", "Apple", None),
+        (Decimal("120"), "KRW", "JPM", None),
+    ]
+
+    service = PortfolioService(group_repo, stock_repo, holding_repo, price_service)
+
+    service.get_portfolio_summary(include_change_rates=False)
+
+    stock_repo.list_all.assert_called_once()
+    stock_repo.list_by_group.assert_not_called()
+
+
 def test_portfolio_summary_updates_stock_exchange_cache():
     """해외 주식 조회 성공 시 거래소 캐시를 갱신한다."""
     group_id = uuid4()
@@ -459,7 +571,7 @@ def test_portfolio_summary_updates_stock_exchange_cache():
     ]
 
     stock_repo = Mock()
-    stock_repo.list_by_group.return_value = [
+    stock_repo.list_all.return_value = [
         Stock(
             id=stock_id,
             ticker="SCHD",
