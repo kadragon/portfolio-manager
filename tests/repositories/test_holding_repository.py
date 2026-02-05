@@ -61,33 +61,20 @@ def test_holding_repository_deletes_by_id():
 
 def test_aggregate_holdings_by_stock():
     """모든 계좌에서 동일 주식의 보유 수량을 합산한다."""
-    # Given: 두 계좌에서 같은 주식을 보유
-    account1_id = uuid4()
-    account2_id = uuid4()
+    # Given: 서버 사이드 집계 결과가 반환됨
     stock_id = uuid4()
 
     response = Mock()
     response.data = [
         {
-            "id": str(uuid4()),
-            "account_id": str(account1_id),
             "stock_id": str(stock_id),
-            "quantity": "10",
-            "created_at": "2026-01-03T00:00:00",
-            "updated_at": "2026-01-03T00:00:00",
-        },
-        {
-            "id": str(uuid4()),
-            "account_id": str(account2_id),
-            "stock_id": str(stock_id),
-            "quantity": "5",
-            "created_at": "2026-01-03T00:00:00",
-            "updated_at": "2026-01-03T00:00:00",
+            "quantity": "15",
         },
     ]
 
     client = Mock()
-    client.table.return_value.select.return_value.execute.return_value = response
+    client.rpc.return_value.execute.return_value = response
+    client.table.side_effect = AssertionError("table select should not be used")
 
     repository = HoldingRepository(client)
 
@@ -95,6 +82,7 @@ def test_aggregate_holdings_by_stock():
     aggregated = repository.get_aggregated_holdings_by_stock()
 
     # Then: 해당 주식의 수량이 15로 합산됨
+    client.rpc.assert_called_once_with("aggregate_holdings_by_stock")
     assert stock_id in aggregated
     assert aggregated[stock_id] == Decimal("15")
 

@@ -71,6 +71,72 @@ def test_main_menu_renders_dashboard_and_quits():
     assert render_dashboard.call_args[0][1] is summary
 
 
+def test_main_menu_uses_fast_summary_without_change_rates():
+    """Should skip change-rate lookup for main dashboard render."""
+    summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
+
+    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
+        container = MockContainer.return_value
+        portfolio_service = MagicMock()
+        portfolio_service.get_portfolio_summary.return_value = summary
+        container.get_portfolio_service.return_value = portfolio_service
+        container.price_service = object()
+        container.setup = MagicMock()
+
+        with patch.object(main_app, "render_dashboard"):
+            with patch.object(main_app, "choose_main_menu", return_value="quit"):
+                main_app.main()
+
+    portfolio_service.get_portfolio_summary.assert_called_once_with(
+        include_change_rates=False
+    )
+
+
+def test_main_menu_uses_summary_cache_within_ttl():
+    """Should reuse cached summary within TTL window."""
+    summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
+
+    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
+        container = MockContainer.return_value
+        portfolio_service = MagicMock()
+        portfolio_service.get_portfolio_summary.return_value = summary
+        container.get_portfolio_service.return_value = portfolio_service
+        container.price_service = object()
+        container.setup = MagicMock()
+
+        with patch.object(main_app, "render_dashboard"):
+            with patch.object(
+                main_app, "choose_main_menu", side_effect=["unknown", "quit"]
+            ):
+                with patch.object(main_app.time, "time", return_value=1000.0):
+                    main_app.main()
+
+    assert portfolio_service.get_portfolio_summary.call_count == 1
+
+
+def test_main_menu_invalidates_summary_cache_after_group_menu():
+    """Should invalidate cached summary after group menu mutations."""
+    summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
+
+    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
+        container = MockContainer.return_value
+        portfolio_service = MagicMock()
+        portfolio_service.get_portfolio_summary.return_value = summary
+        container.get_portfolio_service.return_value = portfolio_service
+        container.price_service = object()
+        container.setup = MagicMock()
+
+        with patch.object(main_app, "render_dashboard"):
+            with patch.object(
+                main_app, "choose_main_menu", side_effect=["groups", "quit"]
+            ):
+                with patch.object(main_app, "run_group_menu"):
+                    with patch.object(main_app.time, "time", return_value=1000.0):
+                        main_app.main()
+
+    assert portfolio_service.get_portfolio_summary.call_count == 2
+
+
 def test_render_menu_options_prints_options_line():
     """Should print a standardized options line."""
     console = Console(record=True, width=80)

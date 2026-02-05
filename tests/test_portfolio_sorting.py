@@ -37,7 +37,7 @@ def test_portfolio_summary_holdings_sorted_by_value_krw_descending():
     group_repo.list_all.return_value = [group1]
 
     stock_repo = MagicMock()
-    stock_repo.list_by_group.return_value = [stock1, stock2, stock3]
+    stock_repo.list_all.return_value = [stock1, stock2, stock3]
 
     holding_repo = MagicMock()
     holding_repo.get_aggregated_holdings_by_stock.return_value = {

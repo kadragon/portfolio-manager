@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 from typing import Iterable
 
 from dotenv import load_dotenv
@@ -29,7 +30,10 @@ from portfolio_manager.cli.accounts import run_account_menu
 from portfolio_manager.cli.stocks import run_stock_menu
 from portfolio_manager.core.container import ServiceContainer
 from portfolio_manager.models import Group
+from portfolio_manager.services.portfolio_service import PortfolioSummary
 from portfolio_manager.services.rebalance_service import RebalanceService
+
+_SUMMARY_CACHE_TTL_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -143,6 +147,14 @@ def main() -> None:
     container = ServiceContainer(console)
     container.setup()
 
+    summary_cache: PortfolioSummary | None = None
+    summary_cached_at: float | None = None
+
+    def invalidate_summary_cache() -> None:
+        nonlocal summary_cache, summary_cached_at
+        summary_cache = None
+        summary_cached_at = None
+
     try:
         while True:
             render_main_menu(console)
@@ -153,7 +165,19 @@ def main() -> None:
             # Show dashboard with or without prices
             if container.price_service:
                 try:
-                    summary = portfolio_service.get_portfolio_summary()
+                    now = time.time()
+                    if (
+                        summary_cache is not None
+                        and summary_cached_at is not None
+                        and now - summary_cached_at < _SUMMARY_CACHE_TTL_SECONDS
+                    ):
+                        summary = summary_cache
+                    else:
+                        summary = portfolio_service.get_portfolio_summary(
+                            include_change_rates=False
+                        )
+                        summary_cache = summary
+                        summary_cached_at = now
                     render_dashboard(console, summary)
                 except Exception as e:
                     console.print(
@@ -168,6 +192,7 @@ def main() -> None:
             action = choose_main_menu()
             if action == "groups":
                 run_group_menu(console, container)
+                invalidate_summary_cache()
                 continue
             if action == "accounts":
                 run_account_menu(
@@ -178,15 +203,18 @@ def main() -> None:
                     stock_repository=container.stock_repository,
                     group_repository=container.group_repository,
                 )
+                invalidate_summary_cache()
                 continue
             if action == "deposits":
                 run_deposit_menu(
                     console,
                     container.deposit_repository,
                 )
+                invalidate_summary_cache()
                 continue
             if action == "rebalance":
                 run_rebalance_menu(console, container)
+                invalidate_summary_cache()
                 continue
             if action == "quit":
                 return

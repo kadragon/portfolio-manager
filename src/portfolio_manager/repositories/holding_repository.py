@@ -97,7 +97,7 @@ class HoldingRepository:
 
     def get_aggregated_holdings_by_stock(self) -> dict[UUID, Decimal]:
         """Get aggregated holdings by stock across all accounts."""
-        response = self.client.table("holdings").select("*").execute()
+        response = self.client.rpc("aggregate_holdings_by_stock").execute()
         if not response.data:
             return {}
 

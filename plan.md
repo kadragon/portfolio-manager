@@ -164,3 +164,14 @@
 ### Next Action ("go" 시 시작)
 1. **CLI 모듈 파일명 변경 및 import 수정**
 2. **Services 폴더 구조화**
+
+---
+
+## 4. Performance Regression Fixes (2026-02-05)
+- [x] PortfolioService에서 변동률 조회를 선택적으로 비활성화할 수 있다 (include_change_rates 플래그 추가)
+- [x] 메인 대시보드 렌더링은 기본적으로 변동률 조회를 건너뛴다
+- [x] PortfolioService가 전체 stocks 목록을 1회 조회해 N+1을 제거한다
+- [x] HoldingRepository가 서버 사이드 집계를 사용해 보유 수량을 합산한다
+- [x] KisUnifiedPriceClient 해외 현재가 조회는 선호 거래소 실패 시에만 fallback 한다
+- [x] KisUnifiedPriceClient 해외 과거 종가는 선호 거래소 실패 시에만 fallback 한다
+- [x] 메인 루프 대시보드 렌더링에 TTL 캐시를 적용한다

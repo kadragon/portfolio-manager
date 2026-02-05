@@ -456,20 +456,38 @@ def test_unified_price_uses_preferred_exchange_first(
     mock_domestic_client, mock_overseas_client
 ):
     """저장된 거래소가 있으면 해당 거래소를 먼저 조회한다."""
-    mock_overseas_client.fetch_current_price.side_effect = [
-        PriceQuote(
-            symbol="SCHD",
-            name="Schwab US Dividend Equity ETF",
-            price=70.0,
-            market="US",
-            currency="USD",
-        )
-    ]
+    mock_overseas_client.fetch_current_price.return_value = PriceQuote(
+        symbol="SCHD",
+        name="",
+        price=70.0,
+        market="US",
+        currency="USD",
+    )
     unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
 
     quote = unified.get_price("SCHD", preferred_exchange="NYS")
 
-    assert quote.name == "Schwab US Dividend Equity ETF"
+    assert quote.price == 70.0
+    mock_overseas_client.fetch_current_price.assert_called_once_with("NYS", "SCHD")
+
+
+def test_unified_price_does_not_fallback_when_preferred_exchange_succeeds(
+    mock_domestic_client, mock_overseas_client
+):
+    """선호 거래소가 가격을 반환하면 추가 거래소는 조회하지 않는다."""
+    mock_overseas_client.fetch_current_price.return_value = PriceQuote(
+        symbol="SCHD",
+        name="",
+        price=70.0,
+        market="US",
+        currency="USD",
+    )
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    quote = unified.get_price("SCHD", preferred_exchange="NYS")
+
+    assert quote.price == 70.0
+    assert mock_overseas_client.fetch_current_price.call_count == 1
     mock_overseas_client.fetch_current_price.assert_called_once_with("NYS", "SCHD")
 
 
@@ -485,6 +503,42 @@ def test_unified_historical_close_uses_preferred_exchange_first(
     )
 
     assert close_price == 150.0
+    mock_overseas_client.fetch_historical_close.assert_called_once_with(
+        excd="NYS", symb="AAPL", target_date=date(2024, 1, 15)
+    )
+
+
+def test_unified_historical_close_does_not_fallback_when_preferred_exchange_succeeds(
+    mock_domestic_client, mock_overseas_client
+):
+    """선호 거래소가 과거 종가를 반환하면 추가 거래소는 조회하지 않는다."""
+    mock_overseas_client.fetch_historical_close.return_value = 150.0
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    close_price = unified.get_historical_close(
+        "AAPL", target_date=date(2024, 1, 15), preferred_exchange="NYS"
+    )
+
+    assert close_price == 150.0
+    assert mock_overseas_client.fetch_historical_close.call_count == 1
+    mock_overseas_client.fetch_historical_close.assert_called_once_with(
+        excd="NYS", symb="AAPL", target_date=date(2024, 1, 15)
+    )
+
+
+def test_unified_historical_close_does_not_fallback_when_preferred_returns_zero(
+    mock_domestic_client, mock_overseas_client
+):
+    """선호 거래소가 0을 반환해도 추가 거래소는 조회하지 않는다."""
+    mock_overseas_client.fetch_historical_close.return_value = 0.0
+    unified = KisUnifiedPriceClient(mock_domestic_client, mock_overseas_client)
+
+    close_price = unified.get_historical_close(
+        "AAPL", target_date=date(2024, 1, 15), preferred_exchange="NYS"
+    )
+
+    assert close_price == 0.0
+    assert mock_overseas_client.fetch_historical_close.call_count == 1
     mock_overseas_client.fetch_historical_close.assert_called_once_with(
         excd="NYS", symb="AAPL", target_date=date(2024, 1, 15)
     )
