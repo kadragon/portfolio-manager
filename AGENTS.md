@@ -205,3 +205,14 @@ Repeated summary builds trigger multiple DB/API calls and slow down menu navigat
 
 ### Impact
 Summary refresh is time-based; set TTL with `_SUMMARY_CACHE_TTL_SECONDS` in `cli.main`.
+
+## 2026-02-06 (Edit Prompt Consistency)
+
+### Decision/Learning
+All update flows now treat blank/whitespace input as "keep current value", and deposit note uses `/clear` for explicit deletion.
+
+### Reason
+Mixed edit behaviors caused accidental empty updates and inconsistent UX across menus.
+
+### Impact
+Keep Enter-as-retain as the default rule for future edit prompts; use explicit clear tokens for nullable text fields.

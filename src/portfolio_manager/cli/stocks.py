@@ -51,11 +51,14 @@ def update_stock_flow(
     prompt: Callable[[], str | None] | None = None,
 ) -> None:
     """Update a stock ticker via prompt and render confirmation."""
-    prompt_func = prompt or (lambda: cancellable_prompt("New stock ticker:"))
-    ticker = prompt_func()
-    if ticker is None:
+    prompt_func = prompt or (
+        lambda: cancellable_prompt("New stock ticker:", default=stock.ticker)
+    )
+    ticker_input = prompt_func()
+    if ticker_input is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
+    ticker = stock.ticker if ticker_input.strip() == "" else ticker_input
     updated = repository.update(stock.id, ticker)
     console.print(f"Updated stock: {updated.ticker}")
 

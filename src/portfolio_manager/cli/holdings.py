@@ -1,6 +1,6 @@
 """Rich-based holdings list rendering."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Callable
 from uuid import UUID
 
@@ -119,14 +119,30 @@ def update_holding_flow(
     repository,
     account: Account,
     holding: Holding,
-    prompt_quantity: Callable[[], Decimal | None] | None = None,
+    prompt_quantity: Callable[[], Decimal | str | None] | None = None,
 ) -> None:
     """Update a holding quantity via prompt and render confirmation."""
-    quantity_func = prompt_quantity or (lambda: prompt_decimal("New quantity:"))
-    quantity = quantity_func()
-    if quantity is None:
+    quantity_func = prompt_quantity or (
+        lambda: cancellable_prompt("New quantity:", default=str(holding.quantity))
+    )
+    quantity_input = quantity_func()
+    if quantity_input is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
+    if isinstance(quantity_input, Decimal):
+        quantity = quantity_input
+    else:
+        quantity_text = quantity_input.strip()
+        if quantity_text == "":
+            quantity = holding.quantity
+        else:
+            try:
+                quantity = Decimal(quantity_text)
+            except InvalidOperation:
+                console.print(
+                    "[yellow]Invalid quantity, keeping current value[/yellow]"
+                )
+                quantity = holding.quantity
     updated = repository.update(holding.id, quantity=quantity)
     console.print(f"Updated holding: {updated.quantity}")
 

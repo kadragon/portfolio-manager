@@ -1,6 +1,6 @@
 """Rich-based account list rendering."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Callable
 
 from rich.console import Console
@@ -17,6 +17,28 @@ from portfolio_manager.cli.prompt_select import (
     choose_account_menu,
     prompt_decimal,
 )
+
+
+def _resolve_decimal_input(
+    raw_value: Decimal | str,
+    current_value: Decimal,
+    *,
+    on_invalid: Callable[[], None] | None = None,
+) -> Decimal:
+    """Resolve prompt input into Decimal, retaining current value for blank/invalid."""
+    if isinstance(raw_value, Decimal):
+        return raw_value
+
+    value_text = raw_value.strip()
+    if value_text == "":
+        return current_value
+
+    try:
+        return Decimal(value_text)
+    except InvalidOperation:
+        if on_invalid is not None:
+            on_invalid()
+        return current_value
 
 
 def render_account_list(console: Console, accounts: list[Account]) -> None:
@@ -60,19 +82,36 @@ def update_account_flow(
     repository,
     account: Account,
     prompt_name: Callable[[], str | None] | None = None,
-    prompt_cash: Callable[[], Decimal | None] | None = None,
+    prompt_cash: Callable[[], Decimal | str | None] | None = None,
 ) -> None:
     """Update an account via prompts and render confirmation."""
-    name_func = prompt_name or (lambda: cancellable_prompt("New account name:"))
-    cash_func = prompt_cash or (lambda: prompt_decimal("New cash balance:"))
-    name = name_func()
-    if name is None:
+    name_func = prompt_name or (
+        lambda: cancellable_prompt("New account name:", default=account.name)
+    )
+    cash_func = prompt_cash or (
+        lambda: cancellable_prompt(
+            "New cash balance:", default=str(account.cash_balance)
+        )
+    )
+    name_input = name_func()
+    if name_input is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
-    cash = cash_func()
-    if cash is None:
+    cash_input = cash_func()
+    if cash_input is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
+
+    name = account.name if name_input.strip() == "" else name_input
+
+    cash = _resolve_decimal_input(
+        cash_input,
+        account.cash_balance,
+        on_invalid=lambda: console.print(
+            "[yellow]Invalid cash balance, keeping current value[/yellow]"
+        ),
+    )
+
     updated = repository.update(
         account.id,
         name=name,
@@ -101,7 +140,7 @@ def delete_account_flow(
 def quick_update_cash_flow(
     console: Console,
     repository,
-    prompt_cash: Callable[[str], Decimal | None] | None = None,
+    prompt_cash: Callable[[str], Decimal | str | None] | None = None,
 ) -> None:
     """Update cash balance for all accounts in sequence."""
     accounts = repository.list_all()
@@ -109,15 +148,25 @@ def quick_update_cash_flow(
         console.print("No accounts to update")
         return
 
-    cash_func = prompt_cash or (
-        lambda name: prompt_decimal(f"Cash balance for {name}:")
-    )
+    def _default_cash(name: str, current: Decimal) -> str | None:
+        return cancellable_prompt(f"Cash balance for {name}:", default=str(current))
 
     for account in accounts:
-        new_balance = cash_func(account.name)
-        if new_balance is None:
+        raw_balance = (
+            prompt_cash(account.name)
+            if prompt_cash is not None
+            else _default_cash(account.name, account.cash_balance)
+        )
+        if raw_balance is None:
             console.print("[yellow]Cancelled[/yellow]")
             return
+        new_balance = _resolve_decimal_input(
+            raw_balance,
+            account.cash_balance,
+            on_invalid=lambda: console.print(
+                f"[yellow]Invalid cash balance for {account.name}, keeping current value[/yellow]"
+            ),
+        )
         repository.update(account.id, name=account.name, cash_balance=new_balance)
         console.print(f"Updated {account.name}: {new_balance}")
 

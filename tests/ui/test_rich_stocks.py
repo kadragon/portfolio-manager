@@ -11,6 +11,7 @@ from portfolio_manager.cli.stocks import (
     delete_stock_flow,
     render_stocks_for_group,
     run_stock_menu,
+    update_stock_flow,
 )
 from portfolio_manager.cli.prompt_select import (
     choose_stock_from_list,
@@ -349,3 +350,21 @@ def test_add_stock_flow_cancelled_does_not_create():
     repo.create.assert_not_called()
     output = console.export_text()
     assert "Cancelled" in output
+
+
+def test_update_stock_flow_blank_ticker_keeps_existing_value():
+    """Blank ticker input should keep the current ticker."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    stock = Stock(
+        id=uuid4(),
+        ticker="AAPL",
+        group_id=uuid4(),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    repo.update.return_value = stock
+
+    update_stock_flow(console, repo, stock, prompt=lambda: "   ")
+
+    repo.update.assert_called_once_with(stock.id, "AAPL")

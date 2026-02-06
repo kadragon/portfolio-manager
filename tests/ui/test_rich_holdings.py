@@ -12,6 +12,7 @@ from portfolio_manager.cli.holdings import (
     delete_holding_flow,
     render_holdings_for_account,
     run_holdings_menu,
+    update_holding_flow,
 )
 from portfolio_manager.cli.prompt_select import (
     choose_holding_from_list,
@@ -527,3 +528,69 @@ def test_add_holding_flow_cancelled_does_not_create():
     repo.create.assert_not_called()
     output = console.export_text()
     assert "Cancelled" in output
+
+
+def test_update_holding_flow_blank_quantity_keeps_existing_value():
+    """Blank quantity input should keep the current quantity."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    account = Account(
+        id=uuid4(),
+        name="Brokerage",
+        cash_balance=Decimal("1000.25"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    holding = Holding(
+        id=uuid4(),
+        account_id=account.id,
+        stock_id=uuid4(),
+        quantity=Decimal("2.0"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    repo.update.return_value = holding
+
+    update_holding_flow(
+        console,
+        repo,
+        account,
+        holding,
+        prompt_quantity=lambda: "   ",
+    )
+
+    repo.update.assert_called_once_with(holding.id, quantity=Decimal("2.0"))
+
+
+def test_update_holding_flow_invalid_quantity_keeps_existing_value():
+    """Invalid quantity input should keep the current quantity."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    account = Account(
+        id=uuid4(),
+        name="Brokerage",
+        cash_balance=Decimal("1000.25"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    holding = Holding(
+        id=uuid4(),
+        account_id=account.id,
+        stock_id=uuid4(),
+        quantity=Decimal("2.0"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    repo.update.return_value = holding
+
+    update_holding_flow(
+        console,
+        repo,
+        account,
+        holding,
+        prompt_quantity=lambda: "oops",
+    )
+
+    repo.update.assert_called_once_with(holding.id, quantity=Decimal("2.0"))
+    output = console.export_text()
+    assert "Invalid quantity" in output

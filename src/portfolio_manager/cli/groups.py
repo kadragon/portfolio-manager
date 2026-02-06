@@ -61,25 +61,30 @@ def update_group_flow(
     current_target = group.target_percentage
 
     if prompt:
-        name = prompt()
-        target_str = prompt()
+        raw_name = prompt()
+        raw_target = prompt()
     else:
-        name = cancellable_prompt("New group name:", default=group.name)
-        target_str = cancellable_prompt(
+        raw_name = cancellable_prompt("New group name:", default=group.name)
+        raw_target = cancellable_prompt(
             "New target percentage:", default=str(current_target)
         )
-    if name is None:
+    if raw_name is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
-    if target_str is None:
+    if raw_target is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
 
-    try:
-        target_percentage = float(target_str)
-    except ValueError:
-        console.print("[yellow]Invalid percentage, keeping current value[/yellow]")
+    name = group.name if raw_name.strip() == "" else raw_name
+    target_str = raw_target.strip()
+    if target_str == "":
         target_percentage = current_target
+    else:
+        try:
+            target_percentage = float(target_str)
+        except ValueError:
+            console.print("[yellow]Invalid percentage, keeping current value[/yellow]")
+            target_percentage = current_target
 
     updated = repository.update(
         group.id, name=name, target_percentage=target_percentage
