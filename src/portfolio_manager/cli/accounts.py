@@ -60,19 +60,43 @@ def update_account_flow(
     repository,
     account: Account,
     prompt_name: Callable[[], str | None] | None = None,
-    prompt_cash: Callable[[], Decimal | None] | None = None,
+    prompt_cash: Callable[[], Decimal | str | None] | None = None,
 ) -> None:
     """Update an account via prompts and render confirmation."""
-    name_func = prompt_name or (lambda: cancellable_prompt("New account name:"))
-    cash_func = prompt_cash or (lambda: prompt_decimal("New cash balance:"))
-    name = name_func()
-    if name is None:
+    name_func = prompt_name or (
+        lambda: cancellable_prompt("New account name:", default=account.name)
+    )
+    cash_func = prompt_cash or (
+        lambda: cancellable_prompt(
+            "New cash balance:", default=str(account.cash_balance)
+        )
+    )
+    name_input = name_func()
+    if name_input is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
-    cash = cash_func()
-    if cash is None:
+    cash_input = cash_func()
+    if cash_input is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
+
+    name = account.name if name_input.strip() == "" else name_input
+
+    if isinstance(cash_input, Decimal):
+        cash = cash_input
+    else:
+        cash_text = cash_input.strip()
+        if cash_text == "":
+            cash = account.cash_balance
+        else:
+            try:
+                cash = Decimal(cash_text)
+            except Exception:
+                console.print(
+                    "[yellow]Invalid cash balance, keeping current value[/yellow]"
+                )
+                cash = account.cash_balance
+
     updated = repository.update(
         account.id,
         name=name,
@@ -101,7 +125,7 @@ def delete_account_flow(
 def quick_update_cash_flow(
     console: Console,
     repository,
-    prompt_cash: Callable[[str], Decimal | None] | None = None,
+    prompt_cash: Callable[[str], Decimal | str | None] | None = None,
 ) -> None:
     """Update cash balance for all accounts in sequence."""
     accounts = repository.list_all()
@@ -109,15 +133,32 @@ def quick_update_cash_flow(
         console.print("No accounts to update")
         return
 
-    cash_func = prompt_cash or (
-        lambda name: prompt_decimal(f"Cash balance for {name}:")
-    )
+    def _default_cash(name: str, current: Decimal) -> str | None:
+        return cancellable_prompt(f"Cash balance for {name}:", default=str(current))
 
     for account in accounts:
-        new_balance = cash_func(account.name)
-        if new_balance is None:
+        raw_balance = (
+            prompt_cash(account.name)
+            if prompt_cash is not None
+            else _default_cash(account.name, account.cash_balance)
+        )
+        if raw_balance is None:
             console.print("[yellow]Cancelled[/yellow]")
             return
+        if isinstance(raw_balance, Decimal):
+            new_balance = raw_balance
+        else:
+            balance_text = raw_balance.strip()
+            if balance_text == "":
+                new_balance = account.cash_balance
+            else:
+                try:
+                    new_balance = Decimal(balance_text)
+                except Exception:
+                    console.print(
+                        f"[yellow]Invalid cash balance for {account.name}, keeping current value[/yellow]"
+                    )
+                    new_balance = account.cash_balance
         repository.update(account.id, name=account.name, cash_balance=new_balance)
         console.print(f"Updated {account.name}: {new_balance}")
 

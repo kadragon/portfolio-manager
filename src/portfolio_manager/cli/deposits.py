@@ -11,6 +11,8 @@ from rich.table import Table
 from portfolio_manager.models import Deposit
 from portfolio_manager.cli.prompt_select import cancellable_prompt, choose_deposit_menu
 
+_NOTE_UNCHANGED = object()
+
 
 def get_date_input(
     prompt_text: str = "Date (YYYY-MM-DD)",
@@ -120,25 +122,45 @@ def update_deposit_flow(
     amount_func = prompt_amount or (
         lambda: cancellable_prompt("New Amount:", default=str(deposit.amount))
     )
-    amount_str = amount_func()
-    if amount_str is None:
+    amount_input = amount_func()
+    if amount_input is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
-    try:
-        amount = Decimal(amount_str)
-    except Exception:
-        console.print("[red]Invalid amount, keeping original[/red]")
-        amount = deposit.amount
+
+    if isinstance(amount_input, Decimal):
+        amount = amount_input
+    else:
+        amount_text = amount_input.strip()
+        if amount_text == "":
+            amount = deposit.amount
+        else:
+            try:
+                amount = Decimal(amount_text)
+            except Exception:
+                console.print("[red]Invalid amount, keeping original[/red]")
+                amount = deposit.amount
 
     note_func = prompt_note or (
-        lambda: cancellable_prompt("New Note:", default=deposit.note or "")
+        lambda: cancellable_prompt(
+            "New Note (Enter=keep, /clear=delete):", default=deposit.note or ""
+        )
     )
-    note = note_func()
-    if note is None:
+    note_input = note_func()
+    if note_input is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
 
-    deposit_repository.update(deposit.id, amount=amount, note=note if note else None)
+    note_to_save: str | None | object = _NOTE_UNCHANGED
+    note_text = note_input.strip()
+    if note_text.lower() == "/clear":
+        note_to_save = None
+    elif note_text != "":
+        note_to_save = note_text
+
+    if note_to_save is _NOTE_UNCHANGED:
+        deposit_repository.update(deposit.id, amount=amount)
+    else:
+        deposit_repository.update(deposit.id, amount=amount, note=note_to_save)
     console.print("[green]Updated deposit[/green]")
 
 

@@ -95,6 +95,60 @@ def test_deposit_repository_updates_deposit():
     assert deposit.note == "Updated funding"
 
 
+def test_deposit_repository_updates_note_to_null_when_explicit_none():
+    """Should include note=None when caller explicitly clears the note."""
+    deposit_id = uuid4()
+
+    response = Mock()
+    response.data = [
+        {
+            "id": str(deposit_id),
+            "amount": "2000000",
+            "deposit_date": "2026-01-04",
+            "note": None,
+            "created_at": "2026-01-04T00:00:00",
+            "updated_at": "2026-01-04T00:00:00",
+        }
+    ]
+
+    client = Mock()
+    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
+
+    repository = DepositRepository(client)
+
+    repository.update(deposit_id, amount=Decimal("2000000"), note=None)
+
+    client.table.return_value.update.assert_called_once_with(
+        {"amount": "2000000", "note": None}
+    )
+
+
+def test_deposit_repository_omits_note_when_not_provided():
+    """Should not include note in update payload when note is unspecified."""
+    deposit_id = uuid4()
+
+    response = Mock()
+    response.data = [
+        {
+            "id": str(deposit_id),
+            "amount": "2000000",
+            "deposit_date": "2026-01-04",
+            "note": "Existing",
+            "created_at": "2026-01-04T00:00:00",
+            "updated_at": "2026-01-04T00:00:00",
+        }
+    ]
+
+    client = Mock()
+    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
+
+    repository = DepositRepository(client)
+
+    repository.update(deposit_id, amount=Decimal("2000000"))
+
+    client.table.return_value.update.assert_called_once_with({"amount": "2000000"})
+
+
 def test_deposit_repository_lists_all():
     """Should list all deposits."""
 

@@ -8,6 +8,13 @@ from uuid import UUID
 from portfolio_manager.models.deposit import Deposit
 
 
+class _UnsetNote:
+    pass
+
+
+_UNSET_NOTE = _UnsetNote()
+
+
 class DepositRepository:
     """Repository for managing deposits."""
 
@@ -38,7 +45,7 @@ class DepositRepository:
         deposit_id: UUID,
         amount: Decimal | None = None,
         deposit_date: date | None = None,
-        note: Optional[str] = None,
+        note: Optional[str] | _UnsetNote = _UNSET_NOTE,
     ) -> Deposit:
         """Update an existing deposit."""
         data = {}
@@ -46,7 +53,7 @@ class DepositRepository:
             data["amount"] = str(amount)
         if deposit_date is not None:
             data["deposit_date"] = deposit_date.isoformat()
-        if note is not None:
+        if not isinstance(note, _UnsetNote):
             data["note"] = note
 
         response = (

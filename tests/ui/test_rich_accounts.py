@@ -10,8 +10,10 @@ from rich.console import Console
 from portfolio_manager.cli.accounts import (
     add_account_flow,
     delete_account_flow,
+    quick_update_cash_flow,
     render_account_list,
     run_account_menu,
+    update_account_flow,
 )
 from portfolio_manager.cli.prompt_select import (
     choose_account_from_list,
@@ -200,3 +202,95 @@ def test_add_account_flow_cancelled_does_not_create():
     repo.create.assert_not_called()
     output = console.export_text()
     assert "Cancelled" in output
+
+
+def test_update_account_flow_blank_inputs_keep_existing_values():
+    """Blank account name/cash inputs should keep existing values."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    account = Account(
+        id=uuid4(),
+        name="Main",
+        cash_balance=Decimal("1500.50"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    repo.update.return_value = account
+
+    update_account_flow(
+        console,
+        repo,
+        account,
+        prompt_name=lambda: "   ",
+        prompt_cash=lambda: "",
+    )
+
+    repo.update.assert_called_once_with(
+        account.id,
+        name="Main",
+        cash_balance=Decimal("1500.50"),
+    )
+
+
+def test_update_account_flow_invalid_cash_keeps_existing_value():
+    """Invalid cash input should keep existing cash balance."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    account = Account(
+        id=uuid4(),
+        name="Main",
+        cash_balance=Decimal("1500.50"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    repo.update.return_value = account
+
+    update_account_flow(
+        console,
+        repo,
+        account,
+        prompt_name=lambda: "Renamed",
+        prompt_cash=lambda: "abc",
+    )
+
+    repo.update.assert_called_once_with(
+        account.id,
+        name="Renamed",
+        cash_balance=Decimal("1500.50"),
+    )
+    output = console.export_text()
+    assert "Invalid cash balance" in output
+
+
+def test_quick_update_cash_flow_blank_input_keeps_existing_balance():
+    """Blank quick-update input should keep each account's current balance."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    account_a = Account(
+        id=uuid4(),
+        name="Main",
+        cash_balance=Decimal("1000"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    account_b = Account(
+        id=uuid4(),
+        name="Sub",
+        cash_balance=Decimal("2000"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    repo.list_all.return_value = [account_a, account_b]
+
+    prompt_values = iter([" ", "3000"])
+
+    def prompt_cash(_name: str):
+        return next(prompt_values)
+
+    quick_update_cash_flow(console, repo, prompt_cash=prompt_cash)
+
+    calls = repo.update.call_args_list
+    assert calls[0][1]["name"] == "Main"
+    assert calls[0][1]["cash_balance"] == Decimal("1000")
+    assert calls[1][1]["name"] == "Sub"
+    assert calls[1][1]["cash_balance"] == Decimal("3000")

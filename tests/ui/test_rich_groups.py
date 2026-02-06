@@ -258,6 +258,62 @@ def test_update_group_flow_updates_group_and_reports_changes():
     assert "20.0%" in output
 
 
+def test_update_group_flow_blank_name_keeps_existing_value():
+    """Blank group name input should keep the current group name."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    group = Group(
+        id=uuid4(),
+        name="국내상장",
+        target_percentage=10.0,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    repo.update.return_value = Group(
+        id=group.id,
+        name=group.name,
+        target_percentage=20.0,
+        created_at=group.created_at,
+        updated_at=group.updated_at,
+    )
+
+    prompt_mock = MagicMock(side_effect=["   ", "20.0"])
+
+    update_group_flow(console, repo, group, prompt=prompt_mock)
+
+    repo.update.assert_called_once_with(
+        group.id, name="국내상장", target_percentage=20.0
+    )
+
+
+def test_update_group_flow_blank_target_keeps_existing_value():
+    """Blank target input should keep the current target percentage."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    group = Group(
+        id=uuid4(),
+        name="국내상장",
+        target_percentage=10.0,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    repo.update.return_value = Group(
+        id=group.id,
+        name="국내주식",
+        target_percentage=10.0,
+        created_at=group.created_at,
+        updated_at=group.updated_at,
+    )
+
+    prompt_mock = MagicMock(side_effect=["국내주식", "  "])
+
+    update_group_flow(console, repo, group, prompt=prompt_mock)
+
+    repo.update.assert_called_once_with(
+        group.id, name="국내주식", target_percentage=10.0
+    )
+
+
 def test_add_group_flow_cancelled_does_not_create():
     """Should not create group when user cancels input."""
     console = Console(record=True, width=80)
