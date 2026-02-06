@@ -202,6 +202,9 @@ def main() -> None:
                     prompt=lambda: Prompt.ask("Accounts menu"),
                     stock_repository=container.stock_repository,
                     group_repository=container.group_repository,
+                    kis_sync_service=container.kis_account_sync_service,
+                    kis_cano=container.kis_cano,
+                    kis_acnt_prdt_cd=container.kis_acnt_prdt_cd,
                 )
                 invalidate_summary_cache()
                 continue

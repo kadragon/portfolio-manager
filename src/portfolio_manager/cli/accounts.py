@@ -19,6 +19,33 @@ from portfolio_manager.cli.prompt_select import (
 )
 
 
+def sync_kis_account_flow(
+    console: Console,
+    account: Account,
+    kis_sync_service,
+    *,
+    cano: str,
+    acnt_prdt_cd: str,
+) -> None:
+    """Sync one account from KIS API and render status."""
+    try:
+        result = kis_sync_service.sync_account(
+            account=account,
+            cano=cano,
+            acnt_prdt_cd=acnt_prdt_cd,
+        )
+    except Exception as exc:
+        console.print(f"[red]KIS sync failed: {exc}[/red]")
+        return
+
+    console.print(
+        f"KIS synced {account.name}: "
+        f"cash={result.cash_balance}, "
+        f"holdings={result.holding_count}, "
+        f"new_stocks={result.created_stock_count}"
+    )
+
+
 def _resolve_decimal_input(
     raw_value: Decimal | str,
     current_value: Decimal,
@@ -189,6 +216,9 @@ def run_account_menu(
     holding_chooser: Callable | None = None,
     group_repository=None,
     group_chooser: Callable | None = None,
+    kis_sync_service=None,
+    kis_cano: str | None = None,
+    kis_acnt_prdt_cd: str | None = None,
 ) -> None:
     """Run the account management menu loop."""
     selected_account: Account | None = None
@@ -213,6 +243,25 @@ def run_account_menu(
             return
         if action == "quick":
             quick_update_cash_flow(console, repository)
+            continue
+        if action == "sync":
+            if kis_sync_service is None or not kis_cano or not kis_acnt_prdt_cd:
+                console.print(
+                    "[yellow]KIS sync is not configured. "
+                    "Set KIS_CANO and KIS_ACNT_PRDT_CD in .env.[/yellow]"
+                )
+                continue
+            account_id = choose_account_from_list(accounts)
+            if account_id is not None:
+                account = _select_account_by_id(accounts, account_id)
+                if account is not None:
+                    sync_kis_account_flow(
+                        console,
+                        account,
+                        kis_sync_service,
+                        cano=kis_cano,
+                        acnt_prdt_cd=kis_acnt_prdt_cd,
+                    )
             continue
         if action == "add":
             add_account_flow(console, repository)

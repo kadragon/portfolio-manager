@@ -216,3 +216,14 @@ Mixed edit behaviors caused accidental empty updates and inconsistent UX across 
 
 ### Impact
 Keep Enter-as-retain as the default rule for future edit prompts; use explicit clear tokens for nullable text fields.
+
+## 2026-02-06 (KIS Account Sync)
+
+### Decision/Learning
+`KisDomesticBalanceClient`와 `KisAccountSyncService`를 추가해 KIS 계좌 예수금/보유수량을 내부 `accounts`/`holdings`로 동기화한다.
+
+### Reason
+수동 예수금/보유수량 입력은 실제 계좌 상태와 빠르게 어긋나므로, KIS 잔고 API를 단일 소스로 반영할 필요가 있다.
+
+### Impact
+`.env`에 `KIS_CANO`/`KIS_ACNT_PRDT_CD`(또는 `KIS_ACCOUNT_NO`)를 설정하면 계좌 메뉴의 `Sync KIS account`로 동기화 가능하며, 신규 티커는 `KIS 자동동기화` 그룹에 자동 생성된다.

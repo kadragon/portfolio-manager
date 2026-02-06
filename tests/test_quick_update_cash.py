@@ -89,4 +89,5 @@ class TestAccountMenuHasQuickOption:
         result = choose_account_menu(chooser=mock_chooser)
 
         assert "quick" in selected
+        assert "sync" in selected
         assert result == "quick"

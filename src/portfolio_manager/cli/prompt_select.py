@@ -111,6 +111,7 @@ def choose_account_menu(chooser: Callable | None = None) -> str | None:
 
     options: OptionList = [
         ("quick", "Quick update cash"),
+        ("sync", "Sync KIS account"),
         ("add", "Add account"),
         ("edit", "Edit account"),
         ("delete", "Delete account"),
