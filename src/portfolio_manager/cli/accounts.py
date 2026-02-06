@@ -1,6 +1,6 @@
 """Rich-based account list rendering."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Callable
 
 from rich.console import Console
@@ -17,6 +17,28 @@ from portfolio_manager.cli.prompt_select import (
     choose_account_menu,
     prompt_decimal,
 )
+
+
+def _resolve_decimal_input(
+    raw_value: Decimal | str,
+    current_value: Decimal,
+    *,
+    on_invalid: Callable[[], None] | None = None,
+) -> Decimal:
+    """Resolve prompt input into Decimal, retaining current value for blank/invalid."""
+    if isinstance(raw_value, Decimal):
+        return raw_value
+
+    value_text = raw_value.strip()
+    if value_text == "":
+        return current_value
+
+    try:
+        return Decimal(value_text)
+    except InvalidOperation:
+        if on_invalid is not None:
+            on_invalid()
+        return current_value
 
 
 def render_account_list(console: Console, accounts: list[Account]) -> None:
@@ -82,20 +104,13 @@ def update_account_flow(
 
     name = account.name if name_input.strip() == "" else name_input
 
-    if isinstance(cash_input, Decimal):
-        cash = cash_input
-    else:
-        cash_text = cash_input.strip()
-        if cash_text == "":
-            cash = account.cash_balance
-        else:
-            try:
-                cash = Decimal(cash_text)
-            except Exception:
-                console.print(
-                    "[yellow]Invalid cash balance, keeping current value[/yellow]"
-                )
-                cash = account.cash_balance
+    cash = _resolve_decimal_input(
+        cash_input,
+        account.cash_balance,
+        on_invalid=lambda: console.print(
+            "[yellow]Invalid cash balance, keeping current value[/yellow]"
+        ),
+    )
 
     updated = repository.update(
         account.id,
@@ -145,20 +160,13 @@ def quick_update_cash_flow(
         if raw_balance is None:
             console.print("[yellow]Cancelled[/yellow]")
             return
-        if isinstance(raw_balance, Decimal):
-            new_balance = raw_balance
-        else:
-            balance_text = raw_balance.strip()
-            if balance_text == "":
-                new_balance = account.cash_balance
-            else:
-                try:
-                    new_balance = Decimal(balance_text)
-                except Exception:
-                    console.print(
-                        f"[yellow]Invalid cash balance for {account.name}, keeping current value[/yellow]"
-                    )
-                    new_balance = account.cash_balance
+        new_balance = _resolve_decimal_input(
+            raw_balance,
+            account.cash_balance,
+            on_invalid=lambda: console.print(
+                f"[yellow]Invalid cash balance for {account.name}, keeping current value[/yellow]"
+            ),
+        )
         repository.update(account.id, name=account.name, cash_balance=new_balance)
         console.print(f"Updated {account.name}: {new_balance}")
 

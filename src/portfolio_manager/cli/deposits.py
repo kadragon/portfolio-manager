@@ -1,7 +1,7 @@
 """Rich-based deposit management."""
 
 from datetime import datetime, date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Callable
 
 from rich.console import Console
@@ -94,7 +94,7 @@ def add_deposit_flow(
                 return
             amount = Decimal(amount_str)
             break
-        except Exception:
+        except InvalidOperation:
             console.print("[red]Invalid amount[/red]")
 
     note_func = prompt_note or (lambda: cancellable_prompt("Note:", default=""))
@@ -136,7 +136,7 @@ def update_deposit_flow(
         else:
             try:
                 amount = Decimal(amount_text)
-            except Exception:
+            except InvalidOperation:
                 console.print("[red]Invalid amount, keeping original[/red]")
                 amount = deposit.amount
 

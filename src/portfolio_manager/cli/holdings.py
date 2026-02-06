@@ -1,6 +1,6 @@
 """Rich-based holdings list rendering."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Callable
 from uuid import UUID
 
@@ -138,7 +138,7 @@ def update_holding_flow(
         else:
             try:
                 quantity = Decimal(quantity_text)
-            except Exception:
+            except InvalidOperation:
                 console.print(
                     "[yellow]Invalid quantity, keeping current value[/yellow]"
                 )
