@@ -16,6 +16,9 @@ from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
 from portfolio_manager.repositories.stock_price_repository import StockPriceRepository
 from portfolio_manager.services.kis.kis_auth_client import KisAuthClient
+from portfolio_manager.services.kis.kis_domestic_balance_client import (
+    KisDomesticBalanceClient,
+)
 from portfolio_manager.services.kis.kis_domestic_info_client import (
     KisDomesticInfoClient,
 )
@@ -38,6 +41,7 @@ from portfolio_manager.services.exchange.exim_exchange_rate_client import (
 from portfolio_manager.services.exchange.exchange_rate_service import (
     ExchangeRateService,
 )
+from portfolio_manager.services.kis_account_sync_service import KisAccountSyncService
 from portfolio_manager.services.supabase_client import get_supabase_client
 
 
@@ -62,6 +66,9 @@ class ServiceContainer:
         # Services (initialized on demand or setup)
         self.price_service: PriceService | None = None
         self.exchange_rate_service: ExchangeRateService | None = None
+        self.kis_account_sync_service: KisAccountSyncService | None = None
+        self.kis_cano: str | None = None
+        self.kis_acnt_prdt_cd: str | None = None
 
     def setup(self) -> None:
         """Setup external services (KIS, Exchange)."""
@@ -129,6 +136,27 @@ class ServiceContainer:
                     unified_client,
                     price_cache_repository=self.stock_price_repository,
                 )
+
+                cano, acnt_prdt_cd = self._load_kis_account_credentials()
+                if cano and acnt_prdt_cd:
+                    balance_client = KisDomesticBalanceClient(
+                        client=self.http_client,
+                        app_key=app_key,
+                        app_secret=app_secret,
+                        access_token=token,
+                        cust_type=cust_type,
+                        env=env,
+                        token_manager=manager,
+                    )
+                    self.kis_account_sync_service = KisAccountSyncService(
+                        account_repository=self.account_repository,
+                        holding_repository=self.holding_repository,
+                        stock_repository=self.stock_repository,
+                        group_repository=self.group_repository,
+                        kis_balance_client=balance_client,
+                    )
+                    self.kis_cano = cano
+                    self.kis_acnt_prdt_cd = acnt_prdt_cd
             except Exception as e:
                 self.console.print(
                     f"[yellow]Warning: Could not initialize price service: {e}[/yellow]"
@@ -169,3 +197,18 @@ class ServiceContainer:
             self.http_client.close()
         if self.exim_client:
             self.exim_client.close()
+
+    @staticmethod
+    def _load_kis_account_credentials() -> tuple[str | None, str | None]:
+        cano = os.getenv("KIS_CANO", "").strip()
+        acnt_prdt_cd = os.getenv("KIS_ACNT_PRDT_CD", "").strip()
+        if cano and acnt_prdt_cd:
+            return cano, acnt_prdt_cd
+
+        account_no = os.getenv("KIS_ACCOUNT_NO", "").strip()
+        if account_no:
+            digits = "".join(ch for ch in account_no if ch.isdigit())
+            if len(digits) == 10:
+                return digits[:8], digits[8:]
+
+        return None, None

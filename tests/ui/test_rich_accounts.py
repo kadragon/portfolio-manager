@@ -13,6 +13,7 @@ from portfolio_manager.cli.accounts import (
     quick_update_cash_flow,
     render_account_list,
     run_account_menu,
+    sync_kis_account_flow,
     update_account_flow,
 )
 from portfolio_manager.cli.prompt_select import (
@@ -294,3 +295,80 @@ def test_quick_update_cash_flow_blank_input_keeps_existing_balance():
     assert calls[0][1]["cash_balance"] == Decimal("1000")
     assert calls[1][1]["name"] == "Sub"
     assert calls[1][1]["cash_balance"] == Decimal("3000")
+
+
+def test_sync_kis_account_flow_invokes_sync_service():
+    """Should call KIS sync service and report completion."""
+    console = Console(record=True, width=80)
+    account = Account(
+        id=uuid4(),
+        name="한국투자증권",
+        cash_balance=Decimal("0"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    sync_service = MagicMock()
+    sync_service.sync_account.return_value = MagicMock(
+        cash_balance=Decimal("500000"),
+        holding_count=2,
+        created_stock_count=1,
+    )
+
+    sync_kis_account_flow(
+        console,
+        account,
+        sync_service,
+        cano="12345678",
+        acnt_prdt_cd="01",
+    )
+
+    sync_service.sync_account.assert_called_once_with(
+        account=account,
+        cano="12345678",
+        acnt_prdt_cd="01",
+    )
+    output = console.export_text()
+    assert "KIS synced" in output
+
+
+def test_run_account_menu_sync_flow_uses_selected_account():
+    """Should route sync action to KIS sync flow for selected account."""
+    console = Console(record=True, width=80)
+    repo = MagicMock()
+    holding_repo = MagicMock()
+    stock_repo = MagicMock()
+    group_repo = MagicMock()
+    sync_service = MagicMock()
+    account = Account(
+        id=uuid4(),
+        name="한국투자증권",
+        cash_balance=Decimal("1000.25"),
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    repo.list_all.return_value = [account]
+
+    chooser = MagicMock(side_effect=["sync", "back"])
+
+    with patch(
+        "portfolio_manager.cli.accounts.choose_account_from_list",
+        return_value=account.id,
+    ):
+        run_account_menu(
+            console,
+            repo,
+            holding_repo,
+            prompt=lambda: "b",
+            chooser=chooser,
+            stock_repository=stock_repo,
+            group_repository=group_repo,
+            kis_sync_service=sync_service,
+            kis_cano="12345678",
+            kis_acnt_prdt_cd="01",
+        )
+
+    sync_service.sync_account.assert_called_once_with(
+        account=account,
+        cano="12345678",
+        acnt_prdt_cd="01",
+    )
