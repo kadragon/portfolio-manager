@@ -1,5 +1,6 @@
 """Tests for cancellable prompt functionality."""
 
+from decimal import Decimal
 from unittest.mock import MagicMock
 
 
@@ -54,3 +55,25 @@ class TestCancellablePrompt:
         assert result == "default_val"
         call_kwargs = mock_session.prompt.call_args
         assert call_kwargs[1].get("default") == "default_val"
+
+    def test_prompt_decimal_retries_until_valid_decimal(self):
+        """prompt_decimal should retry on invalid input and return Decimal."""
+        from portfolio_manager.cli.prompt_select import prompt_decimal
+
+        mock_session = MagicMock()
+        mock_session.prompt.side_effect = ["abc", "12.50"]
+
+        result = prompt_decimal("Amount:", session=mock_session)
+
+        assert result == Decimal("12.50")
+
+    def test_prompt_decimal_returns_none_when_cancelled(self):
+        """prompt_decimal should return None when prompt is cancelled."""
+        from portfolio_manager.cli.prompt_select import prompt_decimal
+
+        mock_session = MagicMock()
+        mock_session.prompt.side_effect = KeyboardInterrupt()
+
+        result = prompt_decimal("Amount:", session=mock_session)
+
+        assert result is None

@@ -71,7 +71,7 @@ def _resolve_decimal_input(
 def render_account_list(console: Console, accounts: list[Account]) -> None:
     """Render the account list or an empty-state message."""
     if not accounts:
-        console.print("No accounts found")
+        console.print("No accounts found. Add an account to continue.")
         return
 
     table = Table(title="Accounts", header_style="bold")

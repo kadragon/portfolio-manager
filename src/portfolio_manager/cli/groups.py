@@ -13,7 +13,7 @@ from portfolio_manager.models import Group
 def render_group_list(console: Console, groups: list[Group]) -> None:
     """Render the group list or an empty-state message."""
     if not groups:
-        console.print("No groups found")
+        console.print("No groups found. Add a group to continue.")
         return
     table = Table(title="Groups", header_style="bold")
     table.add_column("#", style="dim", width=4, justify="right")
