@@ -22,6 +22,9 @@ def test_order_executions_migration_exists_and_allows_duplicate_records():
     assert "exchange" in sql
     assert "raw_response" in sql
 
+    # RLS must be enabled
+    assert "enable row level security" in sql
+
     # No unique constraint on business columns (allow multiple history entries)
     # Only the primary key should be unique
     lines_without_pk = [line for line in sql.splitlines() if "primary key" not in line]

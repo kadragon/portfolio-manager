@@ -1,7 +1,10 @@
 """Rebalance execution service — converts recommendations to order intents."""
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
+from typing import Any
 
 from portfolio_manager.models.rebalance import RebalanceRecommendation
 from portfolio_manager.services.kis.kis_market_detector import is_domestic_ticker
@@ -51,7 +54,12 @@ class RebalanceExecutionResult:
 class RebalanceExecutionService:
     """Converts rebalance recommendations into executable order intents."""
 
-    def __init__(self, order_client=None, execution_repository=None, sync_service=None):
+    def __init__(
+        self,
+        order_client: Any | None = None,
+        execution_repository: Any | None = None,
+        sync_service: Any | None = None,
+    ):
         self._order_client = order_client
         self._execution_repo = execution_repository
         self._sync_service = sync_service
@@ -137,7 +145,11 @@ class RebalanceExecutionService:
                 ticker=rec.ticker,
                 side=rec.action.value,
                 quantity=qty,
-                currency=rec.currency or "KRW",
+                currency=rec.currency
+                if rec.currency
+                else "KRW"
+                if is_domestic_ticker(rec.ticker)
+                else "USD",
                 exchange=exchange,
             )
             if qty == 0:

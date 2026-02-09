@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import httpx
 
@@ -49,16 +49,10 @@ class KisDomesticOrderClient(KisBaseClient):
 
         if is_token_expired_error(response) and self.token_manager is not None:
             new_token = self.token_manager.get_token()
-            response = self.client.post(
+            refreshed = replace(self, access_token=new_token)
+            response = refreshed.client.post(
                 "/uapi/domestic-stock/v1/trading/order-cash",
-                headers={
-                    "content-type": "application/json",
-                    "authorization": f"Bearer {new_token}",
-                    "appkey": self.app_key,
-                    "appsecret": self.app_secret,
-                    "tr_id": tr_id,
-                    "custtype": self.cust_type,
-                },
+                headers=refreshed._build_headers(tr_id),
                 json=payload,
             )
 

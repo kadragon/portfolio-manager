@@ -108,12 +108,9 @@ def run_rebalance_menu(console: Console, container: ServiceContainer) -> None:
     )
 
     # Render execution result summary
-    if result.executions is not None:
-        success_count = sum(1 for e in result.executions if e.status == "success")
-        failed_count = sum(1 for e in result.executions if e.status == "failed")
-    else:
-        success_count = 0
-        failed_count = 0
+    executions = result.executions or []
+    success_count = sum(1 for e in executions if e.status == "success")
+    failed_count = sum(1 for e in executions if e.status == "failed")
     skipped_count = len(result.skipped)
 
     console.print()
@@ -122,8 +119,8 @@ def run_rebalance_menu(console: Console, container: ServiceContainer) -> None:
     console.print(f"[yellow]Skipped: {skipped_count}[/yellow]")
 
     # Show failed order details
-    if result.executions:
-        failed_executions = [e for e in result.executions if e.status == "failed"]
+    if executions:
+        failed_executions = [e for e in executions if e.status == "failed"]
         if failed_executions:
             console.print()
             table = Table(title="Failed Orders")

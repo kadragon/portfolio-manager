@@ -12,5 +12,7 @@ CREATE TABLE IF NOT EXISTS order_executions (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE order_executions ENABLE ROW LEVEL SECURITY;
+
 CREATE INDEX IF NOT EXISTS idx_order_executions_created_at
     ON order_executions(created_at DESC);

@@ -195,9 +195,9 @@ class TestRebalanceExecutionFlow:
 
         output = console.export_text()
         # Should display counts for success, failed, and skipped
-        assert "1" in output  # 1 success
-        assert "failed" in output.lower() or "Failed" in output
-        assert "skipped" in output.lower() or "Skipped" in output
+        assert "Success: 1" in output
+        assert "Failed: 1" in output
+        assert "Skipped: 1" in output
 
     def test_failed_orders_show_detail_info(self) -> None:
         """Failed orders should display ticker, action, msg_cd, and msg1."""
