@@ -56,7 +56,9 @@ def add_holding_flow(
             return cancellable_prompt("Stock ID or Ticker:")
     else:
         stock_func = prompt_stock
-    quantity_func = prompt_quantity or (lambda: prompt_decimal("Quantity:"))
+    quantity_func = prompt_quantity or (
+        lambda: prompt_decimal("Quantity:", console=console)
+    )
     stock_value = stock_func()
     if stock_value is None:
         console.print("[yellow]Cancelled[/yellow]")
@@ -98,7 +100,7 @@ def add_holding_flow(
             else:
                 group_id = choose_group_from_list(groups, chooser=group_chooser)
                 if group_id is None:
-                    console.print("[red]Group selection cancelled.[/red]")
+                    console.print("[yellow]Cancelled[/yellow]")
                     return
             stock = stock_repository.create(str(stock_value), group_id)
         stock_id = stock.id
