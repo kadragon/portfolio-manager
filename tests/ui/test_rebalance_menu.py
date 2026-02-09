@@ -1,13 +1,21 @@
 """Tests for rebalance menu and rendering."""
 
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from rich.console import Console
 
-from portfolio_manager.cli.prompt_select import choose_main_menu
+from portfolio_manager.cli.prompt_select import (
+    choose_main_menu,
+    choose_rebalance_action,
+)
 from portfolio_manager.models.rebalance import RebalanceAction, RebalanceRecommendation
+from portfolio_manager.services.rebalance_execution_service import (
+    OrderExecutionResult,
+    OrderIntent,
+    RebalanceExecutionResult,
+)
 
 
 @pytest.fixture
@@ -41,6 +49,23 @@ def sample_buy_recommendations() -> list[RebalanceRecommendation]:
 class TestMainMenuRebalanceOption:
     """Test main menu rebalance option."""
 
+    def test_rebalance_menu_shows_preview_and_execute_options(self) -> None:
+        """Rebalance menu should show Preview only and Execute orders choices."""
+        chooser = MagicMock(return_value="preview")
+
+        action = choose_rebalance_action(chooser)
+
+        call_args = chooser.call_args
+        options = call_args[1]["options"]
+        option_values = [opt[0] for opt in options]
+        option_labels = [opt[1] for opt in options]
+
+        assert "preview" in option_values
+        assert "execute" in option_values
+        assert any("Preview" in label for label in option_labels)
+        assert any("Execute" in label for label in option_labels)
+        assert action == "preview"
+
     def test_main_menu_includes_rebalance_option(self) -> None:
         """Main menu should include rebalance option."""
         chooser = MagicMock(return_value="rebalance")
@@ -54,6 +79,185 @@ class TestMainMenuRebalanceOption:
 
         assert "rebalance" in option_values
         assert action == "rebalance"
+
+
+class TestRebalanceExecutionFlow:
+    """Test rebalance execution CLI flow."""
+
+    def test_execute_cancelled_at_confirmation_does_not_place_orders(self) -> None:
+        """When user selects Execute but cancels confirmation, no orders are placed."""
+        from portfolio_manager.cli import main as main_module
+        from portfolio_manager.cli.main import run_rebalance_menu
+
+        console = Console(record=True, width=120)
+        container = MagicMock()
+        container.price_service = MagicMock()
+        container.get_portfolio_service.return_value.get_portfolio_summary.return_value = MagicMock()
+
+        sell_recs = [
+            RebalanceRecommendation(
+                ticker="AAPL",
+                action=RebalanceAction.SELL,
+                amount=Decimal("2000000"),
+                priority=1,
+                currency="USD",
+                quantity=Decimal("10"),
+                group_name="US Stocks",
+            ),
+        ]
+
+        with patch.object(main_module, "RebalanceService") as MockRS:
+            MockRS.return_value.get_sell_recommendations.return_value = sell_recs
+            MockRS.return_value.get_buy_recommendations.return_value = []
+            with patch.object(main_module, "Prompt"):
+                with patch.object(
+                    main_module, "choose_rebalance_action", return_value="execute"
+                ):
+                    with patch.object(main_module, "Confirm") as MockConfirm:
+                        MockConfirm.ask.return_value = False
+                        with patch.object(
+                            main_module, "RebalanceExecutionService"
+                        ) as MockExecService:
+                            run_rebalance_menu(console, container)
+
+                            MockExecService.return_value.execute_rebalance_orders.assert_not_called()
+
+    def test_execute_confirmed_renders_result_summary(self) -> None:
+        """When user confirms execution, result table with success/failed/skipped counts is shown."""
+        from portfolio_manager.cli import main as main_module
+        from portfolio_manager.cli.main import run_rebalance_menu
+
+        console = Console(record=True, width=120)
+        container = MagicMock()
+        container.price_service = MagicMock()
+        container.get_portfolio_service.return_value.get_portfolio_summary.return_value = MagicMock()
+
+        sell_recs = [
+            RebalanceRecommendation(
+                ticker="AAPL",
+                action=RebalanceAction.SELL,
+                amount=Decimal("2000000"),
+                priority=1,
+                currency="USD",
+                quantity=Decimal("10"),
+                group_name="US Stocks",
+            ),
+        ]
+        buy_recs = [
+            RebalanceRecommendation(
+                ticker="005930",
+                action=RebalanceAction.BUY,
+                amount=Decimal("3000000"),
+                priority=1,
+                currency="KRW",
+                quantity=Decimal("5"),
+                group_name="KR Stocks",
+            ),
+        ]
+
+        intent_sell = OrderIntent(
+            ticker="AAPL", side="sell", quantity=10, currency="USD", exchange="NASD"
+        )
+        intent_buy = OrderIntent(
+            ticker="005930", side="buy", quantity=5, currency="KRW"
+        )
+        skipped_intent = OrderIntent(
+            ticker="MSFT", side="buy", quantity=0, currency="USD", exchange="NASD"
+        )
+
+        exec_result = RebalanceExecutionResult(
+            intents=[intent_sell, intent_buy],
+            skipped=[skipped_intent],
+            executions=[
+                OrderExecutionResult(
+                    intent=intent_sell, status="success", message="ok"
+                ),
+                OrderExecutionResult(
+                    intent=intent_buy, status="failed", message="insufficient funds"
+                ),
+            ],
+        )
+
+        with patch.object(main_module, "RebalanceService") as MockRS:
+            MockRS.return_value.get_sell_recommendations.return_value = sell_recs
+            MockRS.return_value.get_buy_recommendations.return_value = buy_recs
+            with patch.object(main_module, "Prompt"):
+                with patch.object(
+                    main_module, "choose_rebalance_action", return_value="execute"
+                ):
+                    with patch.object(main_module, "Confirm") as MockConfirm:
+                        MockConfirm.ask.return_value = True
+                        with patch.object(
+                            main_module, "RebalanceExecutionService"
+                        ) as MockExecService:
+                            MockExecService.return_value.execute_rebalance_orders.return_value = exec_result
+                            run_rebalance_menu(console, container)
+
+        output = console.export_text()
+        # Should display counts for success, failed, and skipped
+        assert "Success: 1" in output
+        assert "Failed: 1" in output
+        assert "Skipped: 1" in output
+
+    def test_failed_orders_show_detail_info(self) -> None:
+        """Failed orders should display ticker, action, msg_cd, and msg1."""
+        from portfolio_manager.cli import main as main_module
+        from portfolio_manager.cli.main import run_rebalance_menu
+
+        console = Console(record=True, width=120)
+        container = MagicMock()
+        container.price_service = MagicMock()
+        container.get_portfolio_service.return_value.get_portfolio_summary.return_value = MagicMock()
+
+        sell_recs = [
+            RebalanceRecommendation(
+                ticker="AAPL",
+                action=RebalanceAction.SELL,
+                amount=Decimal("2000000"),
+                priority=1,
+                currency="USD",
+                quantity=Decimal("10"),
+                group_name="US Stocks",
+            ),
+        ]
+
+        intent_fail = OrderIntent(
+            ticker="AAPL", side="sell", quantity=10, currency="USD", exchange="NASD"
+        )
+
+        exec_result = RebalanceExecutionResult(
+            intents=[intent_fail],
+            skipped=[],
+            executions=[
+                OrderExecutionResult(
+                    intent=intent_fail,
+                    status="failed",
+                    message="주문 실패",
+                    raw_response={"msg_cd": "APBK1234", "msg1": "잔고부족"},
+                ),
+            ],
+        )
+
+        with patch.object(main_module, "RebalanceService") as MockRS:
+            MockRS.return_value.get_sell_recommendations.return_value = sell_recs
+            MockRS.return_value.get_buy_recommendations.return_value = []
+            with patch.object(main_module, "Prompt"):
+                with patch.object(
+                    main_module, "choose_rebalance_action", return_value="execute"
+                ):
+                    with patch.object(main_module, "Confirm") as MockConfirm:
+                        MockConfirm.ask.return_value = True
+                        with patch.object(
+                            main_module, "RebalanceExecutionService"
+                        ) as MockExecService:
+                            MockExecService.return_value.execute_rebalance_orders.return_value = exec_result
+                            run_rebalance_menu(console, container)
+
+        output = console.export_text()
+        assert "AAPL" in output
+        assert "sell" in output.lower()
+        assert "APBK1234" in output
+        assert "잔고부족" in output
 
 
 class TestRebalanceRecommendationsRendering:

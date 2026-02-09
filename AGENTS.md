@@ -238,3 +238,36 @@ Keep Enter-as-retain as the default rule for future edit prompts; use explicit c
 
 ### Impact
 향후 동기화 로직은 destructive reset을 피하고, 기존 데이터 대비 변경분만 적용하는 패턴을 유지한다.
+
+## 2026-02-07 (Domestic Order TR Mapping)
+
+### Decision/Learning
+`KisDomesticOrderClient` 주문 엔드포인트를 `/uapi/domestic-stock/v1/trading/order-cash`로 고정하고, TR ID는 `buy=TTTC0012U`, `sell=TTTC0011U`(demo는 `V*`)로 매핑한다.
+
+### Reason
+KIS 주문 API는 action/env 조합마다 TR ID가 달라 잘못 매핑하면 정상 응답 없이 주문이 실패한다.
+
+### Impact
+국내 주문 기능 확장 시 side/env 기반 TR ID 선택을 공통 규칙으로 재사용하고, 회귀 테스트에서 엔드포인트와 TR ID를 함께 검증한다.
+
+## 2026-02-09 (Overseas Order TR Mapping)
+
+### Decision/Learning
+`KisOverseasOrderClient`를 추가하고 미국 주문 TR ID를 `buy=TTTT1002U`, `sell=TTTT1006U`(demo는 `V*`)로 매핑했다.
+
+### Reason
+해외 주문도 action/env 조합별 TR ID가 다르므로 매핑이 틀리면 API 호출이 성공하지 않는다.
+
+### Impact
+해외 주문 기능 구현 시 side/env 기반 TR ID 선택을 단일 클라이언트 규칙으로 재사용하고, 회귀 테스트에서 buy/sell 매핑을 함께 검증한다.
+
+## 2026-02-09 (Order Token Auto-Refresh)
+
+### Decision/Learning
+`KisDomesticOrderClient`와 `KisOverseasOrderClient`에 `token_manager` 기반 토큰 만료 자동 재시도(1회)를 추가했다.
+
+### Reason
+주문 API도 가격/잔고 API와 동일하게 `EGW00123`가 발생할 수 있어, 수동 재시도 없이 주문 흐름을 복구해야 한다.
+
+### Impact
+주문 클라이언트 초기화 시 `token_manager`를 주입하면 만료 토큰에서 자동으로 새 토큰을 받아 동일 요청을 1회 재시도한다.

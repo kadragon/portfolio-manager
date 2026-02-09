@@ -14,6 +14,9 @@ from portfolio_manager.repositories.deposit_repository import DepositRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
+from portfolio_manager.repositories.order_execution_repository import (
+    OrderExecutionRepository,
+)
 from portfolio_manager.repositories.stock_price_repository import StockPriceRepository
 from portfolio_manager.services.kis.kis_auth_client import KisAuthClient
 from portfolio_manager.services.kis.kis_domestic_balance_client import (
@@ -32,6 +35,15 @@ from portfolio_manager.services.kis.kis_token_manager import TokenManager
 from portfolio_manager.services.kis.kis_token_store import FileTokenStore
 from portfolio_manager.services.kis.kis_unified_price_client import (
     KisUnifiedPriceClient,
+)
+from portfolio_manager.services.kis.kis_domestic_order_client import (
+    KisDomesticOrderClient,
+)
+from portfolio_manager.services.kis.kis_overseas_order_client import (
+    KisOverseasOrderClient,
+)
+from portfolio_manager.services.kis.kis_unified_order_client import (
+    KisUnifiedOrderClient,
 )
 from portfolio_manager.services.portfolio_service import PortfolioService
 from portfolio_manager.services.price_service import PriceService
@@ -62,11 +74,13 @@ class ServiceContainer:
         self.account_repository = AccountRepository(self.supabase_client)
         self.holding_repository = HoldingRepository(self.supabase_client)
         self.deposit_repository = DepositRepository(self.supabase_client)
+        self.execution_repository = OrderExecutionRepository(self.supabase_client)
 
         # Services (initialized on demand or setup)
         self.price_service: PriceService | None = None
         self.exchange_rate_service: ExchangeRateService | None = None
         self.kis_account_sync_service: KisAccountSyncService | None = None
+        self.order_client: object | None = None
         self.kis_cano: str | None = None
         self.kis_acnt_prdt_cd: str | None = None
 
@@ -157,6 +171,32 @@ class ServiceContainer:
                     )
                     self.kis_cano = cano
                     self.kis_acnt_prdt_cd = acnt_prdt_cd
+
+                    domestic_order_client = KisDomesticOrderClient(
+                        client=self.http_client,
+                        app_key=app_key,
+                        app_secret=app_secret,
+                        access_token=token,
+                        cust_type=cust_type,
+                        env=env,
+                        token_manager=manager,
+                    )
+                    overseas_order_client = KisOverseasOrderClient(
+                        client=self.http_client,
+                        app_key=app_key,
+                        app_secret=app_secret,
+                        access_token=token,
+                        cust_type=cust_type,
+                        env=env,
+                        token_manager=manager,
+                    )
+                    self.order_client = KisUnifiedOrderClient(
+                        domestic_client=domestic_order_client,
+                        overseas_client=overseas_order_client,
+                        cano=cano,
+                        acnt_prdt_cd=acnt_prdt_cd,
+                        price_service=self.price_service,
+                    )
             except Exception as e:
                 self.console.print(
                     f"[yellow]Warning: Could not initialize price service: {e}[/yellow]"
