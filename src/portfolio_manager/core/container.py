@@ -36,6 +36,15 @@ from portfolio_manager.services.kis.kis_token_store import FileTokenStore
 from portfolio_manager.services.kis.kis_unified_price_client import (
     KisUnifiedPriceClient,
 )
+from portfolio_manager.services.kis.kis_domestic_order_client import (
+    KisDomesticOrderClient,
+)
+from portfolio_manager.services.kis.kis_overseas_order_client import (
+    KisOverseasOrderClient,
+)
+from portfolio_manager.services.kis.kis_unified_order_client import (
+    KisUnifiedOrderClient,
+)
 from portfolio_manager.services.portfolio_service import PortfolioService
 from portfolio_manager.services.price_service import PriceService
 from portfolio_manager.services.exchange.exim_exchange_rate_client import (
@@ -162,6 +171,32 @@ class ServiceContainer:
                     )
                     self.kis_cano = cano
                     self.kis_acnt_prdt_cd = acnt_prdt_cd
+
+                    domestic_order_client = KisDomesticOrderClient(
+                        client=self.http_client,
+                        app_key=app_key,
+                        app_secret=app_secret,
+                        access_token=token,
+                        cust_type=cust_type,
+                        env=env,
+                        token_manager=manager,
+                    )
+                    overseas_order_client = KisOverseasOrderClient(
+                        client=self.http_client,
+                        app_key=app_key,
+                        app_secret=app_secret,
+                        access_token=token,
+                        cust_type=cust_type,
+                        env=env,
+                        token_manager=manager,
+                    )
+                    self.order_client = KisUnifiedOrderClient(
+                        domestic_client=domestic_order_client,
+                        overseas_client=overseas_order_client,
+                        cano=cano,
+                        acnt_prdt_cd=acnt_prdt_cd,
+                        price_service=self.price_service,
+                    )
             except Exception as e:
                 self.console.print(
                     f"[yellow]Warning: Could not initialize price service: {e}[/yellow]"

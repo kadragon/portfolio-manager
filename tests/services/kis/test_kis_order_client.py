@@ -1,5 +1,6 @@
 import json
-from unittest.mock import Mock
+from decimal import Decimal
+from unittest.mock import Mock, MagicMock
 
 import httpx
 
@@ -8,6 +9,9 @@ from portfolio_manager.services.kis.kis_domestic_order_client import (
 )
 from portfolio_manager.services.kis.kis_overseas_order_client import (
     KisOverseasOrderClient,
+)
+from portfolio_manager.services.kis.kis_unified_order_client import (
+    KisUnifiedOrderClient,
 )
 
 
@@ -371,3 +375,72 @@ def test_order_clients_retry_once_on_token_expiration():
         overseas_http.post.call_args_list[1].kwargs["headers"]["authorization"]
         == "Bearer new-overseas-token"
     )
+
+
+def test_unified_order_client_routes_domestic_order():
+    """Domestic ticker routes to domestic client with cano/acnt_prdt_cd/price."""
+    mock_domestic = MagicMock()
+    mock_domestic.place_order.return_value = {"rt_cd": "0", "msg1": "ok"}
+    mock_overseas = MagicMock()
+    mock_price_service = MagicMock()
+    mock_price_service.get_stock_price.return_value = (
+        Decimal("70000"),
+        "KRW",
+        "삼성전자",
+        None,
+    )
+
+    client = KisUnifiedOrderClient(
+        domestic_client=mock_domestic,
+        overseas_client=mock_overseas,
+        cano="12345678",
+        acnt_prdt_cd="01",
+        price_service=mock_price_service,
+    )
+
+    result = client.place_order(ticker="005930", side="buy", quantity=10, exchange=None)
+
+    mock_domestic.place_order.assert_called_once_with(
+        side="buy",
+        cano="12345678",
+        acnt_prdt_cd="01",
+        pdno="005930",
+        ord_qty="10",
+        ord_unpr="70000",
+    )
+    mock_overseas.place_order.assert_not_called()
+    assert result == {"rt_cd": "0", "msg1": "ok"}
+
+
+def test_unified_order_client_routes_overseas_order():
+    """Overseas ticker routes to overseas client with exchange/price."""
+    mock_domestic = MagicMock()
+    mock_overseas = MagicMock()
+    mock_overseas.place_order.return_value = {"rt_cd": "0", "msg1": "ok"}
+    mock_price_service = MagicMock()
+    mock_price_service.get_stock_price.return_value = (
+        Decimal("201.50"),
+        "USD",
+        "Apple Inc",
+        "NASD",
+    )
+
+    client = KisUnifiedOrderClient(
+        domestic_client=mock_domestic,
+        overseas_client=mock_overseas,
+        cano="12345678",
+        acnt_prdt_cd="01",
+        price_service=mock_price_service,
+    )
+
+    result = client.place_order(ticker="AAPL", side="sell", quantity=5, exchange="NASD")
+
+    mock_overseas.place_order.assert_called_once_with(
+        side="sell",
+        ovrs_excg_cd="NASD",
+        pdno="AAPL",
+        ord_qty="5",
+        ovrs_ord_unpr="201.50",
+    )
+    mock_domestic.place_order.assert_not_called()
+    assert result == {"rt_cd": "0", "msg1": "ok"}
