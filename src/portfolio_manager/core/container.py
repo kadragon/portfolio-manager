@@ -14,6 +14,9 @@ from portfolio_manager.repositories.deposit_repository import DepositRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
 from portfolio_manager.repositories.stock_repository import StockRepository
+from portfolio_manager.repositories.order_execution_repository import (
+    OrderExecutionRepository,
+)
 from portfolio_manager.repositories.stock_price_repository import StockPriceRepository
 from portfolio_manager.services.kis.kis_auth_client import KisAuthClient
 from portfolio_manager.services.kis.kis_domestic_balance_client import (
@@ -62,11 +65,13 @@ class ServiceContainer:
         self.account_repository = AccountRepository(self.supabase_client)
         self.holding_repository = HoldingRepository(self.supabase_client)
         self.deposit_repository = DepositRepository(self.supabase_client)
+        self.execution_repository = OrderExecutionRepository(self.supabase_client)
 
         # Services (initialized on demand or setup)
         self.price_service: PriceService | None = None
         self.exchange_rate_service: ExchangeRateService | None = None
         self.kis_account_sync_service: KisAccountSyncService | None = None
+        self.order_client: object | None = None
         self.kis_cano: str | None = None
         self.kis_acnt_prdt_cd: str | None = None
 

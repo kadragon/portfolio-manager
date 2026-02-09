@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich import box
 from rich.panel import Panel
-from rich.prompt import Prompt
+from rich.prompt import Confirm, Prompt
+from rich.table import Table
 
 from portfolio_manager.cli.app import render_dashboard, render_main_menu
 from portfolio_manager.cli.deposits import run_deposit_menu
@@ -25,12 +26,16 @@ from portfolio_manager.cli.prompt_select import (
     choose_group_from_list,
     choose_group_menu,
     choose_main_menu,
+    choose_rebalance_action,
 )
 from portfolio_manager.cli.accounts import run_account_menu
 from portfolio_manager.cli.stocks import run_stock_menu
 from portfolio_manager.core.container import ServiceContainer
 from portfolio_manager.models import Group
 from portfolio_manager.services.portfolio_service import PortfolioSummary
+from portfolio_manager.services.rebalance_execution_service import (
+    RebalanceExecutionService,
+)
 from portfolio_manager.services.rebalance_service import RebalanceService
 
 _SUMMARY_CACHE_TTL_SECONDS = 30.0
@@ -85,7 +90,56 @@ def run_rebalance_menu(console: Console, container: ServiceContainer) -> None:
 
     render_rebalance_recommendations(console, sell_recommendations, buy_recommendations)
 
-    Prompt.ask("Press Enter to continue")
+    action = choose_rebalance_action()
+    if action != "execute":
+        return
+
+    if not Confirm.ask("Execute orders?"):
+        return
+
+    all_recommendations = sell_recommendations + buy_recommendations
+    execution_service = RebalanceExecutionService(
+        order_client=container.order_client,
+        execution_repository=container.execution_repository,
+        sync_service=container.kis_account_sync_service,
+    )
+    result = execution_service.execute_rebalance_orders(
+        all_recommendations, dry_run=False
+    )
+
+    # Render execution result summary
+    if result.executions is not None:
+        success_count = sum(1 for e in result.executions if e.status == "success")
+        failed_count = sum(1 for e in result.executions if e.status == "failed")
+    else:
+        success_count = 0
+        failed_count = 0
+    skipped_count = len(result.skipped)
+
+    console.print()
+    console.print(f"[green]Success: {success_count}[/green]")
+    console.print(f"[red]Failed: {failed_count}[/red]")
+    console.print(f"[yellow]Skipped: {skipped_count}[/yellow]")
+
+    # Show failed order details
+    if result.executions:
+        failed_executions = [e for e in result.executions if e.status == "failed"]
+        if failed_executions:
+            console.print()
+            table = Table(title="Failed Orders")
+            table.add_column("Ticker")
+            table.add_column("Action")
+            table.add_column("msg_cd")
+            table.add_column("msg1")
+            for ex in failed_executions:
+                raw = ex.raw_response or {}
+                table.add_row(
+                    ex.intent.ticker,
+                    ex.intent.side,
+                    raw.get("msg_cd", ""),
+                    raw.get("msg1", ""),
+                )
+            console.print(table)
 
 
 def run_group_menu(console: Console, container: ServiceContainer) -> None:

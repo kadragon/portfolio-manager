@@ -153,6 +153,20 @@ def choose_deposit_menu(chooser: Callable | None = None) -> str | None:
     return chooser(message="Deposits menu:", options=options, default="back")
 
 
+def choose_rebalance_action(chooser: Callable | None = None) -> str | None:
+    """Choose a rebalance action using prompt_toolkit."""
+    if chooser is None:
+        from prompt_toolkit.shortcuts import choice
+
+        chooser = choice
+
+    options: OptionList = [
+        ("preview", "Preview only"),
+        ("execute", "Execute orders"),
+    ]
+    return chooser(message="Rebalance action:", options=options, default="preview")
+
+
 def choose_group_from_list(
     groups: list[Group], chooser: Callable | None = None
 ) -> UUID | None:
