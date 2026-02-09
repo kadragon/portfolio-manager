@@ -6,6 +6,7 @@ from uuid import UUID
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
+from rich.console import Console
 
 from portfolio_manager.models import Account, Deposit, Group, Holding, Stock
 
@@ -44,6 +45,7 @@ def prompt_decimal(
     message: str,
     default: str = "",
     session: PromptSession | None = None,
+    console: Console | None = None,
 ) -> Decimal | None:
     """Prompt for a decimal value with cancellation support."""
     while True:
@@ -53,6 +55,10 @@ def prompt_decimal(
         try:
             return Decimal(value)
         except InvalidOperation:
+            if console is not None:
+                console.print("[red]Invalid number. Please try again.[/red]")
+            else:
+                print("Invalid number. Please try again.")
             continue
 
 

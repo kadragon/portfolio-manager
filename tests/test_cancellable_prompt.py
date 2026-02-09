@@ -3,6 +3,8 @@
 from decimal import Decimal
 from unittest.mock import MagicMock
 
+from rich.console import Console
+
 
 class TestCancellablePrompt:
     """Test cancellable_prompt returns None on ESC or Ctrl+C."""
@@ -66,6 +68,20 @@ class TestCancellablePrompt:
         result = prompt_decimal("Amount:", session=mock_session)
 
         assert result == Decimal("12.50")
+
+    def test_prompt_decimal_shows_error_message_on_invalid_input(self):
+        """Invalid decimal input should render an error message before retrying."""
+        from portfolio_manager.cli.prompt_select import prompt_decimal
+
+        mock_session = MagicMock()
+        mock_session.prompt.side_effect = ["abc", "12.50"]
+        console = Console(record=True, width=80)
+
+        result = prompt_decimal("Amount:", session=mock_session, console=console)
+
+        assert result == Decimal("12.50")
+        output = console.export_text()
+        assert "Invalid number. Please try again." in output
 
     def test_prompt_decimal_returns_none_when_cancelled(self):
         """prompt_decimal should return None when prompt is cancelled."""

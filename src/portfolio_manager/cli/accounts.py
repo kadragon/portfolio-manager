@@ -91,7 +91,9 @@ def add_account_flow(
 ) -> None:
     """Add an account via prompts and render confirmation."""
     name_func = prompt_name or (lambda: cancellable_prompt("Account name:"))
-    cash_func = prompt_cash or (lambda: prompt_decimal("Cash balance:"))
+    cash_func = prompt_cash or (
+        lambda: prompt_decimal("Cash balance:", console=console)
+    )
     name = name_func()
     if name is None:
         console.print("[yellow]Cancelled[/yellow]")

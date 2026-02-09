@@ -56,7 +56,9 @@ def add_holding_flow(
             return cancellable_prompt("Stock ID or Ticker:")
     else:
         stock_func = prompt_stock
-    quantity_func = prompt_quantity or (lambda: prompt_decimal("Quantity:"))
+    quantity_func = prompt_quantity or (
+        lambda: prompt_decimal("Quantity:", console=console)
+    )
     stock_value = stock_func()
     if stock_value is None:
         console.print("[yellow]Cancelled[/yellow]")
