@@ -4,6 +4,8 @@ from decimal import Decimal
 from uuid import uuid4
 from unittest.mock import Mock
 
+from postgrest.exceptions import APIError
+
 from portfolio_manager.repositories.holding_repository import HoldingRepository
 
 
@@ -85,6 +87,44 @@ def test_aggregate_holdings_by_stock():
     client.rpc.assert_called_once_with("aggregate_holdings_by_stock")
     assert stock_id in aggregated
     assert aggregated[stock_id] == Decimal("15")
+
+
+def test_aggregate_holdings_by_stock_falls_back_when_rpc_missing():
+    """RPC 함수가 없으면 holdings 테이블 조회로 집계한다."""
+    stock_id = uuid4()
+    other_stock_id = uuid4()
+
+    rpc_missing_error = APIError(
+        {
+            "message": "Could not find the function public.aggregate_holdings_by_stock without parameters in the schema cache",
+            "code": "PGRST202",
+            "hint": None,
+            "details": "Searched for the function public.aggregate_holdings_by_stock without parameters",
+        }
+    )
+
+    fallback_response = Mock()
+    fallback_response.data = [
+        {"stock_id": str(stock_id), "quantity": "10"},
+        {"stock_id": str(stock_id), "quantity": "2.5"},
+        {"stock_id": str(other_stock_id), "quantity": "3"},
+    ]
+
+    client = Mock()
+    client.rpc.return_value.execute.side_effect = rpc_missing_error
+    client.table.return_value.select.return_value.execute.return_value = (
+        fallback_response
+    )
+
+    repository = HoldingRepository(client)
+
+    aggregated = repository.get_aggregated_holdings_by_stock()
+
+    client.rpc.assert_called_once_with("aggregate_holdings_by_stock")
+    client.table.assert_called_once_with("holdings")
+    client.table.return_value.select.assert_called_once_with("stock_id,quantity")
+    assert aggregated[stock_id] == Decimal("12.5")
+    assert aggregated[other_stock_id] == Decimal("3")
 
 
 def test_holding_repository_reads_decimal_quantity():

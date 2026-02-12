@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID
 
+from postgrest.exceptions import APIError
 from supabase import Client
 
 from portfolio_manager.models import Holding
@@ -97,7 +98,18 @@ class HoldingRepository:
 
     def get_aggregated_holdings_by_stock(self) -> dict[UUID, Decimal]:
         """Get aggregated holdings by stock across all accounts."""
-        response = self.client.rpc("aggregate_holdings_by_stock").execute()
+        try:
+            response = self.client.rpc("aggregate_holdings_by_stock").execute()
+        except APIError as error:
+            is_rpc_missing_error = (
+                error.code == "PGRST202"
+                and "aggregate_holdings_by_stock" in (error.message or "")
+            )
+            if not is_rpc_missing_error:
+                raise
+            response = (
+                self.client.table("holdings").select("stock_id,quantity").execute()
+            )
         if not response.data:
             return {}
 
