@@ -99,7 +99,7 @@ class RebalanceService:
                     group_holdings.append((holding, value))
 
             # Sort: overseas (USD) first, then domestic (KRW)
-            group_holdings.sort(key=lambda x: (0 if x[0].currency == "USD" else 1))
+            group_holdings.sort(key=lambda x: 0 if x[0].currency == "USD" else 1)
 
             remaining = amount_to_sell
             priority = 1
@@ -149,7 +149,7 @@ class RebalanceService:
                     group_holdings.append((holding, value))
 
             # Sort: domestic (KRW) first, then overseas (USD)
-            group_holdings.sort(key=lambda x: (0 if x[0].currency == "KRW" else 1))
+            group_holdings.sort(key=lambda x: 0 if x[0].currency == "KRW" else 1)
 
             priority = 1
 

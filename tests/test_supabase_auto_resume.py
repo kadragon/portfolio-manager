@@ -111,6 +111,18 @@ class TestRestorePausedProject:
         result = restore_paused_project("testref", "token123")
         assert result is False
 
+    @patch("portfolio_manager.services.supabase_client.httpx.Client")
+    def test_returns_false_on_read_timeout(self, mock_client_cls: MagicMock) -> None:
+        """Should return False when management API request times out."""
+        mock_client = MagicMock()
+        mock_client.post.side_effect = httpx.ReadTimeout("The read operation timed out")
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        result = restore_paused_project("testref", "token123")
+        assert result is False
+
 
 class TestWaitForProjectReady:
     """Tests for wait_for_project_ready function."""

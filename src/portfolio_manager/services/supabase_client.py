@@ -45,10 +45,13 @@ def restore_paused_project(project_ref: str, access_token: str) -> bool:
         True if restore request was successful.
     """
     with httpx.Client(base_url=SUPABASE_MANAGEMENT_API_URL) as client:
-        response = client.post(
-            f"/v1/projects/{project_ref}/restore",
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
+        try:
+            response = client.post(
+                f"/v1/projects/{project_ref}/restore",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        except httpx.HTTPError:
+            return False
         return response.status_code == 201
 
 

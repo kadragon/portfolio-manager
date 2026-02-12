@@ -144,12 +144,10 @@ def test_portfolio_summary_calculates_total_value():
     }
 
     price_service = Mock()
-    price_service.get_stock_price.side_effect = (
-        lambda ticker, preferred_exchange=None: (
-            (Decimal("150.0"), "USD", "Apple Inc.", "NAS")
-            if ticker == "AAPL"
-            else (Decimal("100.0"), "USD", "Google", "NAS")
-        )
+    price_service.get_stock_price.side_effect = lambda ticker, preferred_exchange=None: (
+        (Decimal("150.0"), "USD", "Apple Inc.", "NAS")
+        if ticker == "AAPL"
+        else (Decimal("100.0"), "USD", "Google", "NAS")
     )
 
     exchange_rate_service = Mock()
