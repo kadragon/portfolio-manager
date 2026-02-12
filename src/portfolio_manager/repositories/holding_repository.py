@@ -101,11 +101,11 @@ class HoldingRepository:
         try:
             response = self.client.rpc("aggregate_holdings_by_stock").execute()
         except APIError as error:
-            error_message = error.message or ""
-            if (
-                error.code != "PGRST202"
-                or "aggregate_holdings_by_stock" not in error_message
-            ):
+            is_rpc_missing_error = (
+                error.code == "PGRST202"
+                and "aggregate_holdings_by_stock" in (error.message or "")
+            )
+            if not is_rpc_missing_error:
                 raise
             response = (
                 self.client.table("holdings").select("stock_id,quantity").execute()
