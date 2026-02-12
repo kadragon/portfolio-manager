@@ -1,13 +1,14 @@
 """prompt_toolkit-based menu selection helpers."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Callable, Iterable
 from uuid import UUID
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
+from rich.console import Console
 
-from portfolio_manager.models import Account, Group, Holding, Stock
+from portfolio_manager.models import Account, Deposit, Group, Holding, Stock
 
 
 def _create_esc_bindings() -> KeyBindings:
@@ -40,12 +41,25 @@ def cancellable_prompt(
         return None
 
 
-def prompt_decimal(message: str, default: str = "") -> Decimal | None:
+def prompt_decimal(
+    message: str,
+    default: str = "",
+    session: PromptSession | None = None,
+    console: Console | None = None,
+) -> Decimal | None:
     """Prompt for a decimal value with cancellation support."""
-    value = cancellable_prompt(message, default=default)
-    if value is None:
-        return None
-    return Decimal(value)
+    while True:
+        value = cancellable_prompt(message, default=default, session=session)
+        if value is None:
+            return None
+        try:
+            return Decimal(value)
+        except InvalidOperation:
+            if console is not None:
+                console.print("[red]Invalid number. Please try again.[/red]")
+            else:
+                print("Invalid number. Please try again.")
+            continue
 
 
 OptionList = Iterable[tuple[str, str]]
@@ -227,3 +241,20 @@ def choose_holding_from_list(
     if not options:
         return None
     return chooser(message="Select holding:", options=options, default=options[0][0])
+
+
+def choose_deposit_from_list(
+    deposits: list[Deposit], chooser: Callable | None = None
+) -> UUID | None:
+    """Choose a deposit from a list using prompt_toolkit."""
+    if chooser is None:
+        from prompt_toolkit.shortcuts import choice
+
+        chooser = choice
+    options = [
+        (deposit.id, f"{deposit.deposit_date.isoformat()} / {deposit.amount:,.0f}")
+        for deposit in deposits
+    ]
+    if not options:
+        return None
+    return chooser(message="Select deposit:", options=options, default=options[0][0])

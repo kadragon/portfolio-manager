@@ -5,11 +5,15 @@ from decimal import Decimal, InvalidOperation
 from typing import Callable
 
 from rich.console import Console
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm
 from rich.table import Table
 
 from portfolio_manager.models import Deposit
-from portfolio_manager.cli.prompt_select import cancellable_prompt, choose_deposit_menu
+from portfolio_manager.cli.prompt_select import (
+    cancellable_prompt,
+    choose_deposit_from_list,
+    choose_deposit_menu,
+)
 
 _NOTE_UNCHANGED = object()
 
@@ -18,6 +22,7 @@ def get_date_input(
     prompt_text: str = "Date (YYYY-MM-DD)",
     default: date | None = None,
     prompt_func: Callable[[], str | None] | None = None,
+    console: Console | None = None,
 ) -> date | None:
     """Prompt for a date input. Returns None if cancelled."""
     default_str = default.isoformat() if default else date.today().isoformat()
@@ -34,13 +39,16 @@ def get_date_input(
         try:
             return datetime.strptime(value, "%Y-%m-%d").date()
         except ValueError:
-            print("Invalid format. Please use YYYY-MM-DD.")
+            if console is not None:
+                console.print("[red]Invalid format. Please use YYYY-MM-DD.[/red]")
+            else:
+                print("Invalid format. Please use YYYY-MM-DD.")
 
 
 def render_deposit_list(console: Console, deposits: list[Deposit]) -> None:
     """Render the deposit list."""
     if not deposits:
-        console.print("No deposits found")
+        console.print("No deposits found. Add a deposit to continue.")
 
     table = Table(title="Deposits", header_style="bold")
     table.add_column("#", style="dim", width=4, justify="right")
@@ -73,7 +81,7 @@ def add_deposit_flow(
     prompt_note=None,
 ) -> None:
     """Add a deposit."""
-    deposit_date = get_date_input(prompt_func=prompt_date)
+    deposit_date = get_date_input(prompt_func=prompt_date, console=console)
     if deposit_date is None:
         console.print("[yellow]Cancelled[/yellow]")
         return
@@ -174,16 +182,13 @@ def delete_deposit_flow(
         console.print("[yellow]No deposits to delete[/yellow]")
         return
 
-    choice = Prompt.ask(
-        "Select deposit # to delete (or 'c' to cancel)",
-        choices=[str(i) for i in range(1, len(deposits) + 1)] + ["c"],
-    )
-
-    if choice == "c":
+    deposit_id = choose_deposit_from_list(deposits)
+    if deposit_id is None:
         return
 
-    index = int(choice) - 1
-    deposit = deposits[index]
+    deposit = next((item for item in deposits if item.id == deposit_id), None)
+    if deposit is None:
+        return
 
     if Confirm.ask(
         f"Delete deposit of {deposit.amount:,.0f} from {deposit.deposit_date}?",
@@ -203,17 +208,13 @@ def select_deposit_to_edit(
         console.print("[yellow]No deposits to edit[/yellow]")
         return
 
-    choice = Prompt.ask(
-        "Select deposit # to edit (or 'c' to cancel)",
-        choices=[str(i) for i in range(1, len(deposits) + 1)] + ["c"],
-    )
-
-    if choice == "c":
+    deposit_id = choose_deposit_from_list(deposits)
+    if deposit_id is None:
         return
 
-    index = int(choice) - 1
-    deposit = deposits[index]
-    update_deposit_flow(console, deposit_repository, deposit)
+    deposit = next((item for item in deposits if item.id == deposit_id), None)
+    if deposit is not None:
+        update_deposit_flow(console, deposit_repository, deposit)
 
 
 def run_deposit_menu(
