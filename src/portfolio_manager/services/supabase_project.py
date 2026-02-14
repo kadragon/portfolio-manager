@@ -104,7 +104,7 @@ def restore_project(project_ref: str, access_token: str) -> bool:
             headers=headers,
             timeout=30.0,
         )
-        return resp.status_code == 200
+        return resp.status_code in (200, 201)
     except httpx.HTTPError:
         return False
 
@@ -131,8 +131,6 @@ def wait_for_project_ready(
         status = get_project_status(project_ref, access_token)
         if status == ProjectStatus.ACTIVE:
             return True
-        if status == ProjectStatus.PAUSED:
-            return False
         time.sleep(poll_interval)
         elapsed += poll_interval
     return False

@@ -216,12 +216,19 @@ def _ensure_supabase_ready(console: Console) -> bool:
             return True
         console.print(f"[yellow]Warning: {result.error}[/yellow]")
 
-    if result.status in (ProjectStatus.PAUSED, ProjectStatus.RESTORING):
+    if result.status == ProjectStatus.PAUSED:
         console.print(
             "[red]Supabase project is not ready. "
             "Please restore from dashboard: https://supabase.com/dashboard[/red]"
         )
         return False
+
+    if result.status == ProjectStatus.RESTORING:
+        console.print(
+            "[yellow]Supabase project restore is still in progress. "
+            "Continuing startup and retrying connection.[/yellow]"
+        )
+        return True
 
     return True
 

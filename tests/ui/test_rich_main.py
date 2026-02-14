@@ -170,3 +170,15 @@ def test_choose_main_menu_returns_selected_action():
 
     chooser.assert_called_once()
     assert action == "groups"
+
+
+def test_ensure_supabase_ready_continues_when_restoration_is_in_progress():
+    """Should continue startup while restore is still in progress."""
+    console = MagicMock()
+    result = MagicMock()
+    result.status = main_app.ProjectStatus.RESTORING
+    result.restored = False
+    result.error = "Project restoration taking longer than expected."
+
+    with patch.object(main_app, "check_and_restore_project", return_value=result):
+        assert main_app._ensure_supabase_ready(console) is True
