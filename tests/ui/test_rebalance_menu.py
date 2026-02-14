@@ -84,6 +84,36 @@ class TestMainMenuRebalanceOption:
 class TestRebalanceExecutionFlow:
     """Test rebalance execution CLI flow."""
 
+    def test_returns_when_price_service_is_unavailable(self) -> None:
+        """Should show warning and return when price service is not configured."""
+        from portfolio_manager.cli.main import run_rebalance_menu
+
+        console = Console(record=True, width=120)
+        container = MagicMock()
+        container.price_service = None
+
+        run_rebalance_menu(console, container)
+
+        output = console.export_text()
+        assert "Price service not available" in output
+        container.get_portfolio_service.assert_called_once_with()
+
+    def test_returns_when_portfolio_summary_fetch_fails(self) -> None:
+        """Should show error and abort if portfolio summary retrieval raises."""
+        from portfolio_manager.cli.main import run_rebalance_menu
+
+        console = Console(record=True, width=120)
+        container = MagicMock()
+        container.price_service = MagicMock()
+        container.get_portfolio_service.return_value.get_portfolio_summary.side_effect = RuntimeError(
+            "fetch failed"
+        )
+
+        run_rebalance_menu(console, container)
+
+        output = console.export_text()
+        assert "Error fetching portfolio" in output
+
     def test_execute_cancelled_at_confirmation_does_not_place_orders(self) -> None:
         """When user selects Execute but cancels confirmation, no orders are placed."""
         from portfolio_manager.cli import main as main_module

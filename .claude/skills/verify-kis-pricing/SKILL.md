@@ -74,6 +74,7 @@ description: Verify KIS pricing, exchange normalization, and order routing behav
 
 ```bash
 uv run pytest -q \
+  --no-cov \
   tests/services/test_price_service.py \
   tests/services/test_price_service_memory_cache.py \
   tests/services/kis/test_kis_price.py \

@@ -1,7 +1,9 @@
 """Tests for Rich-based main menu and navigation."""
 
+from datetime import datetime
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from rich.console import Console
@@ -223,3 +225,130 @@ def test_ensure_supabase_ready_continues_on_non_blocking_config_error():
 
     with patch.object(main_app, "check_and_restore_project", return_value=result):
         assert main_app._ensure_supabase_ready(console) is True
+
+
+def test_select_group_by_index_handles_bounds_and_valid_selection():
+    """Should return None for out-of-range index and group for valid index."""
+    groups = [
+        main_app.Group(
+            id=uuid4(), name="A", created_at=datetime.now(), updated_at=datetime.now()
+        ),
+        main_app.Group(
+            id=uuid4(), name="B", created_at=datetime.now(), updated_at=datetime.now()
+        ),
+    ]
+
+    assert main_app._select_group_by_index(groups, 0) is None
+    assert main_app._select_group_by_index(groups, 3) is None
+    assert main_app._select_group_by_index(groups, 2) is groups[1]
+
+
+def test_select_group_by_id_returns_none_when_not_found():
+    """Should return None when no matching group id exists."""
+    groups = [
+        main_app.Group(
+            id=uuid4(), name="A", created_at=datetime.now(), updated_at=datetime.now()
+        )
+    ]
+
+    assert main_app._select_group_by_id(groups, uuid4()) is None
+
+
+def test_main_returns_early_when_supabase_not_ready():
+    """Should abort startup if Supabase is not ready."""
+    with patch.object(main_app, "_ensure_supabase_ready", return_value=False):
+        with patch("portfolio_manager.cli.main.ServiceContainer") as mock_container:
+            main_app.main()
+
+    mock_container.assert_not_called()
+
+
+def test_main_falls_back_to_holdings_when_price_fetch_fails():
+    """Should render group holdings fallback when summary fetch raises."""
+    fallback = [{"group": "fallback"}]
+
+    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
+        container = MockContainer.return_value
+        portfolio_service = MagicMock()
+        portfolio_service.get_portfolio_summary.side_effect = RuntimeError("price fail")
+        portfolio_service.get_holdings_by_group.return_value = fallback
+        container.get_portfolio_service.return_value = portfolio_service
+        container.price_service = object()
+        container.setup = MagicMock()
+
+        with patch.object(main_app, "render_dashboard") as render_dashboard:
+            with patch.object(main_app, "choose_main_menu", return_value="quit"):
+                main_app.main()
+
+    portfolio_service.get_holdings_by_group.assert_called_once_with()
+    assert render_dashboard.call_args[0][1] is fallback
+
+
+def test_main_uses_holdings_dashboard_when_price_service_absent():
+    """Should render holdings dashboard directly when price service is unavailable."""
+    holdings = [{"group": "no-price"}]
+
+    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
+        container = MockContainer.return_value
+        portfolio_service = MagicMock()
+        portfolio_service.get_holdings_by_group.return_value = holdings
+        container.get_portfolio_service.return_value = portfolio_service
+        container.price_service = None
+        container.setup = MagicMock()
+
+        with patch.object(main_app, "render_dashboard") as render_dashboard:
+            with patch.object(main_app, "choose_main_menu", return_value="quit"):
+                main_app.main()
+
+    portfolio_service.get_portfolio_summary.assert_not_called()
+    portfolio_service.get_holdings_by_group.assert_called_once_with()
+    assert render_dashboard.call_args[0][1] is holdings
+
+
+@pytest.mark.parametrize(
+    ("action", "menu_function_name"),
+    [
+        ("accounts", "run_account_menu"),
+        ("deposits", "run_deposit_menu"),
+        ("rebalance", "run_rebalance_menu"),
+    ],
+)
+def test_main_invalidates_cache_after_non_group_menu_actions(
+    action: str, menu_function_name: str
+):
+    """Accounts/deposits/rebalance actions should invalidate summary cache."""
+    summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
+
+    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
+        container = MockContainer.return_value
+        portfolio_service = MagicMock()
+        portfolio_service.get_portfolio_summary.return_value = summary
+        container.get_portfolio_service.return_value = portfolio_service
+        container.price_service = object()
+        container.setup = MagicMock()
+
+        with patch.object(main_app, "render_dashboard"):
+            with patch.object(
+                main_app, "choose_main_menu", side_effect=[action, "quit"]
+            ):
+                with patch.object(main_app, menu_function_name) as menu_function:
+                    with patch.object(main_app.time, "time", return_value=1000.0):
+                        main_app.main()
+
+    menu_function.assert_called_once()
+    assert portfolio_service.get_portfolio_summary.call_count == 2
+
+
+def test_ensure_supabase_ready_prints_message_when_restored_active():
+    """Restored ACTIVE status should print success message."""
+    console = MagicMock()
+    result = MagicMock()
+    result.status = main_app.ProjectStatus.ACTIVE
+    result.restored = True
+    result.error = None
+    result.is_config_error = False
+
+    with patch.object(main_app, "check_and_restore_project", return_value=result):
+        assert main_app._ensure_supabase_ready(console) is True
+
+    assert "Supabase project restored and ready!" in str(console.print.call_args)

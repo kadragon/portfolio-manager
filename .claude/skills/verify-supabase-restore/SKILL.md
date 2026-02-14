@@ -74,6 +74,7 @@ grep -n "def _ensure_supabase_ready\\|ProjectStatus.ACTIVE\\|ProjectStatus.PAUSE
 
 ```bash
 uv run pytest -q \
+  --no-cov \
   tests/services/test_supabase_project.py \
   tests/ui/test_rich_main.py \
   tests/test_supabase_auto_resume.py

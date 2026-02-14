@@ -189,3 +189,164 @@ def test_stock_repository_updates_exchange():
     )
     assert stock is not None
     assert stock.exchange == "NAS"
+
+
+def test_create_stock_raises_when_no_rows_returned():
+    """Should raise ValueError when create returns empty data."""
+    group_id = uuid4()
+    response = Mock()
+    response.data = []
+    client = Mock()
+    client.table.return_value.insert.return_value.execute.return_value = response
+    repository = StockRepository(client)
+
+    try:
+        repository.create("AAPL", group_id)
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "Failed to create stock" in str(exc)
+
+
+def test_list_by_group_returns_empty_when_no_rows():
+    """Should return empty list when group has no stocks."""
+    group_id = uuid4()
+    response = Mock()
+    response.data = []
+    client = Mock()
+    client.table.return_value.select.return_value.eq.return_value.execute.return_value = response
+    repository = StockRepository(client)
+
+    assert repository.list_by_group(group_id) == []
+
+
+def test_list_all_returns_empty_when_no_rows():
+    """Should return empty list when there are no stocks."""
+    response = Mock()
+    response.data = []
+    client = Mock()
+    client.table.return_value.select.return_value.execute.return_value = response
+    repository = StockRepository(client)
+
+    assert repository.list_all() == []
+
+
+def test_stock_repository_update_returns_updated_stock():
+    """Should update ticker and return updated stock."""
+    stock_id = uuid4()
+    group_id = uuid4()
+    response = Mock()
+    response.data = [
+        {
+            "id": str(stock_id),
+            "ticker": "MSFT",
+            "group_id": str(group_id),
+            "created_at": "2026-01-03T00:00:00",
+            "updated_at": "2026-01-03T00:00:00",
+        }
+    ]
+    client = Mock()
+    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
+    repository = StockRepository(client)
+
+    stock = repository.update(stock_id, "MSFT")
+
+    assert stock.ticker == "MSFT"
+    client.table.return_value.update.assert_called_once_with({"ticker": "MSFT"})
+
+
+def test_stock_repository_update_raises_when_no_rows():
+    """Should raise ValueError when ticker update returns no rows."""
+    stock_id = uuid4()
+    response = Mock()
+    response.data = []
+    client = Mock()
+    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
+    repository = StockRepository(client)
+
+    try:
+        repository.update(stock_id, "MSFT")
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "Failed to update stock" in str(exc)
+
+
+def test_stock_repository_get_by_id_returns_none_when_not_found():
+    """Should return None if stock id does not exist."""
+    stock_id = uuid4()
+    response = Mock()
+    response.data = []
+    client = Mock()
+    client.table.return_value.select.return_value.eq.return_value.execute.return_value = response
+    repository = StockRepository(client)
+
+    assert repository.get_by_id(stock_id) is None
+
+
+def test_stock_repository_get_by_ticker_returns_none_when_not_found():
+    """Should return None if ticker does not exist."""
+    response = Mock()
+    response.data = []
+    client = Mock()
+    client.table.return_value.select.return_value.eq.return_value.execute.return_value = response
+    repository = StockRepository(client)
+
+    assert repository.get_by_ticker("UNKNOWN") is None
+
+
+def test_stock_repository_update_group_returns_updated_stock():
+    """Should move stock to target group and return updated stock."""
+    stock_id = uuid4()
+    group_id = uuid4()
+    response = Mock()
+    response.data = [
+        {
+            "id": str(stock_id),
+            "ticker": "AAPL",
+            "group_id": str(group_id),
+            "created_at": "2026-01-03T00:00:00",
+            "updated_at": "2026-01-03T00:00:00",
+        }
+    ]
+    client = Mock()
+    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
+    repository = StockRepository(client)
+
+    moved = repository.update_group(stock_id, group_id)
+
+    assert moved.group_id == group_id
+    client.table.return_value.update.assert_called_once_with(
+        {"group_id": str(group_id)}
+    )
+
+
+def test_stock_repository_update_group_raises_when_no_rows():
+    """Should raise ValueError when move operation returns no rows."""
+    stock_id = uuid4()
+    group_id = uuid4()
+    response = Mock()
+    response.data = []
+    client = Mock()
+    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
+    repository = StockRepository(client)
+
+    try:
+        repository.update_group(stock_id, group_id)
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "Failed to move stock" in str(exc)
+
+
+def test_stock_repository_update_exchange_raises_when_no_rows():
+    """Should raise ValueError when exchange update returns no rows."""
+    stock_id = uuid4()
+    response = Mock()
+    response.data = []
+    client = Mock()
+    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
+    repository = StockRepository(client)
+
+    try:
+        repository.update_exchange(stock_id, "NYS")
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "Failed to update stock exchange" in str(exc)
