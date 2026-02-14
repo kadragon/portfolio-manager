@@ -31,6 +31,7 @@ argument-hint: "[선택사항: 특정 스킬 이름 또는 집중할 영역]"
 | 스킬 | 설명 | 커버 파일 패턴 |
 | --- | --- | --- |
 | `verify-kis-pricing` | KIS 가격/거래소/토큰 재시도 흐름 검증 | `src/portfolio_manager/services/kis/**/*.py`, `src/portfolio_manager/services/price_service.py` |
+| `verify-supabase-restore` | Supabase 프로젝트 상태 확인/복구 및 CLI 시작 흐름 검증 | `src/portfolio_manager/services/supabase_project.py`, `src/portfolio_manager/cli/main.py`, `tests/services/test_supabase_project.py`, `tests/ui/test_rich_main.py` |
 
 ## 워크플로우
 

@@ -3,6 +3,7 @@
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
+import pytest
 from rich.console import Console
 
 from portfolio_manager.cli.app import (
@@ -170,3 +171,55 @@ def test_choose_main_menu_returns_selected_action():
 
     chooser.assert_called_once()
     assert action == "groups"
+
+
+@pytest.mark.parametrize(
+    ("status", "restored", "error", "is_config_error", "expected"),
+    [
+        (main_app.ProjectStatus.ACTIVE, False, None, False, True),
+        (
+            main_app.ProjectStatus.RESTORING,
+            False,
+            "Project restoration taking longer than expected.",
+            False,
+            True,
+        ),
+        (
+            main_app.ProjectStatus.PAUSED,
+            False,
+            "Failed to request restore",
+            False,
+            False,
+        ),
+    ],
+)
+def test_ensure_supabase_ready_handles_main_status_paths(
+    status: main_app.ProjectStatus,
+    restored: bool,
+    error: str | None,
+    is_config_error: bool,
+    expected: bool,
+):
+    """Should handle ACTIVE/RESTORING/PAUSED startup gate paths."""
+    console = MagicMock()
+    result = MagicMock()
+    result.status = status
+    result.restored = restored
+    result.error = error
+    result.is_config_error = is_config_error
+
+    with patch.object(main_app, "check_and_restore_project", return_value=result):
+        assert main_app._ensure_supabase_ready(console) is expected
+
+
+def test_ensure_supabase_ready_continues_on_non_blocking_config_error():
+    """Should continue startup when auto-restore is disabled by config."""
+    console = MagicMock()
+    result = MagicMock()
+    result.status = main_app.ProjectStatus.UNKNOWN
+    result.restored = False
+    result.error = "SUPABASE_ACCESS_TOKEN not set (project auto-restore disabled)"
+    result.is_config_error = True
+
+    with patch.object(main_app, "check_and_restore_project", return_value=result):
+        assert main_app._ensure_supabase_ready(console) is True

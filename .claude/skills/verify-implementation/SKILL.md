@@ -30,6 +30,7 @@ argument-hint: "[선택사항: 특정 verify 스킬 이름]"
 | # | 스킬 | 설명 |
 | --- | --- | --- |
 | 1 | `verify-kis-pricing` | KIS 가격/거래소/토큰 재시도 흐름 검증 |
+| 2 | `verify-supabase-restore` | Supabase 프로젝트 상태 확인/복구 및 CLI 시작 흐름 검증 |
 
 ## 워크플로우
 
