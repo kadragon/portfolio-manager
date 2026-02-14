@@ -30,7 +30,7 @@ def test_get_stock_price_uses_memory_cache():
     # Then: API는 한 번만 호출되고 결과는 동일
     price_client.get_price.assert_called_once()
     assert result1 == result2
-    assert result1 == (Decimal("150.0"), "USD", "Apple Inc.", "NAS")
+    assert result1 == (Decimal("150.0"), "USD", "Apple Inc.", "NASD")
 
 
 def test_get_stock_change_rates_uses_memory_cache():
@@ -104,9 +104,9 @@ def test_get_stock_price_cache_keys_by_exchange():
     # Then: 각각 API를 호출하고 다른 결과 반환
     assert price_client.get_price.call_count == 2
     assert result_nas[0] == Decimal("150.0")
-    assert result_nas[3] == "NAS"
+    assert result_nas[3] == "NASD"
     assert result_nys[0] == Decimal("151.0")
-    assert result_nys[3] == "NYS"
+    assert result_nys[3] == "NYSE"
 
 
 def test_get_stock_price_does_not_cache_zero_price():

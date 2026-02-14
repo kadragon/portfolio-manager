@@ -229,6 +229,31 @@ def test_get_stock_price_returns_zero_when_domestic_price_errors():
     domestic_client.fetch_current_price.assert_called_once_with("J", "360750")
 
 
+def test_get_stock_price_normalizes_overseas_exchange_codes():
+    """해외 거래소 코드는 주문용 표준 코드로 정규화한다."""
+    price_client = Mock()
+    price_client.get_price.return_value = PriceQuote(
+        symbol="AAPL",
+        name="Apple Inc.",
+        price=150.0,
+        market="US",
+        currency="USD",
+        exchange="NAS",
+    )
+
+    service = PriceService(price_client)
+
+    price, currency, name, exchange = service.get_stock_price(
+        "AAPL", preferred_exchange="NASD"
+    )
+
+    assert price == Decimal("150.0")
+    assert currency == "USD"
+    assert name == "Apple Inc."
+    assert exchange == "NASD"
+    price_client.get_price.assert_called_once_with("AAPL", preferred_exchange="NAS")
+
+
 def test_get_stock_change_rates_returns_zero_when_domestic_history_errors():
     """국내 과거 종가 조회 실패 시 변동률은 0으로 처리한다."""
     domestic_client = Mock()
@@ -285,7 +310,7 @@ def test_get_stock_price_uses_cached_price_for_today():
     assert price == Decimal("410.12")
     assert currency == "USD"
     assert name == "Invesco QQQ Trust"
-    assert exchange == "NAS"
+    assert exchange == "NASD"
     price_client.get_price.assert_not_called()
 
 
@@ -330,14 +355,14 @@ def test_get_stock_price_saves_price_when_cache_miss():
     assert price == Decimal("410.12")
     assert currency == "USD"
     assert name == "Invesco QQQ Trust"
-    assert exchange == "NAS"
+    assert exchange == "NASD"
     cache_repo.save.assert_called_once_with(
         ticker="QQQ",
         price_date=date(2026, 1, 4),
         price=Decimal("410.12"),
         currency="USD",
         name="Invesco QQQ Trust",
-        exchange="NAS",
+        exchange="NASD",
     )
 
 

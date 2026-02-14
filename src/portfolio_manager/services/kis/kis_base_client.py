@@ -1,5 +1,14 @@
 """Shared behavior for KIS API clients."""
 
+from __future__ import annotations
+
+from typing import Callable
+
+import httpx
+
+from portfolio_manager.services.kis.kis_error_handler import is_token_expired_error
+from portfolio_manager.services.kis.kis_token_manager import TokenManager
+
 
 class KisBaseClient:
     """Base client with shared header and environment handling."""
@@ -18,6 +27,19 @@ class KisBaseClient:
             "tr_id": tr_id,
             "custtype": self.cust_type,
         }
+
+    def _request_with_retry(
+        self,
+        make_request: Callable[[str | None], httpx.Response],
+        *,
+        token_manager: TokenManager | None = None,
+    ) -> httpx.Response:
+        response = make_request(None)
+        if is_token_expired_error(response) and token_manager is not None:
+            new_token = token_manager.get_token()
+            response = make_request(new_token)
+        response.raise_for_status()
+        return response
 
     @staticmethod
     def _tr_id_for_env(env: str, *, real_id: str, demo_id: str) -> str:

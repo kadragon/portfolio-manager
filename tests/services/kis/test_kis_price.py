@@ -618,3 +618,35 @@ def test_parse_us_price_returns_common_model():
     assert price.name == "Apple Inc"
     assert price.price == 192.45
     assert price.market == "US"
+
+
+def test_parse_price_helpers_handle_missing_symbol_and_list_output():
+    korea_payload = {
+        "output": {
+            "stck_prpr": "73500",
+            "hts_kor_isnm": "삼성전자",
+        }
+    }
+
+    korea_price = parse_korea_price(korea_payload, symbol="005930")
+
+    assert korea_price.symbol == "005930"
+    assert korea_price.name == "삼성전자"
+    assert korea_price.price == 73500
+
+    us_payload = {
+        "output": [
+            {
+                "last": "144.76",
+                "symb": "VYM",
+                "enname": "Vanguard High Dividend Yield ETF",
+            }
+        ]
+    }
+
+    us_price = parse_us_price(us_payload, exchange="NAS")
+
+    assert us_price.symbol == "VYM"
+    assert us_price.name == "Vanguard High Dividend Yield ETF"
+    assert us_price.price == 144.76
+    assert us_price.exchange == "NAS"

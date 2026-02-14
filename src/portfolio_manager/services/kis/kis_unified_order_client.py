@@ -10,6 +10,12 @@ from portfolio_manager.services.kis.kis_market_detector import is_domestic_ticke
 class KisUnifiedOrderClient:
     """Routes order requests to domestic or overseas KIS order clients."""
 
+    _ORDER_EXCHANGE_MAP = {
+        "NAS": "NASD",
+        "NYS": "NYSE",
+        "AMS": "AMEX",
+    }
+
     def __init__(
         self,
         domestic_client: Any,
@@ -23,6 +29,12 @@ class KisUnifiedOrderClient:
         self._cano = cano
         self._acnt_prdt_cd = acnt_prdt_cd
         self._price_service = price_service
+
+    @classmethod
+    def _normalize_overseas_exchange(cls, exchange: str | None) -> str:
+        if not exchange:
+            return "NASD"
+        return cls._ORDER_EXCHANGE_MAP.get(exchange, exchange)
 
     def place_order(
         self,
@@ -47,9 +59,10 @@ class KisUnifiedOrderClient:
                 ord_unpr=str(int(price)),
             )
         else:
+            normalized_exchange = self._normalize_overseas_exchange(exchange)
             return self._overseas.place_order(
                 side=side,
-                ovrs_excg_cd=exchange or "NASD",
+                ovrs_excg_cd=normalized_exchange,
                 pdno=ticker,
                 ord_qty=str(quantity),
                 ovrs_ord_unpr=str(price),

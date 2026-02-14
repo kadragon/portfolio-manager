@@ -10,6 +10,13 @@ import httpx
 class PriceService:
     """Service for fetching stock prices."""
 
+    _ORDER_EXCHANGE_MAP = {
+        "NAS": "NASD",
+        "NYS": "NYSE",
+        "AMS": "AMEX",
+    }
+    _PRICE_EXCHANGE_MAP = {value: key for key, value in _ORDER_EXCHANGE_MAP.items()}
+
     def __init__(
         self,
         price_client,
@@ -27,12 +34,25 @@ class PriceService:
             tuple[str, date, str | None], dict[str, Decimal]
         ] = {}
 
+    @classmethod
+    def _to_order_exchange(cls, exchange: str | None) -> str | None:
+        if not exchange:
+            return None
+        return cls._ORDER_EXCHANGE_MAP.get(exchange, exchange)
+
+    @classmethod
+    def _to_price_exchange(cls, exchange: str | None) -> str | None:
+        if not exchange:
+            return None
+        return cls._PRICE_EXCHANGE_MAP.get(exchange, exchange)
+
     def get_stock_price(
         self, ticker: str, preferred_exchange: str | None = None
     ) -> tuple[Decimal, str, str, str | None]:
         """Get current price, currency, name, and exchange for a stock ticker."""
+        cache_exchange = self._to_order_exchange(preferred_exchange)
         # Check in-memory cache first (keyed by ticker and exchange)
-        cache_key = (ticker, preferred_exchange)
+        cache_key = (ticker, cache_exchange)
         if cache_key in self._price_cache:
             return self._price_cache[cache_key]
 
@@ -45,15 +65,17 @@ class PriceService:
                 cached.price,
                 cached.currency,
                 cached.name,
-                cached.exchange,
+                self._to_order_exchange(cached.exchange),
             )
             self._price_cache[cache_key] = result
             return result
 
         quote = self.price_client.get_price(
-            ticker, preferred_exchange=preferred_exchange
+            ticker,
+            preferred_exchange=self._to_price_exchange(preferred_exchange),
         )
         price = Decimal(str(quote.price))
+        normalized_exchange = self._to_order_exchange(quote.exchange)
         if self.price_cache_repository and price > 0:
             self.price_cache_repository.save(
                 ticker=ticker,
@@ -61,9 +83,9 @@ class PriceService:
                 price=price,
                 currency=quote.currency,
                 name=quote.name,
-                exchange=quote.exchange,
+                exchange=normalized_exchange,
             )
-        result = (price, quote.currency, quote.name, quote.exchange)
+        result = (price, quote.currency, quote.name, normalized_exchange)
         # Only cache valid prices (price > 0)
         if price > 0:
             self._price_cache[cache_key] = result
@@ -79,8 +101,9 @@ class PriceService:
         if as_of is None:
             as_of = date.today()
 
+        cache_exchange = self._to_order_exchange(preferred_exchange)
         # Check in-memory cache first (keyed by ticker, date, and exchange)
-        cache_key = (ticker, as_of, preferred_exchange)
+        cache_key = (ticker, as_of, cache_exchange)
         if cache_key in self._change_rates_cache:
             return self._change_rates_cache[cache_key]
 
@@ -110,6 +133,8 @@ class PriceService:
         current_price, currency, name, exchange = self.get_stock_price(
             ticker, preferred_exchange=preferred_exchange
         )
+        resolved_exchange = exchange or preferred_exchange
+        preferred_exchange = self._to_price_exchange(resolved_exchange)
         targets = {
             "1y": adjust_to_previous_business_day(shift_years(as_of, 1)),
             "6m": adjust_to_previous_business_day(shift_months(as_of, 6)),

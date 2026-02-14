@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import httpx
 
 from portfolio_manager.services.kis.kis_base_client import KisBaseClient
-from portfolio_manager.services.kis.kis_error_handler import is_token_expired_error
 from portfolio_manager.services.kis.kis_token_manager import TokenManager
 
 
@@ -41,22 +40,21 @@ class KisDomesticOrderClient(KisBaseClient):
             "ORD_UNPR": ord_unpr,
             "EXCG_ID_DVSN_CD": excg_id_dvsn_cd,
         }
-        response = self.client.post(
-            "/uapi/domestic-stock/v1/trading/order-cash",
-            headers=self._build_headers(tr_id),
-            json=payload,
-        )
 
-        if is_token_expired_error(response) and self.token_manager is not None:
-            new_token = self.token_manager.get_token()
-            refreshed = replace(self, access_token=new_token)
-            response = refreshed.client.post(
+        def make_request(token_override: str | None) -> httpx.Response:
+            headers = self._build_headers(tr_id)
+            if token_override:
+                headers["authorization"] = f"Bearer {token_override}"
+            return self.client.post(
                 "/uapi/domestic-stock/v1/trading/order-cash",
-                headers=refreshed._build_headers(tr_id),
+                headers=headers,
                 json=payload,
             )
 
-        response.raise_for_status()
+        response = self._request_with_retry(
+            make_request,
+            token_manager=self.token_manager,
+        )
         return response.json()
 
     @staticmethod

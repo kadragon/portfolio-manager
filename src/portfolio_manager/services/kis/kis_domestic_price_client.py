@@ -6,8 +6,10 @@ from datetime import date, timedelta
 import httpx
 
 from portfolio_manager.services.kis.kis_base_client import KisBaseClient
-from portfolio_manager.services.kis.kis_error_handler import is_token_expired_error
-from portfolio_manager.services.kis.kis_price_parser import PriceQuote
+from portfolio_manager.services.kis.kis_price_parser import (
+    PriceQuote,
+    parse_korea_price,
+)
 from portfolio_manager.services.kis.kis_token_manager import TokenManager
 
 
@@ -44,16 +46,7 @@ class KisDomesticPriceClient(KisBaseClient):
         )
         response.raise_for_status()
         data = response.json()
-        output = data["output"]
-        name = output.get("hts_kor_isnm", "")
-        price = int(output["stck_prpr"])
-        return PriceQuote(
-            symbol=fid_input_iscd,
-            name=name,
-            price=price,
-            market="KR",
-            currency="KRW",
-        )
+        return parse_korea_price(data, symbol=fid_input_iscd)
 
     def fetch_historical_close(
         self,
@@ -103,46 +96,24 @@ class KisDomesticPriceClient(KisBaseClient):
     ) -> PriceQuote:
         """Fetch current price with automatic token refresh on expiration."""
         tr_id = self._tr_id_for_env(self.env)
-        response = self.client.get(
-            "/uapi/domestic-stock/v1/quotations/inquire-price",
-            params={
-                "FID_COND_MRKT_DIV_CODE": fid_cond_mrkt_div_code,
-                "FID_INPUT_ISCD": fid_input_iscd,
-            },
-            headers=self._build_headers(tr_id),
-        )
+        params = {
+            "FID_COND_MRKT_DIV_CODE": fid_cond_mrkt_div_code,
+            "FID_INPUT_ISCD": fid_input_iscd,
+        }
 
-        # If token expired, refresh and retry
-        if is_token_expired_error(response):
-            new_token = token_manager.get_token()
-            response = self.client.get(
+        def make_request(token_override: str | None) -> httpx.Response:
+            headers = self._build_headers(tr_id)
+            if token_override:
+                headers["authorization"] = f"Bearer {token_override}"
+            return self.client.get(
                 "/uapi/domestic-stock/v1/quotations/inquire-price",
-                params={
-                    "FID_COND_MRKT_DIV_CODE": fid_cond_mrkt_div_code,
-                    "FID_INPUT_ISCD": fid_input_iscd,
-                },
-                headers={
-                    "content-type": "application/json",
-                    "authorization": f"Bearer {new_token}",
-                    "appkey": self.app_key,
-                    "appsecret": self.app_secret,
-                    "tr_id": tr_id,
-                    "custtype": self.cust_type,
-                },
+                params=params,
+                headers=headers,
             )
 
-        response.raise_for_status()
+        response = self._request_with_retry(make_request, token_manager=token_manager)
         data = response.json()
-        output = data["output"]
-        name = output.get("hts_kor_isnm", "")
-        price = int(output["stck_prpr"])
-        return PriceQuote(
-            symbol=fid_input_iscd,
-            name=name,
-            price=price,
-            market="KR",
-            currency="KRW",
-        )
+        return parse_korea_price(data, symbol=fid_input_iscd)
 
     @staticmethod
     def _tr_id_for_env(

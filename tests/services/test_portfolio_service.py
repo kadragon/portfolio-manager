@@ -590,7 +590,7 @@ def test_portfolio_summary_updates_stock_exchange_cache():
         Decimal("70.0"),
         "USD",
         "Schwab US Dividend Equity ETF",
-        "NYS",
+        "NYSE",
     )
     price_service.get_stock_change_rates.return_value = {
         "1y": Decimal("20"),
@@ -611,4 +611,4 @@ def test_portfolio_summary_updates_stock_exchange_cache():
 
     portfolio_service.get_portfolio_summary()
 
-    stock_repo.update_exchange.assert_called_once_with(stock_id, "NYS")
+    stock_repo.update_exchange.assert_called_once_with(stock_id, "NYSE")
