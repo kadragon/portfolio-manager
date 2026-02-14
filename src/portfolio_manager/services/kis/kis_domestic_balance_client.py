@@ -7,7 +7,6 @@ from collections import defaultdict
 import httpx
 
 from portfolio_manager.services.kis.kis_base_client import KisBaseClient
-from portfolio_manager.services.kis.kis_error_handler import is_token_expired_error
 from portfolio_manager.services.kis.kis_token_manager import TokenManager
 
 
@@ -113,29 +112,21 @@ class KisDomesticBalanceClient(KisBaseClient):
         }
         tr_id = self._tr_id_for_env(self.env)
 
-        response = self.client.get(
-            "/uapi/domestic-stock/v1/trading/inquire-balance",
-            params=params,
-            headers=self._build_headers_with_tr_cont(
-                tr_id=tr_id,
-                tr_cont=tr_cont,
-            ),
-        )
-
-        if is_token_expired_error(response) and self.token_manager is not None:
-            new_token = self.token_manager.get_token()
-            response = self.client.get(
+        def make_request(token_override: str | None) -> httpx.Response:
+            return self.client.get(
                 "/uapi/domestic-stock/v1/trading/inquire-balance",
                 params=params,
                 headers=self._build_headers_with_tr_cont(
                     tr_id=tr_id,
                     tr_cont=tr_cont,
-                    access_token=new_token,
+                    access_token=token_override,
                 ),
             )
 
-        response.raise_for_status()
-        return response
+        return self._request_with_retry(
+            make_request,
+            token_manager=self.token_manager,
+        )
 
     def _build_headers_with_tr_cont(
         self, *, tr_id: str, tr_cont: str, access_token: str | None = None

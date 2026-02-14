@@ -444,3 +444,35 @@ def test_unified_order_client_routes_overseas_order():
     )
     mock_domestic.place_order.assert_not_called()
     assert result == {"rt_cd": "0", "msg1": "ok"}
+
+
+def test_unified_order_client_maps_price_exchange_to_order_exchange():
+    """NAS/NYS/AMS exchanges should map to NASD/NYSE/AMEX for orders."""
+    mock_domestic = MagicMock()
+    mock_overseas = MagicMock()
+    mock_overseas.place_order.return_value = {"rt_cd": "0", "msg1": "ok"}
+    mock_price_service = MagicMock()
+    mock_price_service.get_stock_price.return_value = (
+        Decimal("201.50"),
+        "USD",
+        "Apple Inc",
+        "NAS",
+    )
+
+    client = KisUnifiedOrderClient(
+        domestic_client=mock_domestic,
+        overseas_client=mock_overseas,
+        cano="12345678",
+        acnt_prdt_cd="01",
+        price_service=mock_price_service,
+    )
+
+    client.place_order(ticker="AAPL", side="buy", quantity=1, exchange="NAS")
+
+    mock_overseas.place_order.assert_called_once_with(
+        side="buy",
+        ovrs_excg_cd="NASD",
+        pdno="AAPL",
+        ord_qty="1",
+        ovrs_ord_unpr="201.50",
+    )
