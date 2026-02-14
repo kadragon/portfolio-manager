@@ -211,8 +211,8 @@ def _ensure_supabase_ready(console: Console) -> bool:
         return True
 
     if result.error:
-        if "ACCESS_TOKEN not set" in (result.error or ""):
-            # Access token not configured - skip auto-restore silently
+        if result.is_config_error:
+            # Non-blocking auto-restore config issue (e.g. missing access token)
             return True
         console.print(f"[yellow]Warning: {result.error}[/yellow]")
 

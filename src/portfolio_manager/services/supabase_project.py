@@ -28,6 +28,7 @@ class ProjectCheckResult:
     status: ProjectStatus
     restored: bool = False
     error: str | None = None
+    is_config_error: bool = False
 
 
 SUPABASE_API_BASE = "https://api.supabase.com/v1"
@@ -74,9 +75,9 @@ def get_project_status(project_ref: str, access_token: str) -> ProjectStatus:
             status_str = data.get("status", "")
             if status_str == "ACTIVE_HEALTHY":
                 return ProjectStatus.ACTIVE
-            if status_str == "INACTIVE_PAUSED":
+            elif status_str == "INACTIVE_PAUSED":
                 return ProjectStatus.PAUSED
-            if "RESTORING" in status_str:
+            elif "RESTORING" in status_str:
                 return ProjectStatus.RESTORING
         return ProjectStatus.UNKNOWN
     except httpx.HTTPError:
@@ -170,6 +171,7 @@ def check_and_restore_project(
         return ProjectCheckResult(
             status=ProjectStatus.UNKNOWN,
             error="SUPABASE_ACCESS_TOKEN not set (project auto-restore disabled)",
+            is_config_error=True,
         )
 
     project_ref = extract_project_ref(supabase_url)
