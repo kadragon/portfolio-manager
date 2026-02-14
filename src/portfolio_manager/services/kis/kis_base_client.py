@@ -37,6 +37,7 @@ class KisBaseClient:
         response = make_request(None)
         if is_token_expired_error(response) and token_manager is not None:
             new_token = token_manager.get_token()
+            object.__setattr__(self, "access_token", new_token)
             response = make_request(new_token)
         response.raise_for_status()
         return response

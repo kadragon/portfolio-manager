@@ -16,6 +16,7 @@ class DummyClient(KisBaseClient):
 
 def test_base_client_request_with_retry_uses_new_token_on_retry():
     client = DummyClient()
+    client.access_token = "stale-token"
     expired_response = httpx.Response(
         status_code=500,
         json={"rt_cd": "1", "msg_cd": "EGW00123", "msg1": "expired"},
@@ -27,11 +28,12 @@ def test_base_client_request_with_retry_uses_new_token_on_retry():
         request=httpx.Request("GET", "https://example.com"),
     )
 
-    calls: list[str | None] = []
+    calls: list[str] = []
 
     def make_request(token_override: str | None) -> httpx.Response:
-        calls.append(token_override)
-        if len(calls) == 1:
+        token = token_override or client.access_token
+        calls.append(token)
+        if token == "stale-token":
             return expired_response
         return success_response
 
@@ -41,4 +43,12 @@ def test_base_client_request_with_retry_uses_new_token_on_retry():
     response = client._request_with_retry(make_request, token_manager=token_manager)
 
     assert response is success_response
-    assert calls == [None, "new-token"]
+    assert calls == ["stale-token", "new-token"]
+    assert client.access_token == "new-token"
+
+    calls.clear()
+    response = client._request_with_retry(make_request, token_manager=token_manager)
+
+    assert response is success_response
+    assert calls == ["new-token"]
+    assert token_manager.get_token.call_count == 1
