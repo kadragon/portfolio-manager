@@ -161,13 +161,10 @@ def test_holding_repository_create_raises_when_no_rows():
     client.table.return_value.insert.return_value.execute.return_value = response
     repository = HoldingRepository(client)
 
-    try:
+    with pytest.raises(ValueError, match="Failed to create holding"):
         repository.create(
             account_id=account_id, stock_id=stock_id, quantity=Decimal("1")
         )
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "Failed to create holding" in str(exc)
 
 
 def test_holding_repository_list_by_account_returns_empty_when_no_rows():
@@ -217,11 +214,8 @@ def test_holding_repository_update_raises_when_no_rows():
     client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
     repository = HoldingRepository(client)
 
-    try:
+    with pytest.raises(ValueError, match="Failed to update holding"):
         repository.update(holding_id, quantity=Decimal("1"))
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "Failed to update holding" in str(exc)
 
 
 def test_aggregate_holdings_by_stock_reraises_non_missing_rpc_error():

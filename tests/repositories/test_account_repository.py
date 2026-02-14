@@ -4,6 +4,8 @@ from decimal import Decimal
 from uuid import uuid4
 from unittest.mock import Mock, MagicMock
 
+import pytest
+
 from portfolio_manager.repositories.account_repository import AccountRepository
 
 
@@ -62,11 +64,8 @@ def test_account_repository_create_raises_when_no_rows_returned():
 
     repository = AccountRepository(client)
 
-    try:
+    with pytest.raises(ValueError, match="Failed to create account"):
         repository.create(name="Main Account", cash_balance=Decimal("100.0"))
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "Failed to create account" in str(exc)
 
 
 def test_account_repository_list_all_returns_empty_when_no_data():
@@ -119,8 +118,5 @@ def test_account_repository_update_raises_when_no_rows_returned():
 
     repository = AccountRepository(client)
 
-    try:
+    with pytest.raises(ValueError, match="Failed to update account"):
         repository.update(account_id, name="Updated", cash_balance=Decimal("10"))
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "Failed to update account" in str(exc)

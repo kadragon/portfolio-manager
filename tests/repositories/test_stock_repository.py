@@ -4,6 +4,8 @@ from datetime import datetime
 from unittest.mock import MagicMock, Mock
 from uuid import uuid4
 
+import pytest
+
 from portfolio_manager.repositories.stock_repository import StockRepository
 
 
@@ -200,11 +202,8 @@ def test_create_stock_raises_when_no_rows_returned():
     client.table.return_value.insert.return_value.execute.return_value = response
     repository = StockRepository(client)
 
-    try:
+    with pytest.raises(ValueError, match="Failed to create stock"):
         repository.create("AAPL", group_id)
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "Failed to create stock" in str(exc)
 
 
 def test_list_by_group_returns_empty_when_no_rows():
@@ -263,11 +262,8 @@ def test_stock_repository_update_raises_when_no_rows():
     client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
     repository = StockRepository(client)
 
-    try:
+    with pytest.raises(ValueError, match="Failed to update stock"):
         repository.update(stock_id, "MSFT")
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "Failed to update stock" in str(exc)
 
 
 def test_stock_repository_get_by_id_returns_none_when_not_found():
@@ -329,11 +325,8 @@ def test_stock_repository_update_group_raises_when_no_rows():
     client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
     repository = StockRepository(client)
 
-    try:
+    with pytest.raises(ValueError, match="Failed to move stock"):
         repository.update_group(stock_id, group_id)
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "Failed to move stock" in str(exc)
 
 
 def test_stock_repository_update_exchange_raises_when_no_rows():
@@ -345,8 +338,5 @@ def test_stock_repository_update_exchange_raises_when_no_rows():
     client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
     repository = StockRepository(client)
 
-    try:
+    with pytest.raises(ValueError, match="Failed to update stock exchange"):
         repository.update_exchange(stock_id, "NYS")
-        assert False, "Expected ValueError"
-    except ValueError as exc:
-        assert "Failed to update stock exchange" in str(exc)
