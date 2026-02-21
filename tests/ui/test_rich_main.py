@@ -17,7 +17,11 @@ from portfolio_manager.cli.menu import render_menu_options
 from portfolio_manager.cli.groups import select_group_menu_option
 from portfolio_manager.cli import main as main_app
 from portfolio_manager.cli.prompt_select import choose_main_menu
-from portfolio_manager.services.portfolio_service import PortfolioSummary
+from portfolio_manager.models import Group, Stock
+from portfolio_manager.services.portfolio_service import (
+    PortfolioSummary,
+    StockHoldingWithPrice,
+)
 
 
 def test_rich_main_menu_renders_title():
@@ -74,8 +78,8 @@ def test_main_menu_renders_dashboard_and_quits():
     assert render_dashboard.call_args[0][1] is summary
 
 
-def test_main_menu_uses_fast_summary_without_change_rates():
-    """Should skip change-rate lookup for main dashboard render."""
+def test_main_menu_uses_summary_with_change_rates():
+    """Should include change-rate lookup for main dashboard render."""
     summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
 
     with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
@@ -90,9 +94,67 @@ def test_main_menu_uses_fast_summary_without_change_rates():
             with patch.object(main_app, "choose_main_menu", return_value="quit"):
                 main_app.main()
 
-    portfolio_service.get_portfolio_summary.assert_called_once_with(
-        include_change_rates=False
+    portfolio_service.get_portfolio_summary.assert_called_once_with()
+
+
+def test_main_menu_renders_change_rates_from_summary():
+    """Main loop dashboard render should show 1Y/6M/1M percentages."""
+    console = Console(record=True, width=160)
+    group = Group(
+        id=uuid4(),
+        name="Tech",
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
     )
+    stock = Stock(
+        id=uuid4(),
+        ticker="AAPL",
+        group_id=group.id,
+        created_at=None,  # type: ignore[arg-type]
+        updated_at=None,  # type: ignore[arg-type]
+    )
+    summary = PortfolioSummary(
+        holdings=[
+            (
+                group,
+                StockHoldingWithPrice(
+                    stock=stock,
+                    quantity=Decimal("10"),
+                    price=Decimal("150"),
+                    currency="USD",
+                    name="Apple Inc.",
+                    value_krw=Decimal("1950000"),
+                    change_rates={
+                        "1y": Decimal("20"),
+                        "6m": Decimal("10"),
+                        "1m": Decimal("-5"),
+                    },
+                ),
+            )
+        ],
+        total_value=Decimal("1950000"),
+    )
+
+    with patch.object(main_app, "_ensure_supabase_ready", return_value=True):
+        with patch.object(main_app, "Console", return_value=console):
+            with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
+                container = MockContainer.return_value
+                portfolio_service = MagicMock()
+                portfolio_service.get_portfolio_summary.return_value = summary
+                container.get_portfolio_service.return_value = portfolio_service
+                container.price_service = object()
+                container.setup = MagicMock()
+
+                with patch.object(main_app, "choose_main_menu", return_value="quit"):
+                    main_app.main()
+
+    output = console.export_text()
+    assert "1Y" in output
+    assert "6M" in output
+    assert "1M" in output
+    assert "20.0%" in output
+    assert "10.0%" in output
+    assert "-5.0%" in output
 
 
 def test_main_menu_uses_summary_cache_within_ttl():

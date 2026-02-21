@@ -270,9 +270,7 @@ def main() -> None:
                     ):
                         summary = summary_cache
                     else:
-                        summary = portfolio_service.get_portfolio_summary(
-                            include_change_rates=False
-                        )
+                        summary = portfolio_service.get_portfolio_summary()
                         summary_cache = summary
                         summary_cached_at = now
                     render_dashboard(console, summary)
