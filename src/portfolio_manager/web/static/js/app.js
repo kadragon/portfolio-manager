@@ -1,4 +1,6 @@
 (function () {
+  var autoRefreshInitialized = false;
+
   function setStatus(message) {
     var status = document.getElementById("app-request-status");
     var live = document.getElementById("app-live-region");
@@ -27,22 +29,19 @@
 
     applyState(saved !== "off");
 
-    toggle.addEventListener("click", function () {
-      var enabled = toggle.getAttribute("data-enabled") !== "true";
-      applyState(enabled);
-      try {
-        window.localStorage.setItem(storageKey, enabled ? "on" : "off");
-      } catch (error) {
-        // Ignore localStorage failures.
-      }
-      setStatus(enabled ? "자동 새로고침을 켰습니다." : "자동 새로고침을 껐습니다.");
-    });
-
-    document.body.addEventListener("htmx:beforeRequest", function (event) {
-      if (event.target === poller && poller.getAttribute("data-enabled") !== "true") {
-        event.preventDefault();
-      }
-    });
+    if (toggle.getAttribute("data-initialized") !== "true") {
+      toggle.setAttribute("data-initialized", "true");
+      toggle.addEventListener("click", function () {
+        var enabled = toggle.getAttribute("data-enabled") !== "true";
+        applyState(enabled);
+        try {
+          window.localStorage.setItem(storageKey, enabled ? "on" : "off");
+        } catch (error) {
+          // Ignore localStorage failures.
+        }
+        setStatus(enabled ? "자동 새로고침을 켰습니다." : "자동 새로고침을 껐습니다.");
+      });
+    }
 
     function applyState(enabled) {
       toggle.setAttribute("data-enabled", enabled ? "true" : "false");
@@ -65,6 +64,16 @@
   document.addEventListener("DOMContentLoaded", function () {
     initializeAutoRefreshToggle();
 
+    if (!autoRefreshInitialized) {
+      autoRefreshInitialized = true;
+      document.body.addEventListener("htmx:beforeRequest", function (event) {
+        var poller = document.getElementById("auto-refresh-poller");
+        if (poller && event.target === poller && poller.getAttribute("data-enabled") !== "true") {
+          event.preventDefault();
+        }
+      });
+    }
+
     document.body.addEventListener("htmx:beforeRequest", function (event) {
       var message =
         event.detail && event.detail.elt && event.detail.elt.dataset.requestMessage
@@ -79,6 +88,13 @@
 
     document.body.addEventListener("htmx:responseError", function () {
       setStatus("요청에 실패했습니다. 다시 시도해 주세요.");
+    });
+
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      var target = event.target;
+      if (target && target.id === "main-content") {
+        initializeAutoRefreshToggle();
+      }
     });
   });
 })();

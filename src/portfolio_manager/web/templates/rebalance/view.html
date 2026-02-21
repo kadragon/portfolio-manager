@@ -91,7 +91,7 @@
         hx-confirm="실제 주문을 실행하시겠습니까?"
         data-request-message="주문을 실행하는 중…">
     {% if has_order_client %}
-    <button type="submit" class="btn btn-primary">주문 실행</button>
+    <button type="submit" class="btn btn-primary" hx-disabled-elt="this">주문 실행</button>
     {% else %}
     <button type="button" class="btn" disabled title="KIS 주문 클라이언트가 설정되지 않았습니다.">주문 실행 불가 (KIS 미설정)</button>
     {% endif %}

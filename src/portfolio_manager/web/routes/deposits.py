@@ -43,37 +43,33 @@ def get_deposit_row(request: Request, deposit_id: UUID) -> HTMLResponse:
 @router.post("", response_class=HTMLResponse)
 def create_deposit(
     request: Request,
-    amount: str = Form(...),
-    deposit_date: str = Form(...),
+    amount: Decimal = Form(...),
+    deposit_date: date = Form(...),
     note: str = Form(""),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
 
-    parsed_date = date.fromisoformat(deposit_date)
-
     # Check for duplicate date
-    existing = container.deposit_repository.get_by_date(parsed_date)
+    existing = container.deposit_repository.get_by_date(deposit_date)
     if existing is not None:
         # Update instead of creating
         deposit = container.deposit_repository.update(
             deposit_id=existing.id,
-            amount=Decimal(amount),
-            deposit_date=parsed_date,
+            amount=amount,
+            deposit_date=deposit_date,
             note=note.strip() or None,
         )
         return templates.TemplateResponse(
             request=request,
             name="deposits/_row.html",
             context={"deposit": deposit},
-            headers={
-                "HX-Reswap": "none"
-            },  # don't insert a new row; client should reload
+            headers={"HX-Refresh": "true"},
         )
 
     deposit = container.deposit_repository.create(
-        amount=Decimal(amount),
-        deposit_date=parsed_date,
+        amount=amount,
+        deposit_date=deposit_date,
         note=note.strip() or None,
     )
     return templates.TemplateResponse(
@@ -102,16 +98,16 @@ def edit_deposit_form(request: Request, deposit_id: UUID) -> HTMLResponse:
 def update_deposit(
     request: Request,
     deposit_id: UUID,
-    amount: str = Form(...),
-    deposit_date: str = Form(...),
+    amount: Decimal = Form(...),
+    deposit_date: date = Form(...),
     note: str = Form(""),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
     deposit = container.deposit_repository.update(
         deposit_id=deposit_id,
-        amount=Decimal(amount),
-        deposit_date=date.fromisoformat(deposit_date),
+        amount=amount,
+        deposit_date=deposit_date,
         note=note.strip() or None,
     )
     return templates.TemplateResponse(

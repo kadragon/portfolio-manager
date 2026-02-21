@@ -54,6 +54,32 @@ class FakeAccountRepository:
     def list_all(self) -> list[Account]:
         return self._accounts
 
+    def create(self, *, name: str, cash_balance: Decimal) -> Account:
+        now = datetime.now(timezone.utc)
+        account = Account(
+            id=uuid4(),
+            name=name,
+            cash_balance=cash_balance,
+            created_at=now,
+            updated_at=now,
+        )
+        self._accounts.insert(0, account)
+        return account
+
+    def update(self, *, account_id: UUID, name: str, cash_balance: Decimal) -> Account:
+        for idx, account in enumerate(self._accounts):
+            if account.id == account_id:
+                updated = Account(
+                    id=account.id,
+                    name=name,
+                    cash_balance=cash_balance,
+                    created_at=account.created_at,
+                    updated_at=datetime.now(timezone.utc),
+                )
+                self._accounts[idx] = updated
+                return updated
+        raise ValueError("account not found")
+
 
 class FakeHoldingRepository:
     def __init__(self, holdings_data: list[Holding]):
@@ -62,6 +88,39 @@ class FakeHoldingRepository:
     def list_by_account(self, account_id: UUID) -> list[Holding]:
         return [
             holding for holding in self._holdings if holding.account_id == account_id
+        ]
+
+    def create(self, *, account_id: UUID, stock_id: UUID, quantity: Decimal) -> Holding:
+        now = datetime.now(timezone.utc)
+        holding = Holding(
+            id=uuid4(),
+            account_id=account_id,
+            stock_id=stock_id,
+            quantity=quantity,
+            created_at=now,
+            updated_at=now,
+        )
+        self._holdings.insert(0, holding)
+        return holding
+
+    def update(self, *, holding_id: UUID, quantity: Decimal) -> Holding:
+        for idx, holding in enumerate(self._holdings):
+            if holding.id == holding_id:
+                updated = Holding(
+                    id=holding.id,
+                    account_id=holding.account_id,
+                    stock_id=holding.stock_id,
+                    quantity=quantity,
+                    created_at=holding.created_at,
+                    updated_at=datetime.now(timezone.utc),
+                )
+                self._holdings[idx] = updated
+                return updated
+        raise ValueError("holding not found")
+
+    def delete(self, holding_id: UUID) -> None:
+        self._holdings = [
+            holding for holding in self._holdings if holding.id != holding_id
         ]
 
 
@@ -74,6 +133,53 @@ class FakeDepositRepository:
 
     def get_total(self) -> Decimal:
         return sum((deposit.amount for deposit in self._deposits), Decimal("0"))
+
+    def get_by_date(self, deposit_date: date) -> Deposit | None:
+        return next(
+            (
+                deposit
+                for deposit in self._deposits
+                if deposit.deposit_date == deposit_date
+            ),
+            None,
+        )
+
+    def create(
+        self, *, amount: Decimal, deposit_date: date, note: str | None
+    ) -> Deposit:
+        now = datetime.now(timezone.utc)
+        deposit = Deposit(
+            id=uuid4(),
+            amount=amount,
+            deposit_date=deposit_date,
+            created_at=now,
+            updated_at=now,
+            note=note,
+        )
+        self._deposits.insert(0, deposit)
+        return deposit
+
+    def update(
+        self, *, deposit_id: UUID, amount: Decimal, deposit_date: date, note: str | None
+    ) -> Deposit:
+        for idx, deposit in enumerate(self._deposits):
+            if deposit.id == deposit_id:
+                updated = Deposit(
+                    id=deposit.id,
+                    amount=amount,
+                    deposit_date=deposit_date,
+                    created_at=deposit.created_at,
+                    updated_at=datetime.now(timezone.utc),
+                    note=note,
+                )
+                self._deposits[idx] = updated
+                return updated
+        raise ValueError("deposit not found")
+
+    def delete(self, deposit_id: UUID) -> None:
+        self._deposits = [
+            deposit for deposit in self._deposits if deposit.id != deposit_id
+        ]
 
 
 @dataclass

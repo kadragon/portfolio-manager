@@ -11,6 +11,10 @@ def test_dashboard_uses_text_badges_and_refresh_controls(client):
     assert 'id="auto-refresh-toggle"' in body
     assert 'id="auto-refresh-poller"' in body
     assert 'data-enabled="true"' in body
+    assert 'hx-target="#main-content"' in body
+    assert 'hx-select="#main-content"' in body
+    assert 'hx-swap="innerHTML"' in body
+    assert 'hx-target="body"' not in body
     assert "📊" not in body
     assert "🔴" not in body
     assert "🟢" not in body

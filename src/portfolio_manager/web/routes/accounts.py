@@ -42,13 +42,13 @@ def get_account_row(request: Request, account_id: UUID) -> HTMLResponse:
 def create_account(
     request: Request,
     name: str = Form(...),
-    cash_balance: str = Form("0"),
+    cash_balance: Decimal = Form(Decimal("0")),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
     account = container.account_repository.create(
         name=name.strip(),
-        cash_balance=Decimal(cash_balance or "0"),
+        cash_balance=cash_balance,
     )
     return templates.TemplateResponse(
         request=request,
@@ -77,14 +77,14 @@ def update_account(
     request: Request,
     account_id: UUID,
     name: str = Form(...),
-    cash_balance: str = Form("0"),
+    cash_balance: Decimal = Form(Decimal("0")),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
     account = container.account_repository.update(
         account_id=account_id,
         name=name.strip(),
-        cash_balance=Decimal(cash_balance or "0"),
+        cash_balance=cash_balance,
     )
     return templates.TemplateResponse(
         request=request,
@@ -134,15 +134,15 @@ def list_holdings(request: Request, account_id: UUID) -> HTMLResponse:
 def create_holding(
     request: Request,
     account_id: UUID,
-    stock_id: str = Form(...),
-    quantity: str = Form(...),
+    stock_id: UUID = Form(...),
+    quantity: Decimal = Form(...),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
     holding = container.holding_repository.create(
         account_id=account_id,
-        stock_id=UUID(stock_id),
-        quantity=Decimal(quantity),
+        stock_id=stock_id,
+        quantity=quantity,
     )
     stocks = container.stock_repository.list_all()
     stock_map = {s.id: s for s in stocks}
@@ -197,12 +197,12 @@ def update_holding(
     request: Request,
     account_id: UUID,
     holding_id: UUID,
-    quantity: str = Form(...),
+    quantity: Decimal = Form(...),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
     holding = container.holding_repository.update(
-        holding_id=holding_id, quantity=Decimal(quantity)
+        holding_id=holding_id, quantity=quantity
     )
     stocks = container.stock_repository.list_all()
     stock_map = {s.id: s for s in stocks}
@@ -252,8 +252,18 @@ def sync_account(request: Request, account_id: UUID) -> HTMLResponse:
                     "message": "계좌를 찾을 수 없습니다.",
                 },
             )
-        cano = container.kis_cano or ""
-        acnt = container.kis_acnt_prdt_cd or ""
+        cano = container.kis_cano
+        acnt = container.kis_acnt_prdt_cd
+        if not cano or not acnt:
+            return templates.TemplateResponse(
+                request=request,
+                name="accounts/_sync_result.html",
+                context={
+                    "account_id": account_id,
+                    "success": False,
+                    "message": "KIS 계좌 정보(번호/상품코드)가 설정되지 않았습니다.",
+                },
+            )
         container.kis_account_sync_service.sync_account(
             account=account, cano=cano, acnt_prdt_cd=acnt
         )

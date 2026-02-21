@@ -7,6 +7,7 @@ def test_rebalance_page_shows_text_badges_and_execute_button(client):
     assert "리밸런싱 추천" in body
     assert "badge-sell" in body
     assert "주문 실행" in body
+    assert 'hx-disabled-elt="this"' in body
     assert "📊" not in body
     assert "🔴" not in body
     assert "🟢" not in body

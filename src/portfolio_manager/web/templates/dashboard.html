@@ -167,8 +167,9 @@
         data-enabled="true"
         hx-get="/"
         hx-trigger="every 30s"
-        hx-target="body"
-        hx-swap="outerHTML"
+        hx-target="#main-content"
+        hx-select="#main-content"
+        hx-swap="innerHTML"
         data-request-message="대시보드를 새로고침하는 중…"></span>
 </div>
 {% endblock %}
