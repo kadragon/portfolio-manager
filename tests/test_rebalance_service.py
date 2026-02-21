@@ -74,6 +74,7 @@ class TestGroupDifferenceCalculation:
         summary = PortfolioSummary(
             holdings=[(group, holding)],
             total_value=Decimal("2000000"),
+            total_assets=Decimal("2000000"),
         )
 
         service = RebalanceService()
@@ -112,6 +113,7 @@ class TestGroupDifferenceCalculation:
         summary = PortfolioSummary(
             holdings=[(group_us, holding_us), (group_kr, holding_kr)],
             total_value=Decimal("10000000"),
+            total_assets=Decimal("10000000"),
         )
 
         service = RebalanceService()
@@ -157,6 +159,7 @@ class TestGroupDifferenceCalculation:
         summary = PortfolioSummary(
             holdings=[(group, holding1), (group, holding2)],
             total_value=Decimal("3500000"),
+            total_assets=Decimal("3500000"),
         )
 
         service = RebalanceService()
@@ -189,6 +192,7 @@ class TestSellRecommendations:
         summary = PortfolioSummary(
             holdings=[(group, holding)],
             total_value=Decimal("2000000"),
+            total_assets=Decimal("2000000"),
         )
 
         service = RebalanceService()
@@ -222,6 +226,7 @@ class TestSellRecommendations:
         summary = PortfolioSummary(
             holdings=[(group, holding_us), (group, holding_kr)],
             total_value=Decimal("10000000"),
+            total_assets=Decimal("10000000"),
         )
 
         service = RebalanceService()
@@ -263,6 +268,7 @@ class TestSellRecommendations:
         summary = PortfolioSummary(
             holdings=[(group, holding_us), (group, holding_kr)],
             total_value=Decimal("10000000"),
+            total_assets=Decimal("10000000"),
         )
 
         service = RebalanceService()
@@ -308,6 +314,7 @@ class TestSellRecommendations:
                 (group_underweight, holding_under),
             ],
             total_value=Decimal("10000000"),
+            total_assets=Decimal("10000000"),
         )
 
         service = RebalanceService()
@@ -349,6 +356,7 @@ class TestBuyRecommendations:
         summary = PortfolioSummary(
             holdings=[(group, holding_us), (group, holding_kr)],
             total_value=Decimal("10000000"),
+            total_assets=Decimal("10000000"),
         )
 
         service = RebalanceService()
@@ -390,6 +398,7 @@ class TestBuyRecommendations:
                 (group_underweight, holding_under),
             ],
             total_value=Decimal("10000000"),
+            total_assets=Decimal("10000000"),
         )
 
         service = RebalanceService()
@@ -427,6 +436,7 @@ class TestBuyRecommendations:
         summary = PortfolioSummary(
             holdings=[(group, holding_kr1), (group, holding_kr2)],
             total_value=Decimal("20000000"),
+            total_assets=Decimal("20000000"),
         )
 
         service = RebalanceService()
@@ -438,3 +448,36 @@ class TestBuyRecommendations:
         for rec in recommendations:
             assert rec.currency == "KRW"
             assert rec.action == RebalanceAction.BUY
+
+
+class TestCashBalanceInRebalancing:
+    """Test that cash balance is included in rebalancing target calculation."""
+
+    def test_calculate_group_differences_uses_total_assets(self) -> None:
+        """Target should be based on total_assets (stocks + cash), not just stock value."""
+        group = make_group("US Stocks", target_percentage=50.0)
+        stock = make_stock("AAPL", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("10"),
+            price=Decimal("150"),
+            currency="USD",
+            value_krw=Decimal("8000000"),
+        )
+
+        # 주식 800만 + 현금 200만 = 총자산 1000만
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("8000000"),
+            total_assets=Decimal("10000000"),
+        )
+
+        service = RebalanceService()
+        differences = service.calculate_group_differences(summary)
+
+        assert len(differences) == 1
+        diff = differences[0]
+        # target = 50% of total_assets (10M) = 5M, not 50% of total_value (8M) = 4M
+        assert diff.target_value == Decimal("5000000")
+        assert diff.current_value == Decimal("8000000")
+        assert diff.difference == Decimal("3000000")  # overweight by 3M

@@ -42,7 +42,9 @@ class RebalanceService:
         self, summary: PortfolioSummary
     ) -> list[GroupDifference]:
         """Calculate the difference between current and target for each group."""
-        total_value = summary.total_value
+        total_value = (
+            summary.total_assets if summary.total_assets > 0 else summary.total_value
+        )
 
         # Aggregate holdings by group
         group_values: dict[str, tuple[Group, Decimal]] = {}
