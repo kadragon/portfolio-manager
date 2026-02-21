@@ -5,6 +5,7 @@
 - KIS token issuance is rate-limited (1 per minute); token cache stored at `.data/kis_token.json`.
 - Local verification script: `scripts/check_kis_domestic_price.py` (loads `.env`, fetches token if needed, calls domestic price API).
 - Local verification script: `scripts/check_kis_overseas_price.py` (loads `.env`, fetches token if needed, calls overseas price API; use `.venv/bin/python`).
+- Local verification script: `scripts/check_exim_usd_rate.py` (loads `.env`, requires `EXIM_AUTH_KEY`; optional `EXIM_SEARCH_DATE` with previous business day fallback).
 - `KIS_ENV` accepts `real/prod` and `demo/vps/paper` (also tolerates `real/prod` form and whitespace).
 - Overseas current price endpoint: `/uapi/overseas-price/v1/quotations/price` with TR ID `HHDFS00000300`.
 
