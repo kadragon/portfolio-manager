@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}입금 내역 — 포트폴리오 매니저{% endblock %}
+
+{% block content %}
+<h2 class="page-header">입금 내역</h2>
+<p class="page-subtitle">총투자원금: <strong>{{ total | format_krw }}</strong></p>
+
+<section class="section-card">
+  <div class="table-wrap">
+    <table class="table-compact">
+      <thead>
+        <tr>
+          <th>날짜</th>
+          <th class="text-right">금액</th>
+          <th>메모</th>
+          <th>작업</th>
+        </tr>
+      </thead>
+      <tbody id="deposits-body">
+        {% for deposit in deposits %}
+          {% include "deposits/_row.html" %}
+        {% else %}
+        <tr class="empty-row"><td colspan="4">입금 내역이 없습니다. 아래에서 새 입금을 추가하세요.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section-card">
+  <h3>입금 추가</h3>
+  <p class="form-hint">같은 날짜의 입금이 이미 있으면 자동으로 기존 내역을 수정합니다.</p>
+  <form hx-post="/deposits"
+        hx-target="#deposits-body"
+        hx-swap="afterbegin"
+        hx-on::after-request="this.reset()"
+        data-request-message="입금 내역을 저장하는 중…">
+    <div class="form-grid">
+      <label class="form-field form-field-mid">
+        날짜<span class="required-marker" aria-hidden="true">*</span>
+        <input type="date" name="deposit_date" required autocomplete="off">
+      </label>
+      <label class="form-field form-field-mid">
+        금액 (KRW)<span class="required-marker" aria-hidden="true">*</span>
+        <input type="number" name="amount" value="" min="0" step="1" required autocomplete="off">
+      </label>
+      <label class="form-field form-field-wide">
+        메모
+        <input type="text" name="note" placeholder="예: 월급 입금…" autocomplete="off">
+      </label>
+      <div>
+        <button type="submit" class="btn btn-primary">입금 추가</button>
+      </div>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,26 @@
+<tr id="deposit-{{ deposit.id }}">
+  <td>{{ deposit.deposit_date }}</td>
+  <td class="text-right">{{ deposit.amount | format_krw }}</td>
+  <td>{{ deposit.note or "-" }}</td>
+  <td>
+    <div class="inline-actions">
+      <button type="button"
+              class="btn btn-ghost"
+              hx-get="/deposits/{{ deposit.id }}/edit"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              data-request-message="입금 수정 폼을 여는 중…">
+        수정
+      </button>
+      <button type="button"
+              class="btn btn-danger"
+              hx-delete="/deposits/{{ deposit.id }}"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              hx-confirm="{{ deposit.deposit_date }} 입금을 삭제하시겠습니까?"
+              data-request-message="입금 내역을 삭제하는 중…">
+        삭제
+      </button>
+    </div>
+  </td>
+</tr>

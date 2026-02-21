@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}대시보드 — 포트폴리오 매니저{% endblock %}
+
+{% block content %}
+<h2 class="page-header">대시보드</h2>
+<p class="page-subtitle">보유 현황, 그룹 비중, 투자 요약을 한 화면에서 확인합니다.</p>
+
+{% if error %}
+<div class="flash flash-error" role="alert" aria-live="polite">{{ error }}</div>
+{% endif %}
+
+{% if summary %}
+  <section class="section-card">
+    <h3>보유 종목</h3>
+    <div class="table-wrap">
+      <table class="table-compact">
+        <thead>
+          <tr>
+            <th>그룹</th>
+            <th>티커</th>
+            <th>종목명</th>
+            <th class="text-right">수량</th>
+            <th class="text-right">현재가</th>
+            <th class="text-right">평가액 (KRW)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for group, h in summary.holdings %}
+          <tr>
+            <td>{{ group.name }}</td>
+            <td><code>{{ h.stock.ticker }}</code></td>
+            <td>{{ h.name or h.stock.ticker }}</td>
+            <td class="text-right">
+              {% if h.currency == "KRW" %}{{ h.quantity }}{% else %}{{ h.quantity | int }}{% endif %}
+            </td>
+            <td class="text-right">
+              {% if h.currency == "KRW" %}{{ h.price | format_krw }}{% else %}{{ h.price | format_usd }}{% endif %}
+            </td>
+            <td class="text-right">{{ h.value_krw | format_krw }}</td>
+          </tr>
+          {% else %}
+          <tr class="empty-row"><td colspan="6">보유 종목이 없습니다.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {% if group_summary %}
+  <section class="section-card">
+    <h3>그룹 비중 요약</h3>
+    <div class="table-wrap">
+      <table class="table-compact">
+        <thead>
+          <tr>
+            <th>그룹</th>
+            <th class="text-right">평가액</th>
+            <th class="text-right">현재 비중</th>
+            <th class="text-right">목표 비중</th>
+            <th class="text-right">차이</th>
+            <th>권장 동작</th>
+            <th class="text-right">조정 금액</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in group_summary %}
+          <tr>
+            <td>{{ row.group.name }}</td>
+            <td class="text-right">{{ row.total | format_krw }}</td>
+            <td class="text-right">{{ row.actual_pct | format_percent }}</td>
+            <td class="text-right">{{ row.target_pct | format_percent }}</td>
+            <td class="text-right {% if row.diff_pct > 0 %}value-negative{% elif row.diff_pct < 0 %}value-positive{% else %}value-neutral{% endif %}">
+              {{ row.diff_pct | format_signed_percent }}
+            </td>
+            <td>
+              {% if row.diff_val > 0 %}<span class="badge badge-sell">매도</span>
+              {% elif row.diff_val < 0 %}<span class="badge badge-buy">매수</span>
+              {% else %}<span class="value-neutral">유지</span>{% endif %}
+            </td>
+            <td class="text-right {% if row.diff_val > 0 %}value-negative{% elif row.diff_val < 0 %}value-positive{% else %}value-neutral{% endif %}">
+              {{ (row.diff_val | abs) | format_krw }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="section-card summary-panel">
+    <h3>투자 요약</h3>
+    <table class="table-compact">
+      <tbody>
+        <tr><td>주식 평가액</td><td class="text-right">{{ summary.total_stock_value | format_krw }}</td></tr>
+        <tr><td>예수금</td><td class="text-right">{{ summary.total_cash_balance | format_krw }}</td></tr>
+        <tr><td><strong>총자산</strong></td><td class="text-right"><strong>{{ summary.total_assets | format_krw }}</strong></td></tr>
+        {% if summary.total_invested > 0 %}
+        <tr><td colspan="2"><hr class="summary-divider"></td></tr>
+        <tr><td>총투자원금</td><td class="text-right">{{ summary.total_invested | format_krw }}</td></tr>
+        {% if summary.return_rate is not none %}
+        <tr>
+          <td>수익률</td>
+          <td class="text-right {% if summary.return_rate > 0 %}value-positive{% elif summary.return_rate < 0 %}value-negative{% endif %}">
+            {{ summary.return_rate | format_signed_percent }}
+          </td>
+        </tr>
+        {% endif %}
+        {% if summary.annualized_return_rate is not none %}
+        <tr>
+          <td>연환산 수익률</td>
+          <td class="text-right {% if summary.annualized_return_rate > 0 %}value-positive{% elif summary.annualized_return_rate < 0 %}value-negative{% endif %}">
+            {{ summary.annualized_return_rate | format_signed_percent }}
+          </td>
+        </tr>
+        {% endif %}
+        {% endif %}
+      </tbody>
+    </table>
+  </section>
+
+{% elif group_holdings %}
+  <section class="section-card">
+    <h3>보유 종목</h3>
+    <div class="table-wrap">
+      <table class="table-compact">
+        <thead>
+          <tr><th>그룹</th><th>티커</th><th class="text-right">수량</th></tr>
+        </thead>
+        <tbody>
+          {% for gh in group_holdings %}
+            {% if gh.stock_holdings %}
+              {% for sh in gh.stock_holdings %}
+              <tr>
+                <td>{{ gh.group.name }}</td>
+                <td><code>{{ sh.stock.ticker }}</code></td>
+                <td class="text-right">{{ sh.quantity }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td>{{ gh.group.name }}</td>
+                <td colspan="2" class="subtle">보유 종목이 없습니다.</td>
+              </tr>
+            {% endif %}
+          {% else %}
+          <tr class="empty-row"><td colspan="3">보유 종목이 없습니다.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+{% else %}
+  <section class="section-card">
+    <p>포트폴리오 데이터를 불러올 수 없습니다. 먼저 그룹과 종목을 추가하세요.</p>
+    <p class="empty-state"><a href="/groups" class="btn btn-primary">그룹 관리로 이동</a></p>
+  </section>
+{% endif %}
+
+<div class="refresh-controls">
+  <button id="auto-refresh-toggle" type="button" class="btn btn-ghost" data-enabled="true" aria-pressed="true">
+    자동 새로고침: 켜짐
+  </button>
+  <a href="/" class="btn btn-ghost">지금 새로고침</a>
+  <span id="auto-refresh-poller"
+        data-enabled="true"
+        hx-get="/"
+        hx-trigger="every 30s"
+        hx-target="#main-content"
+        hx-select="#main-content"
+        hx-swap="innerHTML"
+        data-request-message="대시보드를 새로고침하는 중…"></span>
+</div>
+{% endblock %}

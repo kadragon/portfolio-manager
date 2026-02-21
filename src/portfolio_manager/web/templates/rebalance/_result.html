@@ -1,0 +1,44 @@
+<div id="execute-result" class="section-card" aria-live="polite">
+  <div class="flash flash-{{ 'success' if success else 'error' }}">{{ message }}</div>
+
+  {% if result %}
+  {% set executions = result.executions or [] %}
+  {% set success_count = executions | selectattr('status', 'equalto', 'success') | list | length %}
+  {% set failed_count = executions | selectattr('status', 'equalto', 'failed') | list | length %}
+  {% set skipped_count = result.skipped | length %}
+
+  <p>
+    <strong>성공:</strong> {{ success_count }}
+    <strong>실패:</strong> {{ failed_count }}
+    <strong>스킵:</strong> {{ skipped_count }}
+  </p>
+
+  {% if result.sync_warning %}
+  <div class="flash flash-error">동기화 경고: {{ result.sync_warning }}</div>
+  {% endif %}
+
+  {% set failed_execs = executions | selectattr('status', 'equalto', 'failed') | list %}
+  {% if failed_execs %}
+  <h4>실패한 주문</h4>
+  <div class="table-wrap">
+    <table class="table-compact">
+      <thead>
+        <tr><th>티커</th><th>구분</th><th>msg_cd</th><th>msg1</th></tr>
+      </thead>
+      <tbody>
+        {% for ex in failed_execs %}
+        <tr>
+          <td><code>{{ ex.intent.ticker }}</code></td>
+          <td>{{ ex.intent.side }}</td>
+          <td>{{ (ex.raw_response or {}).get('msg_cd', '') }}</td>
+          <td>{{ (ex.raw_response or {}).get('msg1', '') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <p><a href="/rebalance" class="btn btn-ghost">리밸런싱 화면으로 돌아가기</a></p>
+</div>

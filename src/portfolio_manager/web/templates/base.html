@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>{% block title %}포트폴리오 매니저{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
+  <script src="/static/js/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
+
+  <header class="site-header">
+    <nav class="container-fluid site-nav" aria-label="주요 메뉴">
+      <ul>
+        <li><strong class="brand-title">Portfolio Manager</strong></li>
+      </ul>
+      <ul class="nav-links">
+        <li><a href="/" class="{{ 'active' if active_page == 'dashboard' else '' }}">대시보드</a></li>
+        <li><a href="/groups" class="{{ 'active' if active_page == 'groups' else '' }}">그룹</a></li>
+        <li><a href="/accounts" class="{{ 'active' if active_page == 'accounts' else '' }}">계좌</a></li>
+        <li><a href="/deposits" class="{{ 'active' if active_page == 'deposits' else '' }}">입금</a></li>
+        <li><a href="/rebalance" class="{{ 'active' if active_page == 'rebalance' else '' }}">리밸런싱</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main-content" class="container main-shell">
+    <div id="app-live-region" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+    <p id="app-request-status" class="request-status" aria-live="polite"></p>
+
+    {% if flash_message %}
+    <div class="flash flash-{{ flash_type|default('success') }}" role="status" aria-live="polite">{{ flash_message }}</div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

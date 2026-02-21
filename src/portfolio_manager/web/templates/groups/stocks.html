@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ group.name }} 종목 — 포트폴리오 매니저{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="breadcrumb">
+  <ol>
+    <li><a href="/groups">그룹</a></li>
+    <li>{{ group.name }}</li>
+  </ol>
+</nav>
+
+<h2 class="page-header">{{ group.name }} 종목</h2>
+<p class="page-subtitle">그룹에 포함된 종목을 관리합니다.</p>
+
+<section class="section-card">
+  <div class="table-wrap">
+    <table class="table-compact">
+      <thead>
+        <tr>
+          <th>티커</th>
+          <th>거래소</th>
+          <th>작업</th>
+        </tr>
+      </thead>
+      <tbody id="stocks-body">
+        {% for stock in stocks %}
+          {% include "groups/_stock_row.html" %}
+        {% else %}
+        <tr class="empty-row"><td colspan="3">종목이 없습니다. 아래에서 새 종목을 추가하세요.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section-card">
+  <h3>종목 추가</h3>
+  <form hx-post="/groups/{{ group.id }}/stocks"
+        hx-target="#stocks-body"
+        hx-swap="afterbegin"
+        hx-on::after-request="this.reset()"
+        data-request-message="종목을 추가하는 중…">
+    <div class="form-grid">
+      <label class="form-field form-field-wide">
+        티커<span class="required-marker" aria-hidden="true">*</span>
+        <input class="input-uppercase" type="text" name="ticker" placeholder="예: AAPL 또는 005930…" required autocomplete="off">
+      </label>
+      <div>
+        <button type="submit" class="btn btn-primary">종목 추가</button>
+      </div>
+    </div>
+  </form>
+</section>
+{% endblock %}

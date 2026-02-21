@@ -14,10 +14,15 @@ dependencies = [
   "httpx>=0.28.1",
   "supabase>=2.11.0",
   "python-dotenv>=1.0.0",
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.34.0",
+  "jinja2>=3.1.0",
+  "python-multipart>=0.0.18",
 ]
 
 [project.scripts]
 portfolio-manager = "portfolio_manager.cli.main:main"
+portfolio-web = "portfolio_manager.web.app:run"
 
 [dependency-groups]
 dev = [
@@ -27,6 +32,7 @@ dev = [
   "pytest>=9.0.2",
   "pytest-asyncio>=1.3.0",
   "pytest-cov>=7.0.0",
+  "pre-commit>=4.5.1",
 ]
 
 [tool.pytest.ini_options]
@@ -43,6 +49,11 @@ markers = [
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+
+[tool.coverage.run]
+omit = [
+  "src/portfolio_manager/web/*",
+]
 
 [tool.bandit]
 exclude_dirs = ["tests"]

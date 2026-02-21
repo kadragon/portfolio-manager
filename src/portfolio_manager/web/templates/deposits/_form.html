@@ -1,0 +1,35 @@
+<tr id="deposit-{{ deposit.id }}">
+  <td>
+    <form id="edit-deposit-{{ deposit.id }}"
+          hx-put="/deposits/{{ deposit.id }}"
+          hx-target="closest tr"
+          hx-swap="outerHTML"
+          data-request-message="입금 내역을 저장하는 중…">
+      <label class="sr-only" for="deposit-date-{{ deposit.id }}">입금 날짜</label>
+      <input id="deposit-date-{{ deposit.id }}" type="date" name="deposit_date" value="{{ deposit.deposit_date }}" required autocomplete="off">
+  </td>
+  <td>
+      <label class="sr-only" for="deposit-amount-{{ deposit.id }}">입금 금액</label>
+      <input id="deposit-amount-{{ deposit.id }}" type="number" name="amount" value="{{ deposit.amount }}"
+             min="0" step="1" required autocomplete="off">
+  </td>
+  <td>
+      <label class="sr-only" for="deposit-note-{{ deposit.id }}">메모</label>
+      <input id="deposit-note-{{ deposit.id }}" type="text" name="note" value="{{ deposit.note or '' }}"
+             placeholder="예: 메모 입력…" autocomplete="off">
+  </td>
+  <td>
+      <div class="inline-actions">
+        <button type="submit" class="btn btn-primary">저장</button>
+        <button type="button"
+                class="btn btn-ghost"
+                hx-get="/deposits/{{ deposit.id }}"
+                hx-target="closest tr"
+                hx-swap="outerHTML"
+                data-request-message="수정 취소 중…">
+          취소
+        </button>
+      </div>
+    </form>
+  </td>
+</tr>
