@@ -42,8 +42,8 @@ class RebalanceService:
         self, summary: PortfolioSummary
     ) -> list[GroupDifference]:
         """Calculate the difference between current and target for each group."""
-        total_value = (
-            summary.total_assets if summary.total_assets > 0 else summary.total_value
+        rebalance_base_value = (
+            summary.total_assets if summary.total_assets != 0 else summary.total_value
         )
 
         # Aggregate holdings by group
@@ -64,7 +64,7 @@ class RebalanceService:
 
         for _group_key, (group, current_value) in group_values.items():
             target_percentage = Decimal(str(group.target_percentage))
-            target_value = (total_value * target_percentage) / Decimal("100")
+            target_value = (rebalance_base_value * target_percentage) / Decimal("100")
             difference = current_value - target_value
 
             differences.append(

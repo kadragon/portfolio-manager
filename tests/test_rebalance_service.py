@@ -481,3 +481,32 @@ class TestCashBalanceInRebalancing:
         assert diff.target_value == Decimal("5000000")
         assert diff.current_value == Decimal("8000000")
         assert diff.difference == Decimal("3000000")  # overweight by 3M
+
+    def test_calculate_group_differences_uses_negative_total_assets(self) -> None:
+        """Target should use total_assets when cash is negative."""
+        group = make_group("US Stocks", target_percentage=50.0)
+        stock = make_stock("AAPL", group.id)
+        holding = make_holding(
+            stock=stock,
+            quantity=Decimal("10"),
+            price=Decimal("150"),
+            currency="USD",
+            value_krw=Decimal("8000000"),
+        )
+
+        # 주식 800만 + 현금 -100만 = 총자산 700만
+        summary = PortfolioSummary(
+            holdings=[(group, holding)],
+            total_value=Decimal("8000000"),
+            total_assets=Decimal("7000000"),
+        )
+
+        service = RebalanceService()
+        differences = service.calculate_group_differences(summary)
+
+        assert len(differences) == 1
+        diff = differences[0]
+        # target = 50% of total_assets (7M) = 3.5M
+        assert diff.target_value == Decimal("3500000")
+        assert diff.current_value == Decimal("8000000")
+        assert diff.difference == Decimal("4500000")
