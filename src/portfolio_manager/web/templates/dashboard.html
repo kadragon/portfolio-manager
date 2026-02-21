@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Portfolio Manager{% endblock %}
+
+{% block content %}
+<h2>📊 Dashboard</h2>
+
+{% if error %}
+<div class="flash-error">{{ error }}</div>
+{% endif %}
+
+{% if summary %}
+  {# ── Holdings Table ── #}
+  <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>Group</th>
+          <th>Ticker</th>
+          <th>Name</th>
+          <th class="text-right">Qty</th>
+          <th class="text-right">Price</th>
+          <th class="text-right">Value (KRW)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for group, h in summary.holdings %}
+        <tr>
+          <td>{{ group.name }}</td>
+          <td><code>{{ h.stock.ticker }}</code></td>
+          <td>{{ h.name or h.stock.ticker }}</td>
+          <td class="text-right">
+            {% if h.currency == "KRW" %}{{ h.quantity }}{% else %}{{ h.quantity | int }}{% endif %}
+          </td>
+          <td class="text-right">
+            {% if h.currency == "KRW" %}{{ h.price | format_krw }}{% else %}{{ h.price | format_usd }}{% endif %}
+          </td>
+          <td class="text-right">{{ h.value_krw | format_krw }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center">보유 종목이 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# ── Group Summary Table ── #}
+  {% if group_summary %}
+  <h3>Group Summary</h3>
+  <div style="overflow-x:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>Group</th>
+          <th class="text-right">Total</th>
+          <th class="text-right">Actual %</th>
+          <th class="text-right">Target %</th>
+          <th class="text-right">Diff %</th>
+          <th>Action</th>
+          <th class="text-right">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in group_summary %}
+        <tr>
+          <td>{{ row.group.name }}</td>
+          <td class="text-right">{{ row.total | format_krw }}</td>
+          <td class="text-right">{{ row.actual_pct | format_percent }}</td>
+          <td class="text-right">{{ row.target_pct | format_percent }}</td>
+          <td class="text-right {% if row.diff_pct > 0 %}negative{% elif row.diff_pct < 0 %}positive{% endif %}">
+            {{ row.diff_pct | format_signed_percent }}
+          </td>
+          <td>
+            {% if row.diff_val > 0 %}<span class="badge-sell">🔴 Sell</span>
+            {% elif row.diff_val < 0 %}<span class="badge-buy">🟢 Buy</span>
+            {% else %}-{% endif %}
+          </td>
+          <td class="text-right {% if row.diff_val > 0 %}negative{% elif row.diff_val < 0 %}positive{% endif %}">
+            {{ (row.diff_val | abs) | format_krw }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {# ── Investment Summary ── #}
+  <div class="summary-panel">
+    <table>
+      <tbody>
+        <tr><td>Stock Value</td><td class="text-right">{{ summary.total_stock_value | format_krw }}</td></tr>
+        <tr><td>Cash Balance</td><td class="text-right">{{ summary.total_cash_balance | format_krw }}</td></tr>
+        <tr><td><strong>Total Assets</strong></td><td class="text-right"><strong>{{ summary.total_assets | format_krw }}</strong></td></tr>
+        {% if summary.total_invested > 0 %}
+        <tr><td colspan="2"><hr style="margin:0.25rem 0"></td></tr>
+        <tr><td>Total Invested</td><td class="text-right">{{ summary.total_invested | format_krw }}</td></tr>
+        {% if summary.return_rate is not none %}
+        <tr>
+          <td>Return Rate</td>
+          <td class="text-right {% if summary.return_rate > 0 %}positive{% elif summary.return_rate < 0 %}negative{% endif %}">
+            {{ summary.return_rate | format_signed_percent }}
+          </td>
+        </tr>
+        {% endif %}
+        {% if summary.annualized_return_rate is not none %}
+        <tr>
+          <td>Annualized</td>
+          <td class="text-right {% if summary.annualized_return_rate > 0 %}positive{% elif summary.annualized_return_rate < 0 %}negative{% endif %}">
+            {{ summary.annualized_return_rate | format_signed_percent }}
+          </td>
+        </tr>
+        {% endif %}
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+{% elif group_holdings %}
+  {# ── Simple Holdings Table (no prices) ── #}
+  <table>
+    <thead>
+      <tr><th>Group</th><th>Ticker</th><th class="text-right">Qty</th></tr>
+    </thead>
+    <tbody>
+      {% for gh in group_holdings %}
+        {% if gh.stock_holdings %}
+          {% for sh in gh.stock_holdings %}
+          <tr>
+            <td>{{ gh.group.name }}</td>
+            <td><code>{{ sh.stock.ticker }}</code></td>
+            <td class="text-right">{{ sh.quantity }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td>{{ gh.group.name }}</td>
+            <td colspan="2" style="color:var(--pico-muted-color)">(종목 없음)</td>
+          </tr>
+        {% endif %}
+      {% else %}
+      <tr><td colspan="3" style="text-align:center">보유 종목이 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% else %}
+  <p>포트폴리오 데이터를 불러올 수 없습니다. 그룹과 종목을 먼저 추가하세요.</p>
+{% endif %}
+
+<p style="text-align:right; font-size:0.8rem; color:var(--pico-muted-color)">
+  <span id="auto-refresh"
+        hx-get="/"
+        hx-trigger="every 30s"
+        hx-target="body"
+        hx-swap="outerHTML"></span>
+  <a href="/">↻ 새로고침</a>
+</p>
+{% endblock %}

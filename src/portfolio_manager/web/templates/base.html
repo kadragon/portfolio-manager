@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Portfolio Manager{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+  <style>
+    nav.container-fluid { padding: 0.5rem 1rem; }
+    nav ul li a.active { font-weight: bold; color: var(--pico-primary); }
+    .badge-buy  { color: var(--pico-color-green-500); font-weight: bold; }
+    .badge-sell { color: var(--pico-color-red-500); font-weight: bold; }
+    .positive   { color: var(--pico-color-green-500); }
+    .negative   { color: var(--pico-color-red-500); }
+    .text-right { text-align: right; }
+    table { font-size: 0.88rem; }
+    .flash-success { background: var(--pico-color-green-100); border: 1px solid var(--pico-color-green-300); padding: 0.5rem 1rem; border-radius: 4px; margin-bottom: 1rem; }
+    .flash-error   { background: var(--pico-color-red-100); border: 1px solid var(--pico-color-red-300); padding: 0.5rem 1rem; border-radius: 4px; margin-bottom: 1rem; }
+    .summary-panel { border: 1px solid var(--pico-border-color); border-radius: 8px; padding: 1rem 1.5rem; display: inline-block; min-width: 280px; }
+    .summary-panel table { margin: 0; }
+    details[open] summary { margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <nav class="container-fluid">
+    <ul>
+      <li><strong>📊 Portfolio Manager</strong></li>
+    </ul>
+    <ul>
+      <li><a href="/" class="{{ 'active' if active_page == 'dashboard' else '' }}">Dashboard</a></li>
+      <li><a href="/groups" class="{{ 'active' if active_page == 'groups' else '' }}">Groups</a></li>
+      <li><a href="/accounts" class="{{ 'active' if active_page == 'accounts' else '' }}">Accounts</a></li>
+      <li><a href="/deposits" class="{{ 'active' if active_page == 'deposits' else '' }}">Deposits</a></li>
+      <li><a href="/rebalance" class="{{ 'active' if active_page == 'rebalance' else '' }}">Rebalance</a></li>
+    </ul>
+  </nav>
+
+  <main class="container">
+    {% if flash_message %}
+    <div class="flash-{{ flash_type|default('success') }}">{{ flash_message }}</div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,15 @@
+<tr id="holding-{{ holding.id }}">
+  <td><code>{{ stock_map[holding.stock_id].ticker if holding.stock_id in stock_map else holding.stock_id }}</code></td>
+  <td class="text-right">{{ holding.quantity }}</td>
+  <td>
+    <a hx-get="/accounts/{{ account_id }}/holdings/{{ holding.id }}/edit"
+       hx-target="closest tr"
+       hx-swap="outerHTML"
+       style="cursor:pointer;margin-right:0.5rem">Edit</a>
+    <a hx-delete="/accounts/{{ account_id }}/holdings/{{ holding.id }}"
+       hx-target="closest tr"
+       hx-swap="outerHTML"
+       hx-confirm="보유 내역을 삭제하시겠습니까?"
+       style="cursor:pointer;color:var(--pico-color-red-500)">Delete</a>
+  </td>
+</tr>

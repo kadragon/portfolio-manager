@@ -1,0 +1,17 @@
+<tr id="group-{{ group.id }}">
+  <td>{{ group.name }}</td>
+  <td class="text-right">{{ group.target_percentage }}%</td>
+  <td>
+    <a hx-get="/groups/{{ group.id }}/edit"
+       hx-target="closest tr"
+       hx-swap="outerHTML"
+       style="cursor:pointer;margin-right:0.5rem">Edit</a>
+    <a href="/groups/{{ group.id }}/stocks"
+       style="margin-right:0.5rem">Stocks</a>
+    <a hx-delete="/groups/{{ group.id }}"
+       hx-target="closest tr"
+       hx-swap="outerHTML"
+       hx-confirm="'{{ group.name }}' 그룹을 삭제하시겠습니까?"
+       style="cursor:pointer;color:var(--pico-color-red-500)">Delete</a>
+  </td>
+</tr>

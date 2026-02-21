@@ -1,0 +1,22 @@
+<tr id="account-{{ account.id }}">
+  <td>{{ account.name }}</td>
+  <td class="text-right">{{ account.cash_balance | format_krw }}</td>
+  <td>
+    <a hx-get="/accounts/{{ account.id }}/edit"
+       hx-target="closest tr"
+       hx-swap="outerHTML"
+       style="cursor:pointer;margin-right:0.5rem">Edit</a>
+    <a href="/accounts/{{ account.id }}/holdings"
+       style="margin-right:0.5rem">Holdings</a>
+    <a hx-post="/accounts/{{ account.id }}/sync"
+       hx-target="#sync-result-{{ account.id }}"
+       hx-swap="outerHTML"
+       style="cursor:pointer;margin-right:0.5rem">KIS Sync</a>
+    <a hx-delete="/accounts/{{ account.id }}"
+       hx-target="closest tr"
+       hx-swap="outerHTML"
+       hx-confirm="'{{ account.name }}' 계좌를 삭제하시겠습니까? (보유 내역도 함께 삭제됩니다)"
+       style="cursor:pointer;color:var(--pico-color-red-500)">Delete</a>
+  </td>
+</tr>
+<tr id="sync-result-{{ account.id }}"></tr>

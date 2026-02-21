@@ -1,0 +1,23 @@
+<tr id="account-{{ account.id }}">
+  <td>
+    <form id="edit-account-{{ account.id }}"
+          hx-put="/accounts/{{ account.id }}"
+          hx-target="closest tr"
+          hx-swap="outerHTML">
+      <input type="text" name="name" value="{{ account.name }}" required style="margin:0">
+  </td>
+  <td>
+      <input type="number" name="cash_balance" value="{{ account.cash_balance }}"
+             min="0" step="1" style="margin:0">
+  </td>
+  <td>
+      <button type="submit" style="margin:0 0.25rem 0 0">Save</button>
+      <button type="button"
+              hx-get="/accounts/{{ account.id }}"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              style="margin:0">Cancel</button>
+    </form>
+  </td>
+</tr>
+<tr id="sync-result-{{ account.id }}"></tr>

@@ -1,0 +1,16 @@
+<tr id="deposit-{{ deposit.id }}">
+  <td>{{ deposit.deposit_date }}</td>
+  <td class="text-right">{{ deposit.amount | format_krw }}</td>
+  <td>{{ deposit.note or "-" }}</td>
+  <td>
+    <a hx-get="/deposits/{{ deposit.id }}/edit"
+       hx-target="closest tr"
+       hx-swap="outerHTML"
+       style="cursor:pointer;margin-right:0.5rem">Edit</a>
+    <a hx-delete="/deposits/{{ deposit.id }}"
+       hx-target="closest tr"
+       hx-swap="outerHTML"
+       hx-confirm="{{ deposit.deposit_date }} 입금을 삭제하시겠습니까?"
+       style="cursor:pointer;color:var(--pico-color-red-500)">Delete</a>
+  </td>
+</tr>

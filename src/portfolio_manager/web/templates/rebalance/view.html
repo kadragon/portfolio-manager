@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Rebalance — Portfolio Manager{% endblock %}
+
+{% block content %}
+<h2>Rebalancing Recommendations</h2>
+
+{% if error %}
+<div class="flash-error">{{ error }}</div>
+{% endif %}
+
+{% if sell_recommendations %}
+<h3>🔴 Sell</h3>
+<div style="overflow-x:auto">
+  <table>
+    <thead>
+      <tr>
+        <th>Group</th>
+        <th>Ticker</th>
+        <th>Name</th>
+        <th class="text-right">Amount</th>
+        <th class="text-right">Quantity</th>
+        <th>Currency</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rec in sell_recommendations %}
+      <tr>
+        <td>{{ rec.group_name or "-" }}</td>
+        <td><code>{{ rec.ticker }}</code></td>
+        <td>{{ rec.stock_name or "-" }}</td>
+        <td class="text-right negative">
+          {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
+        </td>
+        <td class="text-right">
+          {% if rec.quantity is not none %}{{ rec.quantity | int }}{% else %}-{% endif %}
+        </td>
+        <td>{{ rec.currency or "-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if buy_recommendations %}
+<h3>🟢 Buy</h3>
+<div style="overflow-x:auto">
+  <table>
+    <thead>
+      <tr>
+        <th>Group</th>
+        <th>Ticker</th>
+        <th>Name</th>
+        <th class="text-right">Amount</th>
+        <th class="text-right">Quantity</th>
+        <th>Currency</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rec in buy_recommendations %}
+      <tr>
+        <td>{{ rec.group_name or "-" }}</td>
+        <td><code>{{ rec.ticker }}</code></td>
+        <td>{{ rec.stock_name or "-" }}</td>
+        <td class="text-right positive">
+          {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
+        </td>
+        <td class="text-right">
+          {% if rec.quantity is not none %}{{ rec.quantity | int }}{% else %}-{% endif %}
+        </td>
+        <td>{{ rec.currency or "-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if not sell_recommendations and not buy_recommendations and not error %}
+<p>리밸런싱 추천이 없습니다. 포트폴리오가 이미 목표 비중에 맞게 구성되어 있습니다.</p>
+{% endif %}
+
+{% if (sell_recommendations or buy_recommendations) %}
+<div id="execute-result">
+  <form hx-post="/rebalance/execute"
+        hx-target="#execute-result"
+        hx-swap="outerHTML"
+        hx-confirm="정말 주문을 실행하시겠습니까? 이 작업은 실제 주문을 전송합니다."
+        style="margin-top:1.5rem">
+    {% if has_order_client %}
+    <button type="submit" class="contrast">
+      주문 실행 (Execute Orders)
+    </button>
+    {% else %}
+    <button type="button" disabled title="KIS 주문 클라이언트가 설정되지 않았습니다.">
+      주문 실행 불가 (KIS 미설정)
+    </button>
+    {% endif %}
+  </form>
+</div>
+{% endif %}
+
+<p style="margin-top:2rem">
+  <a href="/rebalance">↻ 새로고침</a>
+</p>
+{% endblock %}

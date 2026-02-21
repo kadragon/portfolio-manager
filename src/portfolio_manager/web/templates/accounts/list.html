@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Accounts — Portfolio Manager{% endblock %}
+
+{% block content %}
+<h2>Accounts</h2>
+
+<div style="overflow-x:auto">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th class="text-right">Cash Balance</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="accounts-body">
+      {% for account in accounts %}
+        {% include "accounts/_row.html" %}
+      {% else %}
+      <tr><td colspan="3" style="text-align:center">계좌가 없습니다. 아래에서 추가하세요.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h3>New Account</h3>
+<form hx-post="/accounts"
+      hx-target="#accounts-body"
+      hx-swap="afterbegin"
+      hx-on::after-request="this.reset()">
+  <div style="display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap">
+    <label style="flex:2;min-width:160px">
+      Name
+      <input type="text" name="name" placeholder="e.g. KIS Domestic" required>
+    </label>
+    <label style="flex:1;min-width:140px">
+      Cash Balance (KRW)
+      <input type="number" name="cash_balance" value="0" min="0" step="1">
+    </label>
+    <div>
+      <button type="submit">Add Account</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

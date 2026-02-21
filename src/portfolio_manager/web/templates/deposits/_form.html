@@ -1,0 +1,26 @@
+<tr id="deposit-{{ deposit.id }}">
+  <td>
+    <form id="edit-deposit-{{ deposit.id }}"
+          hx-put="/deposits/{{ deposit.id }}"
+          hx-target="closest tr"
+          hx-swap="outerHTML">
+      <input type="date" name="deposit_date" value="{{ deposit.deposit_date }}" required style="margin:0">
+  </td>
+  <td>
+      <input type="number" name="amount" value="{{ deposit.amount }}"
+             min="0" step="1" required style="margin:0">
+  </td>
+  <td>
+      <input type="text" name="note" value="{{ deposit.note or '' }}"
+             placeholder="메모" style="margin:0">
+  </td>
+  <td>
+      <button type="submit" style="margin:0 0.25rem 0 0">Save</button>
+      <button type="button"
+              hx-get="/deposits/{{ deposit.id }}"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              style="margin:0">Cancel</button>
+    </form>
+  </td>
+</tr>
