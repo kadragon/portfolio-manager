@@ -98,7 +98,7 @@ def test_main_menu_uses_summary_with_change_rates(mock_service_container):
     portfolio_service.get_portfolio_summary.assert_called_once_with()
 
 
-def test_main_menu_renders_change_rates_from_summary():
+def test_main_menu_renders_change_rates_from_summary(mock_service_container):
     """Main loop dashboard render should show 1Y/6M/1M percentages."""
     console = Console(record=True, width=160)
     group = Group(
@@ -138,16 +138,15 @@ def test_main_menu_renders_change_rates_from_summary():
 
     with patch.object(main_app, "_ensure_supabase_ready", return_value=True):
         with patch.object(main_app, "Console", return_value=console):
-            with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
-                container = MockContainer.return_value
-                portfolio_service = MagicMock()
-                portfolio_service.get_portfolio_summary.return_value = summary
-                container.get_portfolio_service.return_value = portfolio_service
-                container.price_service = object()
-                container.setup = MagicMock()
+            portfolio_service = MagicMock()
+            portfolio_service.get_portfolio_summary.return_value = summary
+            mock_service_container.get_portfolio_service.return_value = (
+                portfolio_service
+            )
+            mock_service_container.price_service = object()
 
-                with patch.object(main_app, "choose_main_menu", return_value="quit"):
-                    main_app.main()
+            with patch.object(main_app, "choose_main_menu", return_value="quit"):
+                main_app.main()
 
     output = console.export_text()
     assert "1Y" in output
