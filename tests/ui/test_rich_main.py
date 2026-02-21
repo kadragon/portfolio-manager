@@ -17,7 +17,20 @@ from portfolio_manager.cli.menu import render_menu_options
 from portfolio_manager.cli.groups import select_group_menu_option
 from portfolio_manager.cli import main as main_app
 from portfolio_manager.cli.prompt_select import choose_main_menu
-from portfolio_manager.services.portfolio_service import PortfolioSummary
+from portfolio_manager.models import Group, Stock
+from portfolio_manager.services.portfolio_service import (
+    PortfolioSummary,
+    StockHoldingWithPrice,
+)
+
+
+@pytest.fixture
+def mock_service_container():
+    """Provide patched ServiceContainer with a configurable return object."""
+    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
+        container = MockContainer.return_value
+        container.setup = MagicMock()
+        yield container
 
 
 def test_rich_main_menu_renders_title():
@@ -37,105 +50,146 @@ def test_selecting_groups_option_returns_groups_action():
     assert action == "groups"
 
 
-def test_main_menu_quit_exits():
+def test_main_menu_quit_exits(mock_service_container):
     """Should exit the main loop when selecting quit."""
-    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
-        container = MockContainer.return_value
-        container.get_portfolio_service.return_value = MagicMock()
+    mock_service_container.get_portfolio_service.return_value = MagicMock()
 
-        with patch.object(main_app, "render_main_menu") as render_menu:
-            with patch.object(main_app, "choose_main_menu", return_value="quit"):
-                with patch.object(main_app, "run_group_menu") as run_group_menu:
-                    with patch.object(main_app, "run_account_menu") as run_account_menu:
-                        main_app.main()
+    with patch.object(main_app, "render_main_menu") as render_menu:
+        with patch.object(main_app, "choose_main_menu", return_value="quit"):
+            with patch.object(main_app, "run_group_menu") as run_group_menu:
+                with patch.object(main_app, "run_account_menu") as run_account_menu:
+                    main_app.main()
 
     render_menu.assert_called()
     run_group_menu.assert_not_called()
     run_account_menu.assert_not_called()
 
 
-def test_main_menu_renders_dashboard_and_quits():
+def test_main_menu_renders_dashboard_and_quits(mock_service_container):
     """Should render dashboard before quitting."""
     summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
 
-    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
-        container = MockContainer.return_value
-        container.get_portfolio_service.return_value = MagicMock(
-            get_portfolio_summary=MagicMock(return_value=summary)
-        )
-        container.price_service = object()
-        container.setup = MagicMock()
+    mock_service_container.get_portfolio_service.return_value = MagicMock(
+        get_portfolio_summary=MagicMock(return_value=summary)
+    )
+    mock_service_container.price_service = object()
 
-        with patch.object(main_app, "render_dashboard") as render_dashboard:
-            with patch.object(main_app, "choose_main_menu", return_value="quit"):
-                main_app.main()
+    with patch.object(main_app, "render_dashboard") as render_dashboard:
+        with patch.object(main_app, "choose_main_menu", return_value="quit"):
+            main_app.main()
 
     render_dashboard.assert_called()
     assert render_dashboard.call_args[0][1] is summary
 
 
-def test_main_menu_uses_fast_summary_without_change_rates():
-    """Should skip change-rate lookup for main dashboard render."""
+def test_main_menu_uses_summary_with_change_rates(mock_service_container):
+    """Should include change-rate lookup for main dashboard render."""
     summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
 
-    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
-        container = MockContainer.return_value
-        portfolio_service = MagicMock()
-        portfolio_service.get_portfolio_summary.return_value = summary
-        container.get_portfolio_service.return_value = portfolio_service
-        container.price_service = object()
-        container.setup = MagicMock()
+    portfolio_service = MagicMock()
+    portfolio_service.get_portfolio_summary.return_value = summary
+    mock_service_container.get_portfolio_service.return_value = portfolio_service
+    mock_service_container.price_service = object()
 
-        with patch.object(main_app, "render_dashboard"):
+    with patch.object(main_app, "render_dashboard"):
+        with patch.object(main_app, "choose_main_menu", return_value="quit"):
+            main_app.main()
+
+    portfolio_service.get_portfolio_summary.assert_called_once_with()
+
+
+def test_main_menu_renders_change_rates_from_summary(mock_service_container):
+    """Main loop dashboard render should show 1Y/6M/1M percentages."""
+    console = Console(record=True, width=160)
+    group = Group(
+        id=uuid4(),
+        name="Tech",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="AAPL",
+        group_id=group.id,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    summary = PortfolioSummary(
+        holdings=[
+            (
+                group,
+                StockHoldingWithPrice(
+                    stock=stock,
+                    quantity=Decimal("10"),
+                    price=Decimal("150"),
+                    currency="USD",
+                    name="Apple Inc.",
+                    value_krw=Decimal("1950000"),
+                    change_rates={
+                        "1y": Decimal("20"),
+                        "6m": Decimal("10"),
+                        "1m": Decimal("-5"),
+                    },
+                ),
+            )
+        ],
+        total_value=Decimal("1950000"),
+    )
+
+    with patch.object(main_app, "_ensure_supabase_ready", return_value=True):
+        with patch.object(main_app, "Console", return_value=console):
+            portfolio_service = MagicMock()
+            portfolio_service.get_portfolio_summary.return_value = summary
+            mock_service_container.get_portfolio_service.return_value = (
+                portfolio_service
+            )
+            mock_service_container.price_service = object()
+
             with patch.object(main_app, "choose_main_menu", return_value="quit"):
                 main_app.main()
 
-    portfolio_service.get_portfolio_summary.assert_called_once_with(
-        include_change_rates=False
-    )
+    output = console.export_text()
+    assert "1Y" in output
+    assert "6M" in output
+    assert "1M" in output
+    assert "+20.0%" in output
+    assert "+10.0%" in output
+    assert "-5.0%" in output
 
 
-def test_main_menu_uses_summary_cache_within_ttl():
+def test_main_menu_uses_summary_cache_within_ttl(mock_service_container):
     """Should reuse cached summary within TTL window."""
     summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
 
-    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
-        container = MockContainer.return_value
-        portfolio_service = MagicMock()
-        portfolio_service.get_portfolio_summary.return_value = summary
-        container.get_portfolio_service.return_value = portfolio_service
-        container.price_service = object()
-        container.setup = MagicMock()
+    portfolio_service = MagicMock()
+    portfolio_service.get_portfolio_summary.return_value = summary
+    mock_service_container.get_portfolio_service.return_value = portfolio_service
+    mock_service_container.price_service = object()
 
-        with patch.object(main_app, "render_dashboard"):
-            with patch.object(
-                main_app, "choose_main_menu", side_effect=["unknown", "quit"]
-            ):
-                with patch.object(main_app.time, "time", return_value=1000.0):
-                    main_app.main()
+    with patch.object(main_app, "render_dashboard"):
+        with patch.object(
+            main_app, "choose_main_menu", side_effect=["unknown", "quit"]
+        ):
+            with patch.object(main_app.time, "time", return_value=1000.0):
+                main_app.main()
 
     assert portfolio_service.get_portfolio_summary.call_count == 1
 
 
-def test_main_menu_invalidates_summary_cache_after_group_menu():
+def test_main_menu_invalidates_summary_cache_after_group_menu(mock_service_container):
     """Should invalidate cached summary after group menu mutations."""
     summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
 
-    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
-        container = MockContainer.return_value
-        portfolio_service = MagicMock()
-        portfolio_service.get_portfolio_summary.return_value = summary
-        container.get_portfolio_service.return_value = portfolio_service
-        container.price_service = object()
-        container.setup = MagicMock()
+    portfolio_service = MagicMock()
+    portfolio_service.get_portfolio_summary.return_value = summary
+    mock_service_container.get_portfolio_service.return_value = portfolio_service
+    mock_service_container.price_service = object()
 
-        with patch.object(main_app, "render_dashboard"):
-            with patch.object(
-                main_app, "choose_main_menu", side_effect=["groups", "quit"]
-            ):
-                with patch.object(main_app, "run_group_menu"):
-                    with patch.object(main_app.time, "time", return_value=1000.0):
-                        main_app.main()
+    with patch.object(main_app, "render_dashboard"):
+        with patch.object(main_app, "choose_main_menu", side_effect=["groups", "quit"]):
+            with patch.object(main_app, "run_group_menu"):
+                with patch.object(main_app.time, "time", return_value=1000.0):
+                    main_app.main()
 
     assert portfolio_service.get_portfolio_summary.call_count == 2
 
@@ -263,42 +317,36 @@ def test_main_returns_early_when_supabase_not_ready():
     mock_container.assert_not_called()
 
 
-def test_main_falls_back_to_holdings_when_price_fetch_fails():
+def test_main_falls_back_to_holdings_when_price_fetch_fails(mock_service_container):
     """Should render group holdings fallback when summary fetch raises."""
     fallback = [{"group": "fallback"}]
 
-    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
-        container = MockContainer.return_value
-        portfolio_service = MagicMock()
-        portfolio_service.get_portfolio_summary.side_effect = RuntimeError("price fail")
-        portfolio_service.get_holdings_by_group.return_value = fallback
-        container.get_portfolio_service.return_value = portfolio_service
-        container.price_service = object()
-        container.setup = MagicMock()
+    portfolio_service = MagicMock()
+    portfolio_service.get_portfolio_summary.side_effect = RuntimeError("price fail")
+    portfolio_service.get_holdings_by_group.return_value = fallback
+    mock_service_container.get_portfolio_service.return_value = portfolio_service
+    mock_service_container.price_service = object()
 
-        with patch.object(main_app, "render_dashboard") as render_dashboard:
-            with patch.object(main_app, "choose_main_menu", return_value="quit"):
-                main_app.main()
+    with patch.object(main_app, "render_dashboard") as render_dashboard:
+        with patch.object(main_app, "choose_main_menu", return_value="quit"):
+            main_app.main()
 
     portfolio_service.get_holdings_by_group.assert_called_once_with()
     assert render_dashboard.call_args[0][1] is fallback
 
 
-def test_main_uses_holdings_dashboard_when_price_service_absent():
+def test_main_uses_holdings_dashboard_when_price_service_absent(mock_service_container):
     """Should render holdings dashboard directly when price service is unavailable."""
     holdings = [{"group": "no-price"}]
 
-    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
-        container = MockContainer.return_value
-        portfolio_service = MagicMock()
-        portfolio_service.get_holdings_by_group.return_value = holdings
-        container.get_portfolio_service.return_value = portfolio_service
-        container.price_service = None
-        container.setup = MagicMock()
+    portfolio_service = MagicMock()
+    portfolio_service.get_holdings_by_group.return_value = holdings
+    mock_service_container.get_portfolio_service.return_value = portfolio_service
+    mock_service_container.price_service = None
 
-        with patch.object(main_app, "render_dashboard") as render_dashboard:
-            with patch.object(main_app, "choose_main_menu", return_value="quit"):
-                main_app.main()
+    with patch.object(main_app, "render_dashboard") as render_dashboard:
+        with patch.object(main_app, "choose_main_menu", return_value="quit"):
+            main_app.main()
 
     portfolio_service.get_portfolio_summary.assert_not_called()
     portfolio_service.get_holdings_by_group.assert_called_once_with()
@@ -314,26 +362,21 @@ def test_main_uses_holdings_dashboard_when_price_service_absent():
     ],
 )
 def test_main_invalidates_cache_after_non_group_menu_actions(
-    action: str, menu_function_name: str
+    action: str, menu_function_name: str, mock_service_container
 ):
     """Accounts/deposits/rebalance actions should invalidate summary cache."""
     summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
 
-    with patch("portfolio_manager.cli.main.ServiceContainer") as MockContainer:
-        container = MockContainer.return_value
-        portfolio_service = MagicMock()
-        portfolio_service.get_portfolio_summary.return_value = summary
-        container.get_portfolio_service.return_value = portfolio_service
-        container.price_service = object()
-        container.setup = MagicMock()
+    portfolio_service = MagicMock()
+    portfolio_service.get_portfolio_summary.return_value = summary
+    mock_service_container.get_portfolio_service.return_value = portfolio_service
+    mock_service_container.price_service = object()
 
-        with patch.object(main_app, "render_dashboard"):
-            with patch.object(
-                main_app, "choose_main_menu", side_effect=[action, "quit"]
-            ):
-                with patch.object(main_app, menu_function_name) as menu_function:
-                    with patch.object(main_app.time, "time", return_value=1000.0):
-                        main_app.main()
+    with patch.object(main_app, "render_dashboard"):
+        with patch.object(main_app, "choose_main_menu", side_effect=[action, "quit"]):
+            with patch.object(main_app, menu_function_name) as menu_function:
+                with patch.object(main_app.time, "time", return_value=1000.0):
+                    main_app.main()
 
     menu_function.assert_called_once()
     assert portfolio_service.get_portfolio_summary.call_count == 2
