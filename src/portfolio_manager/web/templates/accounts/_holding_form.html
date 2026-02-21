@@ -3,20 +3,27 @@
     <form id="edit-holding-{{ holding.id }}"
           hx-put="/accounts/{{ account_id }}/holdings/{{ holding.id }}"
           hx-target="closest tr"
-          hx-swap="outerHTML">
+          hx-swap="outerHTML"
+          data-request-message="보유 수량을 저장하는 중…">
       <code>{{ stock_map[holding.stock_id].ticker if holding.stock_id in stock_map else holding.stock_id }}</code>
   </td>
   <td>
-      <input type="number" name="quantity" value="{{ holding.quantity }}"
-             min="0" step="0.000001" required style="margin:0">
+      <label class="sr-only" for="holding-qty-{{ holding.id }}">수량</label>
+      <input id="holding-qty-{{ holding.id }}" type="number" name="quantity" value="{{ holding.quantity }}"
+             min="0" step="0.000001" required autocomplete="off">
   </td>
   <td>
-      <button type="submit" style="margin:0 0.25rem 0 0">Save</button>
-      <button type="button"
-              hx-get="/accounts/{{ account_id }}/holdings/{{ holding.id }}"
-              hx-target="closest tr"
-              hx-swap="outerHTML"
-              style="margin:0">Cancel</button>
+      <div class="inline-actions">
+        <button type="submit" class="btn btn-primary">저장</button>
+        <button type="button"
+                class="btn btn-ghost"
+                hx-get="/accounts/{{ account_id }}/holdings/{{ holding.id }}"
+                hx-target="closest tr"
+                hx-swap="outerHTML"
+                data-request-message="수정 취소 중…">
+          취소
+        </button>
+      </div>
     </form>
   </td>
 </tr>

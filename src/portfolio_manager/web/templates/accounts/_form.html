@@ -3,20 +3,28 @@
     <form id="edit-account-{{ account.id }}"
           hx-put="/accounts/{{ account.id }}"
           hx-target="closest tr"
-          hx-swap="outerHTML">
-      <input type="text" name="name" value="{{ account.name }}" required style="margin:0">
+          hx-swap="outerHTML"
+          data-request-message="계좌 정보를 저장하는 중…">
+      <label class="sr-only" for="account-name-{{ account.id }}">계좌 이름</label>
+      <input id="account-name-{{ account.id }}" type="text" name="name" value="{{ account.name }}" required autocomplete="off">
   </td>
   <td>
-      <input type="number" name="cash_balance" value="{{ account.cash_balance }}"
-             min="0" step="1" style="margin:0">
+      <label class="sr-only" for="account-cash-{{ account.id }}">예수금</label>
+      <input id="account-cash-{{ account.id }}" type="number" name="cash_balance" value="{{ account.cash_balance }}"
+             min="0" step="1" required autocomplete="off">
   </td>
   <td>
-      <button type="submit" style="margin:0 0.25rem 0 0">Save</button>
-      <button type="button"
-              hx-get="/accounts/{{ account.id }}"
-              hx-target="closest tr"
-              hx-swap="outerHTML"
-              style="margin:0">Cancel</button>
+      <div class="inline-actions">
+        <button type="submit" class="btn btn-primary">저장</button>
+        <button type="button"
+                class="btn btn-ghost"
+                hx-get="/accounts/{{ account.id }}"
+                hx-target="closest tr"
+                hx-swap="outerHTML"
+                data-request-message="수정 취소 중…">
+          취소
+        </button>
+      </div>
     </form>
   </td>
 </tr>

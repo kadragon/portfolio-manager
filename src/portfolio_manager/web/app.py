@@ -7,6 +7,7 @@ from typing import AsyncGenerator
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from portfolio_manager.core.container import ServiceContainer
@@ -71,11 +72,13 @@ def _add_filters(templates: Jinja2Templates) -> None:
 
 def create_app() -> FastAPI:
     templates_dir = Path(__file__).parent / "templates"
+    static_dir = Path(__file__).parent / "static"
     templates = Jinja2Templates(directory=str(templates_dir))
     _add_filters(templates)
 
     app = FastAPI(lifespan=lifespan, title="Portfolio Manager")
     app.state.templates = templates
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     app.include_router(dashboard.router)
     app.include_router(groups.router)

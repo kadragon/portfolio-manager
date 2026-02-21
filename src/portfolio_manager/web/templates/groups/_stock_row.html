@@ -2,10 +2,16 @@
   <td><code>{{ stock.ticker }}</code></td>
   <td>{{ stock.exchange or "-" }}</td>
   <td>
-    <a hx-delete="/groups/{{ group_id }}/stocks/{{ stock.id }}"
-       hx-target="closest tr"
-       hx-swap="outerHTML"
-       hx-confirm="'{{ stock.ticker }}' 종목을 삭제하시겠습니까?"
-       style="cursor:pointer;color:var(--pico-color-red-500)">Delete</a>
+    <div class="inline-actions">
+      <button type="button"
+              class="btn btn-danger"
+              hx-delete="/groups/{{ group_id }}/stocks/{{ stock.id }}"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              hx-confirm="'{{ stock.ticker }}' 종목을 삭제하시겠습니까?"
+              data-request-message="종목을 삭제하는 중…">
+        삭제
+      </button>
+    </div>
   </td>
 </tr>
