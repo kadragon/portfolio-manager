@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from decimal import Decimal
 from pathlib import Path
 
 import httpx
-from rich.console import Console
 
 from portfolio_manager.repositories.account_repository import AccountRepository
 from portfolio_manager.repositories.deposit_repository import DepositRepository
@@ -56,13 +56,14 @@ from portfolio_manager.services.exchange.exchange_rate_service import (
 from portfolio_manager.services.kis_account_sync_service import KisAccountSyncService
 from portfolio_manager.services.supabase_client import get_supabase_client
 
+logger = logging.getLogger(__name__)
+
 
 class ServiceContainer:
     """Container for services and repositories."""
 
-    def __init__(self, console: Console | None = None) -> None:
+    def __init__(self) -> None:
         """Initialize container."""
-        self.console = console or Console()
         self.http_client: httpx.Client | None = None
         self.exim_client: httpx.Client | None = None
 
@@ -198,9 +199,7 @@ class ServiceContainer:
                         price_service=self.price_service,
                     )
             except Exception as e:
-                self.console.print(
-                    f"[yellow]Warning: Could not initialize price service: {e}[/yellow]"
-                )
+                logger.warning("Could not initialize price service: %s", e)
 
     def _setup_exchange_service(self) -> None:
         usd_krw_rate_env = os.getenv("USD_KRW_RATE")

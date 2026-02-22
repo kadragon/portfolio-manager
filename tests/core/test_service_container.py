@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 import os
-from typing import Iterator, cast
+from typing import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -47,12 +47,11 @@ def container() -> Iterator[ServiceContainer]:
             return_value=MagicMock(),
         ),
     ):
-        yield ServiceContainer(console=MagicMock())
+        yield ServiceContainer()
 
 
 def test_constructor_wires_repositories_and_defaults() -> None:
     """Container should wire repository instances and initialize defaults."""
-    console = MagicMock()
     supabase_client = MagicMock()
     group_repo = MagicMock()
     stock_repo = MagicMock()
@@ -94,9 +93,8 @@ def test_constructor_wires_repositories_and_defaults() -> None:
             return_value=execution_repo,
         ),
     ):
-        created = ServiceContainer(console=console)
+        created = ServiceContainer()
 
-    assert created.console is console
     assert created.supabase_client is supabase_client
     assert created.group_repository is group_repo
     assert created.stock_repository is stock_repo
@@ -328,8 +326,8 @@ def test_setup_kis_client_wires_sync_and_order_clients_when_account_exists(
     assert container.order_client is order_client
 
 
-def test_setup_kis_client_prints_warning_on_exception(
-    container: ServiceContainer,
+def test_setup_kis_client_logs_warning_on_exception(
+    container: ServiceContainer, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Client setup failures should be handled and logged as warning."""
     token_manager = MagicMock()
@@ -356,9 +354,7 @@ def test_setup_kis_client_prints_warning_on_exception(
     ):
         container._setup_kis_client()
 
-    console_print = cast(MagicMock, container.console.print)
-    console_print.assert_called()
-    assert "Could not initialize price service" in str(console_print.call_args)
+    assert "Could not initialize price service" in caplog.text
 
 
 def test_setup_exchange_service_uses_fixed_rate(container: ServiceContainer) -> None:

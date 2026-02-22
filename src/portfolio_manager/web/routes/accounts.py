@@ -23,6 +23,40 @@ def list_accounts(request: Request) -> HTMLResponse:
     )
 
 
+@router.put("/bulk-cash")
+async def bulk_update_cash(request: Request) -> Response:
+    container = get_container(request)
+    accounts = container.account_repository.list_all()
+    form = await request.form()
+
+    updated_values: list[tuple[UUID, Decimal, str]] = []
+    for account in accounts:
+        field_name = f"cash_{account.id}"
+        raw_value = str(form.get(field_name, "")).strip()
+        if raw_value == "":
+            return HTMLResponse(
+                status_code=422,
+                content=f"'{account.name}' 예수금을 입력하세요.",
+            )
+        try:
+            cash_balance = Decimal(raw_value)
+        except Exception:
+            return HTMLResponse(
+                status_code=422,
+                content=f"'{account.name}' 예수금 형식이 올바르지 않습니다.",
+            )
+        updated_values.append((account.id, cash_balance, account.name))
+
+    for account_id, cash_balance, account_name in updated_values:
+        container.account_repository.update(
+            account_id=account_id,
+            name=account_name,
+            cash_balance=cash_balance,
+        )
+
+    return Response(status_code=200, headers={"HX-Refresh": "true"})
+
+
 @router.get("/{account_id}", response_class=HTMLResponse)
 def get_account_row(request: Request, account_id: UUID) -> HTMLResponse:
     container = get_container(request)
@@ -115,6 +149,7 @@ def list_holdings(request: Request, account_id: UUID) -> HTMLResponse:
         return Response(status_code=404)  # type: ignore[return-value]
     holdings = container.holding_repository.list_by_account(account_id)
     stocks = container.stock_repository.list_all()
+    groups = container.group_repository.list_all()
     stock_map = {s.id: s for s in stocks}
     all_stocks = stocks
     return templates.TemplateResponse(
@@ -125,6 +160,7 @@ def list_holdings(request: Request, account_id: UUID) -> HTMLResponse:
             "holdings": holdings,
             "stock_map": stock_map,
             "all_stocks": all_stocks,
+            "all_groups": groups,
             "active_page": "accounts",
         },
     )
@@ -142,6 +178,83 @@ def create_holding(
     holding = container.holding_repository.create(
         account_id=account_id,
         stock_id=stock_id,
+        quantity=quantity,
+    )
+    stocks = container.stock_repository.list_all()
+    stock_map = {s.id: s for s in stocks}
+    return templates.TemplateResponse(
+        request=request,
+        name="accounts/_holding_row.html",
+        context={"holding": holding, "stock_map": stock_map, "account_id": account_id},
+    )
+
+
+@router.post("/{account_id}/holdings/by-ticker", response_class=HTMLResponse)
+def create_holding_by_ticker(
+    request: Request,
+    account_id: UUID,
+    ticker: str = Form(...),
+    quantity: Decimal = Form(...),
+    group_id: str = Form(""),
+    new_group_name: str = Form(""),
+) -> HTMLResponse:
+    container = get_container(request)
+    templates = get_templates(request)
+
+    normalized_ticker = ticker.strip().upper()
+    if normalized_ticker == "":
+        return HTMLResponse(
+            status_code=422,
+            content="<tr class='empty-row'><td colspan='3'>티커를 입력하세요.</td></tr>",
+        )
+
+    stock = container.stock_repository.get_by_ticker(normalized_ticker)
+    if stock is None:
+        groups = container.group_repository.list_all()
+        target_group_id: UUID | None = None
+
+        raw_group_id = group_id.strip()
+        if raw_group_id:
+            try:
+                target_group_id = UUID(raw_group_id)
+            except ValueError:
+                return HTMLResponse(
+                    status_code=422,
+                    content="<tr class='empty-row'><td colspan='3'>선택한 그룹이 올바르지 않습니다.</td></tr>",
+                )
+            if all(group.id != target_group_id for group in groups):
+                return HTMLResponse(
+                    status_code=422,
+                    content="<tr class='empty-row'><td colspan='3'>선택한 그룹을 찾을 수 없습니다.</td></tr>",
+                )
+        elif not groups:
+            group_name = new_group_name.strip()
+            if group_name == "":
+                return HTMLResponse(
+                    status_code=422,
+                    content="<tr class='empty-row'><td colspan='3'>그룹이 없어 새 그룹 이름이 필요합니다.</td></tr>",
+                )
+            created_group = container.group_repository.create(name=group_name)
+            target_group_id = created_group.id
+        else:
+            return HTMLResponse(
+                status_code=422,
+                content="<tr class='empty-row'><td colspan='3'>새 티커는 그룹을 선택해야 합니다.</td></tr>",
+            )
+
+        if target_group_id is None:
+            return HTMLResponse(
+                status_code=422,
+                content="<tr class='empty-row'><td colspan='3'>그룹을 찾을 수 없습니다.</td></tr>",
+            )
+        stock = container.stock_repository.create(
+            ticker=normalized_ticker,
+            group_id=target_group_id,
+        )
+
+    holding = container.holding_repository.create(
+        account_id=account_id,
+        stock_id=stock.id,
         quantity=quantity,
     )
     stocks = container.stock_repository.list_all()

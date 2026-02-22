@@ -57,16 +57,16 @@
             <th class="text-right">수량</th>
             <th class="text-right">현재가</th>
             <th class="text-right">평가액 (KRW)</th>
-            <th class="text-right">1D</th>
-            <th class="text-right">1M</th>
             <th class="text-right">1Y</th>
+            <th class="text-right">6M</th>
+            <th class="text-right">1M</th>
           </tr>
         </thead>
         <tbody>
           {% for group, h in summary.holdings %}
-          {% set rate_1d = h.change_rates.get("1d") if h.change_rates else none %}
-          {% set rate_1m = h.change_rates.get("1m") if h.change_rates else none %}
           {% set rate_1y = h.change_rates.get("1y") if h.change_rates else none %}
+          {% set rate_6m = h.change_rates.get("6m") if h.change_rates else none %}
+          {% set rate_1m = h.change_rates.get("1m") if h.change_rates else none %}
           <tr>
             <td>{{ group.name }}</td>
             <td><code>{{ h.stock.ticker }}</code></td>
@@ -78,14 +78,14 @@
               {% if h.currency == "KRW" %}{{ h.price | format_krw }}{% else %}{{ h.price | format_usd }}{% endif %}
             </td>
             <td class="text-right">{{ h.value_krw | format_krw }}</td>
-            <td class="text-right {% if rate_1d is not none and rate_1d > 0 %}value-positive{% elif rate_1d is not none and rate_1d < 0 %}value-negative{% else %}value-neutral{% endif %}">
-              {% if rate_1d is not none %}{{ rate_1d | format_signed_percent }}{% else %}-{% endif %}
+            <td class="text-right {% if rate_1y is not none and rate_1y > 0 %}value-positive{% elif rate_1y is not none and rate_1y < 0 %}value-negative{% else %}value-neutral{% endif %}">
+              {% if rate_1y is not none %}{{ rate_1y | format_signed_percent }}{% else %}-{% endif %}
+            </td>
+            <td class="text-right {% if rate_6m is not none and rate_6m > 0 %}value-positive{% elif rate_6m is not none and rate_6m < 0 %}value-negative{% else %}value-neutral{% endif %}">
+              {% if rate_6m is not none %}{{ rate_6m | format_signed_percent }}{% else %}-{% endif %}
             </td>
             <td class="text-right {% if rate_1m is not none and rate_1m > 0 %}value-positive{% elif rate_1m is not none and rate_1m < 0 %}value-negative{% else %}value-neutral{% endif %}">
               {% if rate_1m is not none %}{{ rate_1m | format_signed_percent }}{% else %}-{% endif %}
-            </td>
-            <td class="text-right {% if rate_1y is not none and rate_1y > 0 %}value-positive{% elif rate_1y is not none and rate_1y < 0 %}value-negative{% else %}value-neutral{% endif %}">
-              {% if rate_1y is not none %}{{ rate_1y | format_signed_percent }}{% else %}-{% endif %}
             </td>
           </tr>
           {% else %}

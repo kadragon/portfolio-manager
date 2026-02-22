@@ -17,6 +17,7 @@
       <label class="sr-only" for="deposit-note-{{ deposit.id }}">메모</label>
       <input id="deposit-note-{{ deposit.id }}" type="text" name="note" value="{{ deposit.note or '' }}"
              placeholder="예: 메모 입력…" autocomplete="off">
+      <small class="form-hint">빈 값은 기존 메모 유지, <code>/clear</code> 입력 시 메모 삭제</small>
   </td>
   <td>
       <div class="inline-actions">

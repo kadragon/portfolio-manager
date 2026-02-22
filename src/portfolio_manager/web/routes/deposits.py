@@ -2,6 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
+from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, Form, Request
@@ -104,12 +105,29 @@ def update_deposit(
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
-    deposit = container.deposit_repository.update(
-        deposit_id=deposit_id,
-        amount=amount,
-        deposit_date=deposit_date,
-        note=note.strip() or None,
-    )
+    trimmed_note = note.strip()
+    note_sentinel = object()
+    note_value: str | None | object = note_sentinel
+    if trimmed_note == "":
+        note_value = note_sentinel
+    elif trimmed_note.lower() == "/clear":
+        note_value = None
+    else:
+        note_value = trimmed_note
+
+    if note_value is note_sentinel:
+        deposit = container.deposit_repository.update(
+            deposit_id=deposit_id,
+            amount=amount,
+            deposit_date=deposit_date,
+        )
+    else:
+        deposit = container.deposit_repository.update(
+            deposit_id=deposit_id,
+            amount=amount,
+            deposit_date=deposit_date,
+            note=cast(str | None, note_value),
+        )
     return templates.TemplateResponse(
         request=request,
         name="deposits/_row.html",

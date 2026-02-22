@@ -140,6 +140,84 @@ def create_stock(
     )
 
 
+@router.get("/{group_id}/stocks/{stock_id}", response_class=HTMLResponse)
+def get_stock_row(request: Request, group_id: UUID, stock_id: UUID) -> HTMLResponse:
+    """Return a single stock row partial (used by cancel in edit form)."""
+    container = get_container(request)
+    templates = get_templates(request)
+    stock = container.stock_repository.get_by_id(stock_id)
+    if stock is None or stock.group_id != group_id:
+        return Response(status_code=404)  # type: ignore[return-value]
+    return templates.TemplateResponse(
+        request=request,
+        name="groups/_stock_row.html",
+        context={"stock": stock, "group_id": group_id},
+    )
+
+
+@router.get("/{group_id}/stocks/{stock_id}/edit", response_class=HTMLResponse)
+def edit_stock_form(request: Request, group_id: UUID, stock_id: UUID) -> HTMLResponse:
+    container = get_container(request)
+    templates = get_templates(request)
+    stock = container.stock_repository.get_by_id(stock_id)
+    if stock is None or stock.group_id != group_id:
+        return Response(status_code=404)  # type: ignore[return-value]
+    groups = container.group_repository.list_all()
+    return templates.TemplateResponse(
+        request=request,
+        name="groups/_stock_form.html",
+        context={"stock": stock, "group_id": group_id, "groups": groups},
+    )
+
+
+@router.put("/{group_id}/stocks/{stock_id}", response_class=HTMLResponse)
+def update_stock(
+    request: Request,
+    group_id: UUID,
+    stock_id: UUID,
+    ticker: str = Form(...),
+    target_group_id: str = Form(""),
+) -> HTMLResponse:
+    container = get_container(request)
+    templates = get_templates(request)
+    stock = container.stock_repository.get_by_id(stock_id)
+    if stock is None or stock.group_id != group_id:
+        return Response(status_code=404)  # type: ignore[return-value]
+
+    normalized_ticker = ticker.strip().upper()
+    if normalized_ticker == "":
+        return Response(status_code=422)  # type: ignore[return-value]
+
+    destination_group_id = stock.group_id
+    raw_target_group_id = target_group_id.strip()
+    if raw_target_group_id:
+        try:
+            destination_group_id = UUID(raw_target_group_id)
+        except ValueError:
+            return Response(status_code=422)  # type: ignore[return-value]
+        groups = container.group_repository.list_all()
+        if all(group.id != destination_group_id for group in groups):
+            return Response(status_code=404)  # type: ignore[return-value]
+
+    updated_stock = stock
+    if destination_group_id != stock.group_id:
+        updated_stock = container.stock_repository.update_group(
+            stock_id=stock.id,
+            group_id=destination_group_id,
+        )
+    if normalized_ticker != updated_stock.ticker:
+        updated_stock = container.stock_repository.update(
+            stock_id=stock.id,
+            ticker=normalized_ticker,
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="groups/_stock_row.html",
+        context={"stock": updated_stock, "group_id": updated_stock.group_id},
+    )
+
+
 @router.delete("/{group_id}/stocks/{stock_id}")
 def delete_stock(request: Request, group_id: UUID, stock_id: UUID) -> Response:
     container = get_container(request)
