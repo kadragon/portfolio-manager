@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, Response
+from markupsafe import escape
 from postgrest.exceptions import APIError
 
 from portfolio_manager.web.deps import get_container, get_templates
@@ -95,17 +96,18 @@ async def bulk_update_cash(request: Request) -> Response:
     for account in accounts:
         field_name = f"cash_{account.id}"
         raw_value = str(form.get(field_name, "")).strip()
+        escaped_account_name = str(escape(account.name))
         if raw_value == "":
             return HTMLResponse(
                 status_code=422,
-                content=f"'{account.name}' 예수금을 입력하세요.",
+                content=f"'{escaped_account_name}' 예수금을 입력하세요.",
             )
         try:
             cash_balance = Decimal(raw_value)
         except InvalidOperation:
             return HTMLResponse(
                 status_code=422,
-                content=f"'{account.name}' 예수금 형식이 올바르지 않습니다.",
+                content=f"'{escaped_account_name}' 예수금 형식이 올바르지 않습니다.",
             )
         updated_values.append((account.id, cash_balance, account.name))
 

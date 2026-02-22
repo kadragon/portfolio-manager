@@ -41,6 +41,34 @@ def test_bulk_cash_update_rejects_partial_input(client, fake_container):
     assert "예수금을 입력하세요" in response.text
 
 
+def test_bulk_cash_update_escapes_account_name_for_missing_input(
+    client, fake_container
+):
+    fake_container.account_repository._accounts[0].name = "<script>alert(1)</script>"
+
+    response = client.put("/accounts/bulk-cash", data={})
+
+    assert response.status_code == 422
+    assert "<script>alert(1)</script>" not in response.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
+
+
+def test_bulk_cash_update_escapes_account_name_for_invalid_number(
+    client, fake_container
+):
+    fake_container.account_repository._accounts[0].name = "<img src=x onerror=1>"
+
+    response = client.put(
+        "/accounts/bulk-cash",
+        data={f"cash_{fake_container.account.id}": "not-a-number"},
+    )
+
+    assert response.status_code == 422
+    assert "<img src=x onerror=1>" not in response.text
+    assert "&lt;img src=x onerror=1&gt;" in response.text
+    assert "예수금 형식이 올바르지 않습니다." in response.text
+
+
 def test_holdings_page_contains_labeled_inputs_and_required_fields(
     client, fake_container
 ):
