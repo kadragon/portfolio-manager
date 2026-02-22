@@ -209,6 +209,53 @@ def test_get_stock_change_rates_supports_custom_periods_order():
     assert change_rates["1y"] == Decimal("50")
 
 
+def test_get_stock_change_rates_ignores_unsupported_periods():
+    """지원하지 않는 기간 문자열은 무시하고 지원 기간만 계산한다."""
+    price_client = Mock()
+    price_client.get_price.return_value = PriceQuote(
+        symbol="AAPL", name="Apple Inc.", price=120.0, market="US", currency="USD"
+    )
+    price_client.get_historical_close.side_effect = (
+        lambda ticker, target_date, preferred_exchange=None: {
+            date(2025, 1, 14): 100.0,
+            date(2024, 1, 15): 80.0,
+        }[target_date]
+    )
+
+    service = PriceService(price_client)
+
+    change_rates = service.get_stock_change_rates(
+        "AAPL",
+        as_of=date(2025, 1, 15),
+        periods=("1d", "bad", "1y"),
+    )
+
+    assert change_rates == {
+        "1d": Decimal("20"),
+        "1y": Decimal("50"),
+    }
+    assert price_client.get_historical_close.call_count == 2
+
+
+def test_get_stock_change_rates_returns_empty_for_only_unsupported_periods():
+    """지원 기간이 하나도 없으면 빈 결과를 반환하고 과거 종가를 조회하지 않는다."""
+    price_client = Mock()
+    price_client.get_price.return_value = PriceQuote(
+        symbol="AAPL", name="Apple Inc.", price=120.0, market="US", currency="USD"
+    )
+
+    service = PriceService(price_client)
+
+    change_rates = service.get_stock_change_rates(
+        "AAPL",
+        as_of=date(2025, 1, 15),
+        periods=("bad", "invalid"),
+    )
+
+    assert change_rates == {}
+    price_client.get_historical_close.assert_not_called()
+
+
 def test_get_stock_change_rates_adjusts_1d_to_previous_business_day():
     """1D 기간도 휴장일이면 이전 영업일로 보정한다."""
     price_client = Mock()
