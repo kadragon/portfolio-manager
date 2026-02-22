@@ -96,6 +96,36 @@ class HoldingRepository:
             updated_at=datetime.fromisoformat(str(data["updated_at"])),
         )
 
+    def bulk_update_by_account(
+        self, account_id: UUID, updates: list[tuple[UUID, Decimal]]
+    ) -> list[Holding]:
+        """Update multiple holdings for one account atomically via RPC."""
+        if not updates:
+            return []
+
+        response = self.client.rpc(
+            "bulk_update_account_holdings",
+            {
+                "p_account_id": str(account_id),
+                "p_holding_ids": [str(holding_id) for holding_id, _ in updates],
+                "p_quantities": [str(quantity) for _, quantity in updates],
+            },
+        ).execute()
+        if not response.data:
+            raise ValueError("Failed to bulk update holdings")
+
+        return [
+            Holding(
+                id=UUID(str(item["id"])),
+                account_id=UUID(str(item["account_id"])),
+                stock_id=UUID(str(item["stock_id"])),
+                quantity=Decimal(str(item["quantity"])),
+                created_at=datetime.fromisoformat(str(item["created_at"])),
+                updated_at=datetime.fromisoformat(str(item["updated_at"])),
+            )
+            for item in cast(list[dict[str, Any]], response.data)
+        ]
+
     def get_aggregated_holdings_by_stock(self) -> dict[UUID, Decimal]:
         """Get aggregated holdings by stock across all accounts."""
         try:

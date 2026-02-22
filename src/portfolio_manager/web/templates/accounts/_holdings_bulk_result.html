@@ -1,0 +1,8 @@
+{% if success %}
+<div class="flash flash-success" role="status" aria-live="polite">{{ message }}</div>
+<tbody id="holdings-body" hx-swap-oob="innerHTML">
+  {% include "accounts/_holdings_rows.html" %}
+</tbody>
+{% else %}
+<div class="flash flash-error" role="status" aria-live="polite">{{ message }}</div>
+{% endif %}
