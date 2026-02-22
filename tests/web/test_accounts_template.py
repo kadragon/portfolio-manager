@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+
 def test_accounts_page_uses_buttons_for_edit_sync_delete(client):
     response = client.get("/accounts")
 
@@ -47,12 +50,219 @@ def test_holdings_page_contains_labeled_inputs_and_required_fields(
     body = response.text
 
     assert "보유 추가" in body
+    assert "종목명" in body
+    assert "일괄 저장" in body
+    assert f'hx-put="/accounts/{fake_container.account.id}/holdings/bulk"' in body
     assert 'name="stock_id"' in body
     assert 'name="quantity"' in body
     assert 'name="ticker"' in body
     assert 'name="group_id"' in body
     assert 'name="new_group_name"' in body
+    assert 'name="holding_id"' in body
     assert "required-marker" in body
+    assert (
+        f"/accounts/{fake_container.account.id}/holdings/{fake_container.holding.id}/edit"
+        not in body
+    )
+
+
+def test_holdings_page_shows_stock_name_when_price_service_available(
+    client, fake_container
+):
+    class FakePriceService:
+        def get_stock_price(self, ticker: str, preferred_exchange=None):
+            assert ticker == fake_container.stock.ticker
+            return Decimal("70000"), "KRW", "삼성전자", preferred_exchange
+
+    fake_container.price_service = FakePriceService()
+
+    response = client.get(f"/accounts/{fake_container.account.id}/holdings")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "삼성전자" in body
+
+
+def test_bulk_update_holdings_updates_all_quantities(client, fake_container):
+    second_holding = fake_container.holding_repository.create(
+        account_id=fake_container.account.id,
+        stock_id=fake_container.stock.id,
+        quantity=Decimal("4.0"),
+    )
+
+    response = client.put(
+        f"/accounts/{fake_container.account.id}/holdings/bulk",
+        data={
+            "holding_id": [
+                str(fake_container.holding.id),
+                str(second_holding.id),
+            ],
+            "quantity": ["11.5", "7.25"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert "보유 수량을 일괄 저장했습니다." in body
+    assert 'hx-swap-oob="innerHTML"' in body
+
+    holdings = fake_container.holding_repository.list_by_account(
+        fake_container.account.id
+    )
+    quantity_by_id = {holding.id: holding.quantity for holding in holdings}
+    assert quantity_by_id[fake_container.holding.id] == Decimal("11.5")
+    assert quantity_by_id[second_holding.id] == Decimal("7.25")
+
+
+def test_bulk_update_holdings_rejects_zero_and_keeps_existing_values(
+    client, fake_container
+):
+    second_holding = fake_container.holding_repository.create(
+        account_id=fake_container.account.id,
+        stock_id=fake_container.stock.id,
+        quantity=Decimal("4.0"),
+    )
+    before = {
+        holding.id: holding.quantity
+        for holding in fake_container.holding_repository.list_by_account(
+            fake_container.account.id
+        )
+    }
+
+    response = client.put(
+        f"/accounts/{fake_container.account.id}/holdings/bulk",
+        data={
+            "holding_id": [
+                str(fake_container.holding.id),
+                str(second_holding.id),
+            ],
+            "quantity": ["11.5", "0"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "모든 수량은 0보다 커야 합니다." in response.text
+    after = {
+        holding.id: holding.quantity
+        for holding in fake_container.holding_repository.list_by_account(
+            fake_container.account.id
+        )
+    }
+    assert after == before
+
+
+def test_bulk_update_holdings_rejects_other_account_holding_and_keeps_existing_values(
+    client, fake_container
+):
+    other_account = fake_container.account_repository.create(
+        name="서브 계좌",
+        cash_balance=Decimal("0"),
+    )
+    other_holding = fake_container.holding_repository.create(
+        account_id=other_account.id,
+        stock_id=fake_container.stock.id,
+        quantity=Decimal("9"),
+    )
+    before = {
+        holding.id: holding.quantity
+        for holding in fake_container.holding_repository.list_by_account(
+            fake_container.account.id
+        )
+    }
+
+    response = client.put(
+        f"/accounts/{fake_container.account.id}/holdings/bulk",
+        data={
+            "holding_id": [
+                str(fake_container.holding.id),
+                str(other_holding.id),
+            ],
+            "quantity": ["11.5", "7"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "요청한 holding_id가 현재 계좌에 속하지 않습니다." in response.text
+    after = {
+        holding.id: holding.quantity
+        for holding in fake_container.holding_repository.list_by_account(
+            fake_container.account.id
+        )
+    }
+    assert after == before
+
+
+def test_bulk_update_holdings_rejects_duplicate_ids_and_keeps_existing_values(
+    client, fake_container
+):
+    before = {
+        holding.id: holding.quantity
+        for holding in fake_container.holding_repository.list_by_account(
+            fake_container.account.id
+        )
+    }
+
+    response = client.put(
+        f"/accounts/{fake_container.account.id}/holdings/bulk",
+        data={
+            "holding_id": [
+                str(fake_container.holding.id),
+                str(fake_container.holding.id),
+            ],
+            "quantity": ["11.5", "7"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "요청에 중복된 holding_id가 포함되어 있습니다." in response.text
+    after = {
+        holding.id: holding.quantity
+        for holding in fake_container.holding_repository.list_by_account(
+            fake_container.account.id
+        )
+    }
+    assert after == before
+
+
+def test_bulk_update_holdings_rejects_length_mismatch_and_keeps_existing_values(
+    client, fake_container
+):
+    before = {
+        holding.id: holding.quantity
+        for holding in fake_container.holding_repository.list_by_account(
+            fake_container.account.id
+        )
+    }
+
+    response = client.put(
+        f"/accounts/{fake_container.account.id}/holdings/bulk",
+        data={
+            "holding_id": [str(fake_container.holding.id)],
+            "quantity": ["11.5", "7"],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "holding_id와 quantity 개수가 일치하지 않습니다." in response.text
+    after = {
+        holding.id: holding.quantity
+        for holding in fake_container.holding_repository.list_by_account(
+            fake_container.account.id
+        )
+    }
+    assert after == before
+
+
+def test_bulk_update_holdings_rejects_missing_holding_ids_payload(
+    client, fake_container
+):
+    response = client.put(
+        f"/accounts/{fake_container.account.id}/holdings/bulk",
+        data={"quantity": ["11.5"]},
+    )
+
+    assert response.status_code == 400
+    assert "요청 payload에 holding_id가 없습니다." in response.text
 
 
 def test_create_holding_by_ticker_uses_existing_stock(client, fake_container):

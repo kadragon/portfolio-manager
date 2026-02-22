@@ -218,6 +218,105 @@ def test_holding_repository_update_raises_when_no_rows():
         repository.update(holding_id, quantity=Decimal("1"))
 
 
+def test_bulk_update_by_account_updates_holdings_via_rpc():
+    """Should call bulk update RPC and parse updated holdings."""
+    account_id = uuid4()
+    holding_id_a = uuid4()
+    holding_id_b = uuid4()
+    stock_id_a = uuid4()
+    stock_id_b = uuid4()
+    response = Mock()
+    response.data = [
+        {
+            "id": str(holding_id_a),
+            "account_id": str(account_id),
+            "stock_id": str(stock_id_a),
+            "quantity": "11.5",
+            "created_at": "2026-01-03T00:00:00",
+            "updated_at": "2026-01-03T00:00:01",
+        },
+        {
+            "id": str(holding_id_b),
+            "account_id": str(account_id),
+            "stock_id": str(stock_id_b),
+            "quantity": "3",
+            "created_at": "2026-01-03T00:00:00",
+            "updated_at": "2026-01-03T00:00:01",
+        },
+    ]
+    client = Mock()
+    client.rpc.return_value.execute.return_value = response
+    repository = HoldingRepository(client)
+
+    updated = repository.bulk_update_by_account(
+        account_id,
+        [
+            (holding_id_a, Decimal("11.5")),
+            (holding_id_b, Decimal("3")),
+        ],
+    )
+
+    client.rpc.assert_called_once_with(
+        "bulk_update_account_holdings",
+        {
+            "p_account_id": str(account_id),
+            "p_holding_ids": [str(holding_id_a), str(holding_id_b)],
+            "p_quantities": ["11.5", "3"],
+        },
+    )
+    assert len(updated) == 2
+    assert updated[0].quantity == Decimal("11.5")
+    assert updated[1].quantity == Decimal("3")
+
+
+def test_bulk_update_by_account_returns_empty_without_rpc_call_for_no_updates():
+    """Empty update payload should return empty list."""
+    account_id = uuid4()
+    client = Mock()
+    repository = HoldingRepository(client)
+
+    assert repository.bulk_update_by_account(account_id, []) == []
+    client.rpc.assert_not_called()
+
+
+def test_bulk_update_by_account_raises_when_rpc_returns_no_rows():
+    """Should raise ValueError when bulk RPC returns no rows."""
+    account_id = uuid4()
+    response = Mock()
+    response.data = []
+    client = Mock()
+    client.rpc.return_value.execute.return_value = response
+    repository = HoldingRepository(client)
+
+    with pytest.raises(ValueError, match="Bulk update returned no data"):
+        repository.bulk_update_by_account(
+            account_id,
+            [(uuid4(), Decimal("1"))],
+        )
+
+
+def test_bulk_update_by_account_propagates_api_error():
+    """APIError from bulk RPC should propagate."""
+    account_id = uuid4()
+    rpc_error = APIError(
+        {
+            "message": "permission denied",
+            "code": "42501",
+            "hint": None,
+            "details": None,
+        }
+    )
+    client = Mock()
+    client.rpc.return_value.execute.side_effect = rpc_error
+    repository = HoldingRepository(client)
+
+    with pytest.raises(APIError):
+        repository.bulk_update_by_account(
+            account_id,
+            [(uuid4(), Decimal("1"))],
+        )
+
+
 def test_aggregate_holdings_by_stock_reraises_non_missing_rpc_error():
     """Non-missing RPC errors should propagate without fallback."""
     rpc_error = APIError(
