@@ -67,7 +67,7 @@
   <form hx-post="/accounts/{{ account.id }}/holdings/by-ticker"
         hx-target="#holdings-body"
         hx-swap="afterbegin"
-        hx-on::after-request="if (event.detail.successful) this.reset()"
+        hx-on::after-request="if (event.detail.successful) { this.reset(); document.getElementById('by-ticker-error').textContent = ''; }"
         data-request-message="티커로 보유 내역을 추가하는 중…">
     <div class="form-grid">
       <label class="form-field form-field-wide">
@@ -96,5 +96,6 @@
       </div>
     </div>
   </form>
+  <p id="by-ticker-error" class="request-status" aria-live="polite" role="alert"></p>
 </section>
 {% endblock %}

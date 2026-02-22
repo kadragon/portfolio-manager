@@ -199,6 +199,8 @@ def update_stock(
         if all(group.id != destination_group_id for group in groups):
             return Response(status_code=404)  # type: ignore[return-value]
 
+    # Two sequential writes: if the second fails the group will have moved but
+    # the ticker will remain unchanged. Acceptable given no DB transaction support.
     updated_stock = stock
     if destination_group_id != stock.group_id:
         updated_stock = container.stock_repository.update_group(

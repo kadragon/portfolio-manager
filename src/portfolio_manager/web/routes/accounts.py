@@ -1,6 +1,6 @@
 """Accounts + Holdings CRUD routes."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from fastapi import APIRouter, Form, Request
@@ -40,7 +40,7 @@ async def bulk_update_cash(request: Request) -> Response:
             )
         try:
             cash_balance = Decimal(raw_value)
-        except Exception:
+        except InvalidOperation:
             return HTMLResponse(
                 status_code=422,
                 content=f"'{account.name}' 예수금 형식이 올바르지 않습니다.",
@@ -201,11 +201,14 @@ def create_holding_by_ticker(
     container = get_container(request)
     templates = get_templates(request)
 
+    _error_headers = {"HX-Retarget": "#by-ticker-error", "HX-Reswap": "innerHTML"}
+
     normalized_ticker = ticker.strip().upper()
     if normalized_ticker == "":
         return HTMLResponse(
             status_code=422,
-            content="<tr class='empty-row'><td colspan='3'>티커를 입력하세요.</td></tr>",
+            content="티커를 입력하세요.",
+            headers=_error_headers,
         )
 
     stock = container.stock_repository.get_by_ticker(normalized_ticker)
@@ -220,32 +223,37 @@ def create_holding_by_ticker(
             except ValueError:
                 return HTMLResponse(
                     status_code=422,
-                    content="<tr class='empty-row'><td colspan='3'>선택한 그룹이 올바르지 않습니다.</td></tr>",
+                    content="선택한 그룹이 올바르지 않습니다.",
+                    headers=_error_headers,
                 )
             if all(group.id != target_group_id for group in groups):
                 return HTMLResponse(
                     status_code=422,
-                    content="<tr class='empty-row'><td colspan='3'>선택한 그룹을 찾을 수 없습니다.</td></tr>",
+                    content="선택한 그룹을 찾을 수 없습니다.",
+                    headers=_error_headers,
                 )
         elif not groups:
             group_name = new_group_name.strip()
             if group_name == "":
                 return HTMLResponse(
                     status_code=422,
-                    content="<tr class='empty-row'><td colspan='3'>그룹이 없어 새 그룹 이름이 필요합니다.</td></tr>",
+                    content="그룹이 없어 새 그룹 이름이 필요합니다.",
+                    headers=_error_headers,
                 )
             created_group = container.group_repository.create(name=group_name)
             target_group_id = created_group.id
         else:
             return HTMLResponse(
                 status_code=422,
-                content="<tr class='empty-row'><td colspan='3'>새 티커는 그룹을 선택해야 합니다.</td></tr>",
+                content="새 티커는 그룹을 선택해야 합니다.",
+                headers=_error_headers,
             )
 
         if target_group_id is None:
             return HTMLResponse(
                 status_code=422,
-                content="<tr class='empty-row'><td colspan='3'>그룹을 찾을 수 없습니다.</td></tr>",
+                content="그룹을 찾을 수 없습니다.",
+                headers=_error_headers,
             )
         stock = container.stock_repository.create(
             ticker=normalized_ticker,
