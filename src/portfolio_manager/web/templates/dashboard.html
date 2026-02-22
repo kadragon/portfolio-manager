@@ -44,6 +44,7 @@
     </div>
   </section>
 
+  {% set holdings_col_count = 9 %}
   <section class="section-card">
     <h3>보유 종목</h3>
     <div class="table-wrap">
@@ -88,7 +89,7 @@
             </td>
           </tr>
           {% else %}
-          <tr class="empty-row"><td colspan="9">보유 종목이 없습니다.</td></tr>
+          <tr class="empty-row"><td colspan="{{ holdings_col_count }}">보유 종목이 없습니다.</td></tr>
           {% endfor %}
         </tbody>
       </table>

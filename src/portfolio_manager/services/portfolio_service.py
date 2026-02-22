@@ -158,16 +158,13 @@ class PortfolioService:
                         value_krw = holding_value
                     change_rates = None
                     if include_change_rates:
-                        if change_rate_periods is None:
-                            change_rates = self.price_service.get_stock_change_rates(
-                                stock.ticker, preferred_exchange=stock.exchange
-                            )
-                        else:
-                            change_rates = self.price_service.get_stock_change_rates(
-                                stock.ticker,
-                                preferred_exchange=stock.exchange,
-                                periods=change_rate_periods,
-                            )
+                        change_rates = self.price_service.get_stock_change_rates(
+                            stock.ticker,
+                            preferred_exchange=stock.exchange,
+                            periods=change_rate_periods
+                            if change_rate_periods is not None
+                            else ("1y", "6m", "1m"),
+                        )
                     if exchange and exchange != stock.exchange:
                         self.stock_repository.update_exchange(stock.id, exchange)
                     holding_with_price = StockHoldingWithPrice(

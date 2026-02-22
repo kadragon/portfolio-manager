@@ -13,8 +13,8 @@
   --app-warning: #9a3412;
   --app-warning-soft: #ffedd5;
   --app-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-  --field-wide-ratio: 2.2;
-  --field-mid-ratio: 1.2;
+  --field-wide-grow: 2.2;
+  --field-mid-grow: 1.2;
 }
 
 html,
@@ -319,11 +319,11 @@ textarea {
 }
 
 .form-field-wide {
-  flex: var(--field-wide-ratio) 1 18rem;
+  flex: var(--field-wide-grow) 1 18rem;
 }
 
 .form-field-mid {
-  flex: var(--field-mid-ratio) 1 10rem;
+  flex: var(--field-mid-grow) 1 10rem;
 }
 
 .form-grid > div {

@@ -435,7 +435,7 @@ def test_portfolio_summary_includes_change_rates():
         "1m": Decimal("-5"),
     }
     price_service.get_stock_change_rates.assert_called_once_with(
-        "AAPL", preferred_exchange=None
+        "AAPL", preferred_exchange=None, periods=("1y", "6m", "1m")
     )
 
 
