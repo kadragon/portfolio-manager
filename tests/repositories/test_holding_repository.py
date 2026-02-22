@@ -288,7 +288,7 @@ def test_bulk_update_by_account_raises_when_rpc_returns_no_rows():
     client.rpc.return_value.execute.return_value = response
     repository = HoldingRepository(client)
 
-    with pytest.raises(ValueError, match="Failed to bulk update holdings"):
+    with pytest.raises(ValueError, match="Bulk update returned no data"):
         repository.bulk_update_by_account(
             account_id,
             [(uuid4(), Decimal("1"))],

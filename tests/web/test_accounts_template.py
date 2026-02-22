@@ -112,7 +112,7 @@ def test_bulk_update_holdings_rejects_zero_and_keeps_existing_values(
     )
 
     assert response.status_code == 400
-    assert "수량은 0보다 커야 합니다." in response.text
+    assert "모든 수량은 0보다 커야 합니다." in response.text
     after = {
         holding.id: holding.quantity
         for holding in fake_container.holding_repository.list_by_account(
@@ -153,7 +153,7 @@ def test_bulk_update_holdings_rejects_other_account_holding_and_keeps_existing_v
     )
 
     assert response.status_code == 400
-    assert "선택한 보유 내역이 해당 계좌에 속하지 않습니다." in response.text
+    assert "요청한 holding_id가 현재 계좌에 속하지 않습니다." in response.text
     after = {
         holding.id: holding.quantity
         for holding in fake_container.holding_repository.list_by_account(
@@ -185,7 +185,7 @@ def test_bulk_update_holdings_rejects_duplicate_ids_and_keeps_existing_values(
     )
 
     assert response.status_code == 400
-    assert "중복된 보유 항목이 포함되어 있습니다." in response.text
+    assert "요청에 중복된 holding_id가 포함되어 있습니다." in response.text
     after = {
         holding.id: holding.quantity
         for holding in fake_container.holding_repository.list_by_account(
@@ -214,7 +214,7 @@ def test_bulk_update_holdings_rejects_length_mismatch_and_keeps_existing_values(
     )
 
     assert response.status_code == 400
-    assert "보유 ID와 수량 개수가 일치하지 않습니다." in response.text
+    assert "holding_id와 quantity 개수가 일치하지 않습니다." in response.text
     after = {
         holding.id: holding.quantity
         for holding in fake_container.holding_repository.list_by_account(
@@ -222,6 +222,18 @@ def test_bulk_update_holdings_rejects_length_mismatch_and_keeps_existing_values(
         )
     }
     assert after == before
+
+
+def test_bulk_update_holdings_rejects_missing_holding_ids_payload(
+    client, fake_container
+):
+    response = client.put(
+        f"/accounts/{fake_container.account.id}/holdings/bulk",
+        data={"quantity": ["11.5"]},
+    )
+
+    assert response.status_code == 400
+    assert "요청 payload에 holding_id가 없습니다." in response.text
 
 
 def test_account_sync_partial_renders_live_message(client, fake_container):

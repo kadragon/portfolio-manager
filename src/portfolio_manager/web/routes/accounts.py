@@ -1,5 +1,6 @@
 """Accounts + Holdings CRUD routes."""
 
+import logging
 from decimal import Decimal
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from postgrest.exceptions import APIError
 from portfolio_manager.web.deps import get_container, get_templates
 
 router = APIRouter(prefix="/accounts")
+logger = logging.getLogger(__name__)
 
 
 def _format_stock_name(name: str) -> str:
@@ -52,6 +54,23 @@ def _render_holdings_rows(request: Request, templates, container, account_id: UU
             "account_id": account_id,
         },
     )
+
+
+def _normalize_bulk_update_error(exc: Exception) -> str:
+    """Map backend/internal errors into user-facing bulk update messages."""
+    message = str(exc).strip()
+    if not message:
+        return "보유 수량 일괄 저장 중 오류가 발생했습니다."
+
+    known_map = {
+        "all holdings must belong to account": "요청한 holding_id가 현재 계좌에 속하지 않습니다.",
+        "선택한 보유 내역이 해당 계좌에 속하지 않습니다.": "요청한 holding_id가 현재 계좌에 속하지 않습니다.",
+        "duplicate holding_ids are not allowed": "요청에 중복된 holding_id가 포함되어 있습니다.",
+        "quantity must be greater than zero": "모든 수량은 0보다 커야 합니다.",
+        "holding_ids and quantities length mismatch": "holding_id와 quantity 개수가 일치하지 않습니다.",
+        "holding_ids and quantities are required": "holding_id와 quantity가 모두 필요합니다.",
+    }
+    return known_map.get(message, message)
 
 
 @router.get("", response_class=HTMLResponse)
@@ -216,20 +235,25 @@ def bulk_update_holdings(
         )
 
     if not holding_id:
-        return _error("수정할 보유 내역이 없습니다.")
+        return _error("요청 payload에 holding_id가 없습니다.")
 
     if len(holding_id) != len(quantity):
-        return _error("보유 ID와 수량 개수가 일치하지 않습니다.")
+        return _error("holding_id와 quantity 개수가 일치하지 않습니다.")
     if len(set(holding_id)) != len(holding_id):
-        return _error("중복된 보유 항목이 포함되어 있습니다.")
+        return _error("요청에 중복된 holding_id가 포함되어 있습니다.")
     if any(value < Decimal("0.000001") for value in quantity):
-        return _error("수량은 0보다 커야 합니다.")
+        return _error("모든 수량은 0보다 커야 합니다.")
 
     updates = list(zip(holding_id, quantity))
     try:
         container.holding_repository.bulk_update_by_account(account_id, updates)
     except (ValueError, APIError) as exc:
-        return _error(str(exc))
+        logger.exception(
+            "Bulk update failed for account_id=%s with holding_count=%d",
+            account_id,
+            len(holding_id),
+        )
+        return _error(_normalize_bulk_update_error(exc))
 
     holdings = container.holding_repository.list_by_account(account_id)
     stocks = container.stock_repository.list_all()

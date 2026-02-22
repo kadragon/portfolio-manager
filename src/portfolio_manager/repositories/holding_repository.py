@@ -112,7 +112,7 @@ class HoldingRepository:
             },
         ).execute()
         if not response.data:
-            raise ValueError("Failed to bulk update holdings")
+            raise ValueError("Bulk update returned no data")
 
         return [
             Holding(
