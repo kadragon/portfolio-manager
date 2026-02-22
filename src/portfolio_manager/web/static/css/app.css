@@ -13,6 +13,8 @@
   --app-warning: #9a3412;
   --app-warning-soft: #ffedd5;
   --app-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  --field-wide-ratio: 2.2;
+  --field-mid-ratio: 1.2;
 }
 
 html,
@@ -20,7 +22,7 @@ body {
   background: var(--app-bg);
   color: var(--app-text);
   font-family: "IBM Plex Sans", "Noto Sans KR", sans-serif;
-  line-height: 1.55;
+  line-height: 1.42;
 }
 
 code,
@@ -70,19 +72,21 @@ textarea {
 }
 
 .site-nav {
-  padding: 0.65rem 1rem;
+  padding: 0.3rem 0.42rem;
 }
 
 .brand-title {
   letter-spacing: 0.01em;
   color: #0f172a;
+  font-size: 0.92rem;
 }
 
 .nav-links a {
-  border-radius: 0.5rem;
-  padding: 0.35rem 0.6rem;
+  border-radius: 0.4rem;
+  padding: 0.18rem 0.34rem;
   text-decoration: none;
   color: #1f2937;
+  font-size: 0.8rem;
 }
 
 .nav-links a:hover {
@@ -97,32 +101,35 @@ textarea {
 }
 
 .main-shell {
-  padding-top: 1.25rem;
-  padding-bottom: 3rem;
+  padding: 0.35rem 0.38rem 0.55rem;
 }
 
 .page-header {
-  margin-bottom: 0.75rem;
+  margin: 0 0 0.2rem;
+  line-height: 1.2;
+  font-size: 1.18rem;
 }
 
 .page-subtitle,
 .subtle {
   color: var(--app-text-muted);
-  font-size: 0.92rem;
+  font-size: 0.78rem;
+  margin: 0 0 0.24rem;
 }
 
 .request-status {
-  min-height: 1.2rem;
-  margin-bottom: 0.5rem;
+  min-height: 0.85rem;
+  margin-bottom: 0.14rem;
   color: var(--app-text-muted);
-  font-size: 0.88rem;
+  font-size: 0.74rem;
 }
 
 .flash {
-  border-radius: 0.6rem;
+  border-radius: 0.45rem;
   border: 1px solid transparent;
-  padding: 0.65rem 0.85rem;
-  margin-bottom: 1rem;
+  padding: 0.36rem 0.48rem;
+  margin-bottom: 0.42rem;
+  font-size: 0.78rem;
 }
 
 .flash-success {
@@ -140,18 +147,15 @@ textarea {
 .section-card {
   background: var(--app-surface);
   border: 1px solid var(--app-border);
-  border-radius: 0.85rem;
+  border-radius: 0.55rem;
   box-shadow: var(--app-shadow);
-  padding: 1rem 1.1rem;
-  margin: 1rem 0;
+  padding: 0.42rem 0.48rem;
+  margin: 0.32rem 0;
 }
 
-.summary-panel {
-  max-width: 540px;
-}
-
-.summary-panel table {
-  margin: 0;
+.section-card h3 {
+  margin: 0 0 0.2rem;
+  font-size: 0.9rem;
 }
 
 .table-wrap {
@@ -160,8 +164,8 @@ textarea {
 
 .table-compact {
   margin-bottom: 0;
-  font-size: 0.9rem;
-  min-width: 640px;
+  font-size: 0.76rem;
+  min-width: 560px;
 }
 
 .table-compact th {
@@ -172,6 +176,12 @@ textarea {
 
 .table-compact td {
   vertical-align: middle;
+  padding: 0.22rem 0.28rem;
+}
+
+.table-compact th {
+  padding: 0.22rem 0.28rem;
+  font-size: 0.74rem;
 }
 
 .table-compact tbody tr:hover {
@@ -188,7 +198,7 @@ textarea {
 }
 
 .empty-state {
-  margin-top: 0.6rem;
+  margin-top: 0.22rem;
   color: var(--app-text-muted);
 }
 
@@ -196,9 +206,9 @@ textarea {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  font-size: 0.8rem;
+  font-size: 0.68rem;
   font-weight: 600;
-  padding: 0.22rem 0.5rem;
+  padding: 0.12rem 0.28rem;
 }
 
 .badge-buy {
@@ -226,7 +236,7 @@ textarea {
 .inline-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.2rem;
 }
 
 .btn,
@@ -236,13 +246,13 @@ button.btn {
   align-items: center;
   justify-content: center;
   gap: 0.2rem;
-  border-radius: 0.55rem;
-  padding: 0.32rem 0.58rem;
+  border-radius: 0.42rem;
+  padding: 0.14rem 0.3rem;
   border: 1px solid #b5c3d5;
   background: #fff;
   color: #1f2937;
   text-decoration: none;
-  font-size: 0.83rem;
+  font-size: 0.72rem;
   font-weight: 500;
   margin: 0;
   line-height: 1.2;
@@ -287,29 +297,46 @@ button.btn:hover {
   cursor: not-allowed;
 }
 
+input,
+select,
+textarea {
+  min-height: 1.75rem;
+  padding: 0.14rem 0.34rem;
+  font-size: 0.76rem;
+}
+
 .form-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.9rem;
+  gap: 0.28rem;
   align-items: flex-end;
 }
 
 .form-field {
   display: block;
-  min-width: 150px;
+  min-width: 120px;
+  font-size: 0.74rem;
 }
 
 .form-field-wide {
-  flex: 2;
+  flex: var(--field-wide-ratio) 1 18rem;
 }
 
 .form-field-mid {
-  flex: 1;
+  flex: var(--field-mid-ratio) 1 10rem;
+}
+
+.form-grid > div {
+  flex: 0 0 auto;
+}
+
+.form-grid > div .btn {
+  min-width: 4.8rem;
 }
 
 .form-field input,
 .form-field select {
-  margin: 0.15rem 0 0;
+  margin: 0.06rem 0 0;
 }
 
 .input-uppercase {
@@ -322,42 +349,66 @@ button.btn:hover {
 }
 
 .form-hint {
-  margin-top: 0.3rem;
-  font-size: 0.82rem;
+  margin: 0.06rem 0 0.18rem;
+  font-size: 0.72rem;
   color: var(--app-text-muted);
 }
 
 .breadcrumb {
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.1rem;
 }
 
 .breadcrumb ol {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.26rem;
   list-style: none;
   margin: 0;
   padding: 0;
-  font-size: 0.88rem;
+  font-size: 0.76rem;
 }
 
 .breadcrumb li + li::before {
   content: ">";
   color: #64748b;
-  margin-right: 0.45rem;
+  margin-right: 0.24rem;
 }
 
-.refresh-controls {
-  margin-top: 1rem;
+.summary-band {
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.summary-grid {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-wrap: nowrap;
+  gap: 0.24rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
-.summary-divider {
-  margin: 0.2rem 0;
+.summary-metric {
+  border: 1px solid var(--app-border);
+  border-radius: 0.4rem;
+  background: #fff;
+  padding: 0.22rem 0.3rem;
+  flex: 1 0 128px;
+  min-width: 128px;
+}
+
+.summary-label {
+  margin: 0;
+  font-size: 0.62rem;
+  color: var(--app-text-muted);
+}
+
+.summary-value {
+  margin: 0.04rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.summary-value-strong {
+  color: #0f172a;
 }
 
 .sr-only {
@@ -374,25 +425,27 @@ button.btn:hover {
 
 @media (max-width: 768px) {
   .main-shell {
-    padding-top: 0.85rem;
+    padding: 0.24rem 0.2rem 0.4rem;
   }
 
   .table-compact {
-    min-width: 540px;
-    font-size: 0.84rem;
+    min-width: 470px;
+    font-size: 0.72rem;
   }
 
   .btn,
   a.btn,
   button.btn {
-    min-height: 2rem;
+    min-height: 1.56rem;
   }
 
   .page-header {
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.1rem;
+    font-size: 1.06rem;
   }
 
-  .refresh-controls {
-    justify-content: flex-start;
+  .form-field-wide,
+  .form-field-mid {
+    flex: 1 1 100%;
   }
 }

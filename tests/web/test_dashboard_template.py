@@ -1,19 +1,20 @@
-def test_dashboard_uses_text_badges_and_refresh_controls(client):
+def test_dashboard_uses_text_badges_and_compact_summary_layout(client):
     response = client.get("/")
 
     assert response.status_code == 200
     body = response.text
 
     assert "대시보드" in body
+    assert "투자 요약" in body
     assert "badge-sell" in body
     assert "매도" in body
-    assert "자동 새로고침: 켜짐" in body
-    assert 'id="auto-refresh-toggle"' in body
-    assert 'id="auto-refresh-poller"' in body
-    assert 'data-enabled="true"' in body
-    assert 'hx-target="#main-content"' in body
-    assert 'hx-select="#main-content"' in body
-    assert 'hx-swap="innerHTML"' in body
+    assert "자동 새로고침" not in body
+    assert 'id="auto-refresh-toggle"' not in body
+    assert 'id="auto-refresh-poller"' not in body
+    assert ">1D<" in body
+    assert ">1M<" in body
+    assert ">1Y<" in body
+    assert body.index("투자 요약") < body.index("보유 종목")
     assert 'hx-target="body"' not in body
     assert "📊" not in body
     assert "🔴" not in body

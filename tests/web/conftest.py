@@ -188,7 +188,10 @@ class FakePortfolioService:
     group_holdings: list[GroupHoldings]
 
     def get_portfolio_summary(
-        self, *, include_change_rates: bool = True
+        self,
+        *,
+        include_change_rates: bool = True,
+        change_rate_periods: tuple[str, ...] | None = None,
     ) -> PortfolioSummary:
         return self.summary
 

@@ -10,6 +10,40 @@
 {% endif %}
 
 {% if summary %}
+  <section class="section-card summary-band">
+    <h3>투자 요약</h3>
+    <div class="summary-grid">
+      <article class="summary-metric">
+        <p class="summary-label">주식 평가액</p>
+        <p class="summary-value">{{ summary.total_stock_value | format_krw }}</p>
+      </article>
+      <article class="summary-metric">
+        <p class="summary-label">예수금</p>
+        <p class="summary-value">{{ summary.total_cash_balance | format_krw }}</p>
+      </article>
+      <article class="summary-metric">
+        <p class="summary-label">총자산</p>
+        <p class="summary-value summary-value-strong">{{ summary.total_assets | format_krw }}</p>
+      </article>
+      <article class="summary-metric">
+        <p class="summary-label">총투자원금</p>
+        <p class="summary-value">{{ summary.total_invested | format_krw }}</p>
+      </article>
+      <article class="summary-metric">
+        <p class="summary-label">수익률</p>
+        <p class="summary-value {% if summary.return_rate is not none and summary.return_rate > 0 %}value-positive{% elif summary.return_rate is not none and summary.return_rate < 0 %}value-negative{% else %}value-neutral{% endif %}">
+          {% if summary.return_rate is not none %}{{ summary.return_rate | format_signed_percent }}{% else %}-{% endif %}
+        </p>
+      </article>
+      <article class="summary-metric">
+        <p class="summary-label">연환산 수익률</p>
+        <p class="summary-value {% if summary.annualized_return_rate is not none and summary.annualized_return_rate > 0 %}value-positive{% elif summary.annualized_return_rate is not none and summary.annualized_return_rate < 0 %}value-negative{% else %}value-neutral{% endif %}">
+          {% if summary.annualized_return_rate is not none %}{{ summary.annualized_return_rate | format_signed_percent }}{% else %}-{% endif %}
+        </p>
+      </article>
+    </div>
+  </section>
+
   <section class="section-card">
     <h3>보유 종목</h3>
     <div class="table-wrap">
@@ -22,10 +56,16 @@
             <th class="text-right">수량</th>
             <th class="text-right">현재가</th>
             <th class="text-right">평가액 (KRW)</th>
+            <th class="text-right">1D</th>
+            <th class="text-right">1M</th>
+            <th class="text-right">1Y</th>
           </tr>
         </thead>
         <tbody>
           {% for group, h in summary.holdings %}
+          {% set rate_1d = h.change_rates.get("1d") if h.change_rates else none %}
+          {% set rate_1m = h.change_rates.get("1m") if h.change_rates else none %}
+          {% set rate_1y = h.change_rates.get("1y") if h.change_rates else none %}
           <tr>
             <td>{{ group.name }}</td>
             <td><code>{{ h.stock.ticker }}</code></td>
@@ -37,9 +77,18 @@
               {% if h.currency == "KRW" %}{{ h.price | format_krw }}{% else %}{{ h.price | format_usd }}{% endif %}
             </td>
             <td class="text-right">{{ h.value_krw | format_krw }}</td>
+            <td class="text-right {% if rate_1d is not none and rate_1d > 0 %}value-positive{% elif rate_1d is not none and rate_1d < 0 %}value-negative{% else %}value-neutral{% endif %}">
+              {% if rate_1d is not none %}{{ rate_1d | format_signed_percent }}{% else %}-{% endif %}
+            </td>
+            <td class="text-right {% if rate_1m is not none and rate_1m > 0 %}value-positive{% elif rate_1m is not none and rate_1m < 0 %}value-negative{% else %}value-neutral{% endif %}">
+              {% if rate_1m is not none %}{{ rate_1m | format_signed_percent }}{% else %}-{% endif %}
+            </td>
+            <td class="text-right {% if rate_1y is not none and rate_1y > 0 %}value-positive{% elif rate_1y is not none and rate_1y < 0 %}value-negative{% else %}value-neutral{% endif %}">
+              {% if rate_1y is not none %}{{ rate_1y | format_signed_percent }}{% else %}-{% endif %}
+            </td>
           </tr>
           {% else %}
-          <tr class="empty-row"><td colspan="6">보유 종목이 없습니다.</td></tr>
+          <tr class="empty-row"><td colspan="9">보유 종목이 없습니다.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -88,37 +137,6 @@
   </section>
   {% endif %}
 
-  <section class="section-card summary-panel">
-    <h3>투자 요약</h3>
-    <table class="table-compact">
-      <tbody>
-        <tr><td>주식 평가액</td><td class="text-right">{{ summary.total_stock_value | format_krw }}</td></tr>
-        <tr><td>예수금</td><td class="text-right">{{ summary.total_cash_balance | format_krw }}</td></tr>
-        <tr><td><strong>총자산</strong></td><td class="text-right"><strong>{{ summary.total_assets | format_krw }}</strong></td></tr>
-        {% if summary.total_invested > 0 %}
-        <tr><td colspan="2"><hr class="summary-divider"></td></tr>
-        <tr><td>총투자원금</td><td class="text-right">{{ summary.total_invested | format_krw }}</td></tr>
-        {% if summary.return_rate is not none %}
-        <tr>
-          <td>수익률</td>
-          <td class="text-right {% if summary.return_rate > 0 %}value-positive{% elif summary.return_rate < 0 %}value-negative{% endif %}">
-            {{ summary.return_rate | format_signed_percent }}
-          </td>
-        </tr>
-        {% endif %}
-        {% if summary.annualized_return_rate is not none %}
-        <tr>
-          <td>연환산 수익률</td>
-          <td class="text-right {% if summary.annualized_return_rate > 0 %}value-positive{% elif summary.annualized_return_rate < 0 %}value-negative{% endif %}">
-            {{ summary.annualized_return_rate | format_signed_percent }}
-          </td>
-        </tr>
-        {% endif %}
-        {% endif %}
-      </tbody>
-    </table>
-  </section>
-
 {% elif group_holdings %}
   <section class="section-card">
     <h3>보유 종목</h3>
@@ -157,19 +175,4 @@
     <p class="empty-state"><a href="/groups" class="btn btn-primary">그룹 관리로 이동</a></p>
   </section>
 {% endif %}
-
-<div class="refresh-controls">
-  <button id="auto-refresh-toggle" type="button" class="btn btn-ghost" data-enabled="true" aria-pressed="true">
-    자동 새로고침: 켜짐
-  </button>
-  <a href="/" class="btn btn-ghost">지금 새로고침</a>
-  <span id="auto-refresh-poller"
-        data-enabled="true"
-        hx-get="/"
-        hx-trigger="every 30s"
-        hx-target="#main-content"
-        hx-select="#main-content"
-        hx-swap="innerHTML"
-        data-request-message="대시보드를 새로고침하는 중…"></span>
-</div>
 {% endblock %}

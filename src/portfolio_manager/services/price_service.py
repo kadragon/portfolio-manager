@@ -31,7 +31,7 @@ class PriceService:
             tuple[str, str | None], tuple[Decimal, str, str, str | None]
         ] = {}
         self._change_rates_cache: dict[
-            tuple[str, date, str | None], dict[str, Decimal]
+            tuple[str, date, str | None, tuple[str, ...]], dict[str, Decimal]
         ] = {}
 
     @classmethod
@@ -96,14 +96,16 @@ class PriceService:
         ticker: str,
         as_of: date | None = None,
         preferred_exchange: str | None = None,
+        periods: tuple[str, ...] = ("1y", "6m", "1m"),
     ) -> dict[str, Decimal]:
-        """Get 1Y/6M/1M change rates compared to historical close prices."""
+        """Get change rates for requested periods compared to historical closes."""
         if as_of is None:
             as_of = date.today()
+        normalized_periods = tuple(period.lower() for period in periods)
 
         cache_exchange = self._to_order_exchange(preferred_exchange)
-        # Check in-memory cache first (keyed by ticker, date, and exchange)
-        cache_key = (ticker, as_of, cache_exchange)
+        # Check in-memory cache first (keyed by ticker, date, exchange, and periods)
+        cache_key = (ticker, as_of, cache_exchange, normalized_periods)
         if cache_key in self._change_rates_cache:
             return self._change_rates_cache[cache_key]
 
@@ -135,13 +137,21 @@ class PriceService:
         )
         resolved_exchange = exchange or preferred_exchange
         preferred_exchange = self._to_price_exchange(resolved_exchange)
-        targets = {
-            "1y": adjust_to_previous_business_day(shift_years(as_of, 1)),
-            "6m": adjust_to_previous_business_day(shift_months(as_of, 6)),
-            "1m": adjust_to_previous_business_day(shift_months(as_of, 1)),
-        }
+
+        def get_target_date(period: str) -> date:
+            if period == "1y":
+                return adjust_to_previous_business_day(shift_years(as_of, 1))
+            if period == "6m":
+                return adjust_to_previous_business_day(shift_months(as_of, 6))
+            if period == "1m":
+                return adjust_to_previous_business_day(shift_months(as_of, 1))
+            if period == "1d":
+                return adjust_to_previous_business_day(as_of - timedelta(days=1))
+            raise ValueError(f"Unsupported change-rate period: {period}")
+
         change_rates: dict[str, Decimal] = {}
-        for label, target_date in targets.items():
+        for label in normalized_periods:
+            target_date = get_target_date(label)
             cached = None
             if self.price_cache_repository:
                 cached = self.price_cache_repository.get_by_ticker_and_date(

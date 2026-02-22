@@ -9,6 +9,7 @@ def test_deposits_page_uses_button_semantics_and_korean_copy(client):
     assert 'hx-delete="/deposits/' in body
     assert "<a hx-delete" not in body
     assert "required-marker" in body
+    assert body.index("입금 추가") < body.index('id="deposits-body"')
 
 
 def test_deposit_edit_partial_has_accessible_labels(client, fake_container):
