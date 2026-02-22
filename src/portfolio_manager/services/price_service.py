@@ -16,6 +16,7 @@ class PriceService:
         "AMS": "AMEX",
     }
     _PRICE_EXCHANGE_MAP = {value: key for key, value in _ORDER_EXCHANGE_MAP.items()}
+    _SUPPORTED_CHANGE_RATE_PERIODS = frozenset({"1d", "1m", "6m", "1y"})
 
     def __init__(
         self,
@@ -31,7 +32,7 @@ class PriceService:
             tuple[str, str | None], tuple[Decimal, str, str, str | None]
         ] = {}
         self._change_rates_cache: dict[
-            tuple[str, date, str | None], dict[str, Decimal]
+            tuple[str, date, str | None, tuple[str, ...]], dict[str, Decimal]
         ] = {}
 
     @classmethod
@@ -96,14 +97,24 @@ class PriceService:
         ticker: str,
         as_of: date | None = None,
         preferred_exchange: str | None = None,
+        periods: tuple[str, ...] = ("1y", "6m", "1m"),
     ) -> dict[str, Decimal]:
-        """Get 1Y/6M/1M change rates compared to historical close prices."""
+        """Get change rates for requested periods compared to historical closes."""
         if as_of is None:
             as_of = date.today()
+        normalized_periods = tuple(
+            period
+            for period in dict.fromkeys(
+                p.strip().lower() for p in periods if isinstance(p, str) and p.strip()
+            )
+            if period in self._SUPPORTED_CHANGE_RATE_PERIODS
+        )
+        if not normalized_periods:
+            return {}
 
         cache_exchange = self._to_order_exchange(preferred_exchange)
-        # Check in-memory cache first (keyed by ticker, date, and exchange)
-        cache_key = (ticker, as_of, cache_exchange)
+        # Check in-memory cache first (keyed by ticker, date, exchange, and periods)
+        cache_key = (ticker, as_of, cache_exchange, normalized_periods)
         if cache_key in self._change_rates_cache:
             return self._change_rates_cache[cache_key]
 
@@ -135,13 +146,17 @@ class PriceService:
         )
         resolved_exchange = exchange or preferred_exchange
         preferred_exchange = self._to_price_exchange(resolved_exchange)
-        targets = {
+
+        target_dates = {
             "1y": adjust_to_previous_business_day(shift_years(as_of, 1)),
             "6m": adjust_to_previous_business_day(shift_months(as_of, 6)),
             "1m": adjust_to_previous_business_day(shift_months(as_of, 1)),
+            "1d": adjust_to_previous_business_day(as_of - timedelta(days=1)),
         }
+
         change_rates: dict[str, Decimal] = {}
-        for label, target_date in targets.items():
+        for label in normalized_periods:
+            target_date = target_dates[label]
             cached = None
             if self.price_cache_repository:
                 cached = self.price_cache_repository.get_by_ticker_and_date(

@@ -59,7 +59,8 @@ def dashboard(request: Request) -> HTMLResponse:
     if container.price_service:
         try:
             summary = portfolio_service.get_portfolio_summary(
-                include_change_rates=False
+                include_change_rates=True,
+                change_rate_periods=("1d", "1m", "1y"),
             )
             group_summary = _compute_group_summary(summary)
         except Exception as e:

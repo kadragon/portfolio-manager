@@ -434,6 +434,66 @@ def test_portfolio_summary_includes_change_rates():
         "6m": Decimal("10"),
         "1m": Decimal("-5"),
     }
+    price_service.get_stock_change_rates.assert_called_once_with(
+        "AAPL", preferred_exchange=None, periods=("1y", "6m", "1m")
+    )
+
+
+def test_portfolio_summary_passes_custom_change_rate_periods():
+    """커스텀 변동률 기간을 PriceService로 전달한다."""
+    group_id = uuid4()
+    stock_id = uuid4()
+
+    group_repo = Mock()
+    group_repo.list_all.return_value = [
+        Group(
+            id=group_id,
+            name="KR",
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+    stock_repo = Mock()
+    stock_repo.list_all.return_value = [
+        Stock(
+            id=stock_id,
+            ticker="005930",
+            group_id=group_id,
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+    holding_repo = Mock()
+    holding_repo.get_aggregated_holdings_by_stock.return_value = {
+        stock_id: Decimal("3")
+    }
+    price_service = Mock()
+    price_service.get_stock_price.return_value = (
+        Decimal("70000"),
+        "KRW",
+        "Samsung",
+        None,
+    )
+    price_service.get_stock_change_rates.return_value = {
+        "1d": Decimal("0.5"),
+        "1m": Decimal("2"),
+        "1y": Decimal("10"),
+    }
+
+    service = PortfolioService(
+        group_repo,
+        stock_repo,
+        holding_repo,
+        price_service,
+    )
+
+    service.get_portfolio_summary(change_rate_periods=("1d", "1m", "1y"))
+
+    price_service.get_stock_change_rates.assert_called_once_with(
+        "005930",
+        preferred_exchange=None,
+        periods=("1d", "1m", "1y"),
+    )
 
 
 def test_portfolio_summary_skips_change_rates_when_disabled():

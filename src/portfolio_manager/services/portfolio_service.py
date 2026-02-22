@@ -110,7 +110,10 @@ class PortfolioService:
         return result
 
     def get_portfolio_summary(
-        self, *, include_change_rates: bool = True
+        self,
+        *,
+        include_change_rates: bool = True,
+        change_rate_periods: tuple[str, ...] | None = None,
     ) -> PortfolioSummary:
         """Get portfolio summary with valuations."""
         if self.price_service is None:
@@ -156,7 +159,11 @@ class PortfolioService:
                     change_rates = None
                     if include_change_rates:
                         change_rates = self.price_service.get_stock_change_rates(
-                            stock.ticker, preferred_exchange=stock.exchange
+                            stock.ticker,
+                            preferred_exchange=stock.exchange,
+                            periods=change_rate_periods
+                            if change_rate_periods is not None
+                            else ("1y", "6m", "1m"),
                         )
                     if exchange and exchange != stock.exchange:
                         self.stock_repository.update_exchange(stock.id, exchange)
