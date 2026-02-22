@@ -12,11 +12,6 @@ from portfolio_manager.web.deps import get_container, get_templates
 router = APIRouter(prefix="/accounts")
 
 
-def _build_stock_map(container) -> dict:
-    stocks = container.stock_repository.list_all()
-    return {stock.id: stock for stock in stocks}
-
-
 def _format_stock_name(name: str) -> str:
     return name.replace("증권상장지수투자신탁(주식)", "").strip()
 
@@ -35,7 +30,7 @@ def _build_stock_name_map(container, stocks: list | None = None) -> dict:
             _, _, resolved_name, _ = price_service.get_stock_price(
                 stock.ticker, preferred_exchange=stock.exchange
             )
-        except (APIError, ValueError, TypeError):
+        except (APIError, ValueError):
             resolved_name = ""
         if resolved_name:
             stock_name_map[stock.id] = _format_stock_name(resolved_name)
@@ -227,7 +222,7 @@ def bulk_update_holdings(
         return _error("보유 ID와 수량 개수가 일치하지 않습니다.")
     if len(set(holding_id)) != len(holding_id):
         return _error("중복된 보유 항목이 포함되어 있습니다.")
-    if any(value <= 0 for value in quantity):
+    if any(value < Decimal("0.000001") for value in quantity):
         return _error("수량은 0보다 커야 합니다.")
 
     updates = list(zip(holding_id, quantity))

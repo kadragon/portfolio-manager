@@ -133,9 +133,9 @@ class FakeHoldingRepository:
         index_by_id = {holding.id: idx for idx, holding in enumerate(self._holdings)}
         for holding_id, _ in updates:
             if holding_id not in index_by_id:
-                raise ValueError("all holdings must belong to account")
+                raise ValueError("선택한 보유 내역이 해당 계좌에 속하지 않습니다.")
             if self._holdings[index_by_id[holding_id]].account_id != account_id:
-                raise ValueError("all holdings must belong to account")
+                raise ValueError("선택한 보유 내역이 해당 계좌에 속하지 않습니다.")
 
         now = datetime.now(timezone.utc)
         updated_holdings: list[Holding] = []

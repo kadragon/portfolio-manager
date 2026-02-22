@@ -153,7 +153,7 @@ def test_bulk_update_holdings_rejects_other_account_holding_and_keeps_existing_v
     )
 
     assert response.status_code == 400
-    assert "all holdings must belong to account" in response.text
+    assert "선택한 보유 내역이 해당 계좌에 속하지 않습니다." in response.text
     after = {
         holding.id: holding.quantity
         for holding in fake_container.holding_repository.list_by_account(

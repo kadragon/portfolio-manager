@@ -48,7 +48,7 @@ begin
    where account_id = p_account_id
      and id = any(p_holding_ids);
   if matched_count <> expected_count then
-    raise exception 'all holdings must belong to account';
+    raise exception '선택한 보유 내역이 해당 계좌에 속하지 않습니다.';
   end if;
 
   return query
@@ -75,3 +75,5 @@ begin
      order by array_position(p_holding_ids, updated.id);
 end;
 $$;
+
+grant execute on function bulk_update_account_holdings(uuid, uuid[], numeric[]) to authenticated;
