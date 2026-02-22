@@ -1,45 +1,21 @@
-class _SummaryFailsPortfolioService:
-    def __init__(self, group_holdings):
-        self._group_holdings = group_holdings
-
-    def get_portfolio_summary(
-        self,
-        *,
-        include_change_rates=True,
-        change_rate_periods=None,
-    ):
-        raise RuntimeError("summary failed")
-
-    def get_holdings_by_group(self):
-        return self._group_holdings
-
-
-class _AllFailsPortfolioService:
-    def get_portfolio_summary(
-        self,
-        *,
-        include_change_rates=True,
-        change_rate_periods=None,
-    ):
-        raise RuntimeError("summary failed")
-
-    def get_holdings_by_group(self):
-        raise RuntimeError("holdings failed")
-
-
-class _HoldingsFailPortfolioService:
-    def get_portfolio_summary(
-        self, *, include_change_rates=True, change_rate_periods=None
-    ):
-        return None
-
-    def get_holdings_by_group(self):
-        raise RuntimeError("holdings failed")
-
-
 def test_dashboard_falls_back_to_group_holdings_when_summary_fails(
     client, fake_container
 ):
+    class _SummaryFailsPortfolioService:
+        def __init__(self, group_holdings):
+            self._group_holdings = group_holdings
+
+        def get_portfolio_summary(
+            self,
+            *,
+            include_change_rates=True,
+            change_rate_periods=None,
+        ):
+            raise RuntimeError("summary failed")
+
+        def get_holdings_by_group(self):
+            return self._group_holdings
+
     fake_container.portfolio_service = _SummaryFailsPortfolioService(
         fake_container.portfolio_service.group_holdings
     )
@@ -54,6 +30,18 @@ def test_dashboard_falls_back_to_group_holdings_when_summary_fails(
 def test_dashboard_shows_error_when_summary_and_holdings_fallback_fail(
     client, fake_container
 ):
+    class _AllFailsPortfolioService:
+        def get_portfolio_summary(
+            self,
+            *,
+            include_change_rates=True,
+            change_rate_periods=None,
+        ):
+            raise RuntimeError("summary failed")
+
+        def get_holdings_by_group(self):
+            raise RuntimeError("holdings failed")
+
     fake_container.portfolio_service = _AllFailsPortfolioService()
 
     response = client.get("/")
@@ -66,6 +54,15 @@ def test_dashboard_shows_error_when_summary_and_holdings_fallback_fail(
 def test_dashboard_shows_error_when_price_service_missing_and_holdings_fail(
     client, fake_container
 ):
+    class _HoldingsFailPortfolioService:
+        def get_portfolio_summary(
+            self, *, include_change_rates=True, change_rate_periods=None
+        ):
+            return None
+
+        def get_holdings_by_group(self):
+            raise RuntimeError("holdings failed")
+
     fake_container.price_service = None
     fake_container.portfolio_service = _HoldingsFailPortfolioService()
 
