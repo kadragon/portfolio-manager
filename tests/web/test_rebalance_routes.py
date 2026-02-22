@@ -36,7 +36,7 @@ def test_execute_rebalance_returns_failure_when_price_service_is_missing(
     assert "가격 서비스 없음" in response.text
 
 
-def test_execute_rebalance_returns_failure_when_execution_raises(
+def test_execute_rebalance_returns_failure_when_summary_fetch_raises(
     client, fake_container
 ):
     fake_container.portfolio_service = _RebalanceSummaryFailService()

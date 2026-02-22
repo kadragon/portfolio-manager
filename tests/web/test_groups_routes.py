@@ -18,20 +18,22 @@ def test_list_stocks_returns_404_for_unknown_group(client):
 
 def test_get_stock_row_returns_404_when_group_does_not_match(client, fake_container):
     client.post("/groups", data={"name": "다른 그룹", "target_percentage": 0})
-    other_group_id = fake_container.group_repository.list_all()[0].id
+    all_groups = fake_container.group_repository.list_all()
+    other_group = next(g for g in all_groups if g.id != fake_container.group.id)
 
     response = client.get(
-        f"/groups/{other_group_id}/stocks/{fake_container.stock.id}",
+        f"/groups/{other_group.id}/stocks/{fake_container.stock.id}",
     )
     assert response.status_code == 404
 
 
 def test_edit_stock_form_returns_404_when_group_does_not_match(client, fake_container):
     client.post("/groups", data={"name": "다른 그룹", "target_percentage": 0})
-    other_group_id = fake_container.group_repository.list_all()[0].id
+    all_groups = fake_container.group_repository.list_all()
+    other_group = next(g for g in all_groups if g.id != fake_container.group.id)
 
     response = client.get(
-        f"/groups/{other_group_id}/stocks/{fake_container.stock.id}/edit",
+        f"/groups/{other_group.id}/stocks/{fake_container.stock.id}/edit",
     )
     assert response.status_code == 404
 

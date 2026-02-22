@@ -28,6 +28,11 @@ class _AllFailsPortfolioService:
 
 
 class _HoldingsFailPortfolioService:
+    def get_portfolio_summary(
+        self, *, include_change_rates=True, change_rate_periods=None
+    ):
+        return None
+
     def get_holdings_by_group(self):
         raise RuntimeError("holdings failed")
 
