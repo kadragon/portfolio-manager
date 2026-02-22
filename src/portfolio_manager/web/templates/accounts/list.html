@@ -26,6 +26,35 @@
   </div>
 </section>
 
+{% if accounts %}
+<section class="section-card">
+  <h3>일괄 예수금 수정</h3>
+  <form hx-put="/accounts/bulk-cash"
+        hx-target="#bulk-cash-status"
+        hx-swap="innerHTML"
+        data-request-message="일괄 예수금을 저장하는 중…">
+    <div class="form-grid">
+      {% for account in accounts %}
+      <label class="form-field form-field-mid">
+        {{ account.name }}
+        <input type="number"
+               name="cash_{{ account.id }}"
+               value="{{ account.cash_balance }}"
+               min="0"
+               step="1"
+               required
+               autocomplete="off">
+      </label>
+      {% endfor %}
+      <div>
+        <button type="submit" class="btn btn-primary">일괄 저장</button>
+      </div>
+    </div>
+  </form>
+  <p id="bulk-cash-status" class="request-status" aria-live="polite"></p>
+</section>
+{% endif %}
+
 <section class="section-card">
   <h3>계좌 추가</h3>
   <form hx-post="/accounts"

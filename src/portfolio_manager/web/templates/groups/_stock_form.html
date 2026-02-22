@@ -1,0 +1,43 @@
+<tr id="stock-{{ stock.id }}">
+  <td>
+    <label class="sr-only" for="stock-ticker-{{ stock.id }}">티커</label>
+    <input id="stock-ticker-{{ stock.id }}"
+           class="input-uppercase"
+           type="text"
+           name="ticker"
+           value="{{ stock.ticker }}"
+           required
+           autocomplete="off">
+  </td>
+  <td>
+    <label class="sr-only" for="stock-group-{{ stock.id }}">그룹 이동</label>
+    <select id="stock-group-{{ stock.id }}" name="target_group_id">
+      {% for group in groups %}
+      <option value="{{ group.id }}" {% if group.id == stock.group_id %}selected{% endif %}>
+        {{ group.name }}
+      </option>
+      {% endfor %}
+    </select>
+  </td>
+  <td>
+    <div class="inline-actions">
+      <button type="button"
+              class="btn btn-primary"
+              hx-put="/groups/{{ group_id }}/stocks/{{ stock.id }}"
+              hx-include="closest tr"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              data-request-message="종목 정보를 저장하는 중…">
+        저장
+      </button>
+      <button type="button"
+              class="btn btn-ghost"
+              hx-get="/groups/{{ group_id }}/stocks/{{ stock.id }}"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              data-request-message="수정 취소 중…">
+        취소
+      </button>
+    </div>
+  </td>
+</tr>

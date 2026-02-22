@@ -22,6 +22,7 @@ def test_deposit_edit_partial_has_accessible_labels(client, fake_container):
     assert 'for="deposit-date-' in body
     assert 'for="deposit-amount-' in body
     assert 'for="deposit-note-' in body
+    assert "/clear" in body
 
 
 def test_create_deposit_duplicate_date_requests_full_refresh(client, fake_container):
@@ -45,3 +46,29 @@ def test_create_deposit_rejects_invalid_date(client):
         data={"amount": "1000", "deposit_date": "not-a-date", "note": ""},
     )
     assert response.status_code == 422
+
+
+def test_update_deposit_keeps_note_when_blank_input(client, fake_container):
+    response = client.put(
+        f"/deposits/{fake_container.deposit.id}",
+        data={
+            "amount": "900001",
+            "deposit_date": fake_container.deposit.deposit_date.isoformat(),
+            "note": "   ",
+        },
+    )
+    assert response.status_code == 200
+    assert "초기 입금" in response.text
+
+
+def test_update_deposit_clears_note_with_clear_keyword(client, fake_container):
+    response = client.put(
+        f"/deposits/{fake_container.deposit.id}",
+        data={
+            "amount": "900001",
+            "deposit_date": fake_container.deposit.deposit_date.isoformat(),
+            "note": "/clear",
+        },
+    )
+    assert response.status_code == 200
+    assert ">-<" in response.text

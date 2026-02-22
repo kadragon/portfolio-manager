@@ -1,7 +1,7 @@
 [project]
 name = "portfolio-manager"
 version = "0.1.0"
-description = "Terminal portfolio manager using Rich and KIS API."
+description = "Web portfolio manager using FastAPI and KIS API."
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "Proprietary" }
@@ -9,8 +9,6 @@ authors = [
   { name = "kadragon" },
 ]
 dependencies = [
-  "rich>=14.2.0",
-  "prompt_toolkit>=3.0.52",
   "httpx>=0.28.1",
   "supabase>=2.11.0",
   "python-dotenv>=1.0.0",
@@ -21,7 +19,6 @@ dependencies = [
 ]
 
 [project.scripts]
-portfolio-manager = "portfolio_manager.cli.main:main"
 portfolio-web = "portfolio_manager.web.app:run"
 
 [dependency-groups]
@@ -49,11 +46,6 @@ markers = [
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-
-[tool.coverage.run]
-omit = [
-  "src/portfolio_manager/web/*",
-]
 
 [tool.bandit]
 exclude_dirs = ["tests"]

@@ -114,14 +114,12 @@ def test_portfolio_summary_holdings_sorted_by_value_krw_descending():
 
 
 def test_group_summary_table_sorted_by_total_value_descending():
-    """Group summary table should be sorted by total value descending."""
-    from rich.console import Console
-
-    from portfolio_manager.cli.app import render_dashboard
+    """Web dashboard group summary should be sorted by total value descending."""
     from portfolio_manager.services.portfolio_service import (
         PortfolioSummary,
         StockHoldingWithPrice,
     )
+    from portfolio_manager.web.routes.dashboard import _compute_group_summary
 
     # Setup groups with different total values
     now = datetime.now()
@@ -202,36 +200,7 @@ def test_group_summary_table_sorted_by_total_value_descending():
     ]
 
     summary = PortfolioSummary(holdings=holdings, total_value=Decimal("900000"))
-    console = Console(record=True, width=140)
+    rows = _compute_group_summary(summary)
 
-    render_dashboard(console, summary)
-
-    output = console.export_text()
-
-    # Find the positions of group names in the output
-    # Group Summary should show: BigGroup (500k) > MediumGroup (300k) > SmallGroup (100k)
-    big_pos = output.find("BigGroup")
-    medium_pos = output.find("MediumGroup")
-    small_pos = output.find("SmallGroup")
-
-    # All groups should appear
-    assert big_pos != -1, "BigGroup not found in output"
-    assert medium_pos != -1, "MediumGroup not found in output"
-    assert small_pos != -1, "SmallGroup not found in output"
-
-    # Groups should appear in descending value order in Group Summary section
-    # First find where Group Summary section starts
-    summary_start = output.find("Group Summary")
-    assert summary_start != -1, "Group Summary section not found"
-
-    # Get positions after Group Summary section
-    output_after_summary = output[summary_start:]
-    big_pos_summary = output_after_summary.find("BigGroup")
-    medium_pos_summary = output_after_summary.find("MediumGroup")
-    small_pos_summary = output_after_summary.find("SmallGroup")
-
-    assert big_pos_summary < medium_pos_summary < small_pos_summary, (
-        f"Groups not sorted by value descending in Group Summary. "
-        f"BigGroup at {big_pos_summary}, MediumGroup at {medium_pos_summary}, "
-        f"SmallGroup at {small_pos_summary}"
-    )
+    ordered_names = [row["group"].name for row in rows]
+    assert ordered_names == ["BigGroup", "MediumGroup", "SmallGroup"]

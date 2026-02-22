@@ -60,7 +60,7 @@ def dashboard(request: Request) -> HTMLResponse:
         try:
             summary = portfolio_service.get_portfolio_summary(
                 include_change_rates=True,
-                change_rate_periods=("1d", "1m", "1y"),
+                change_rate_periods=("1y", "6m", "1m"),
             )
             group_summary = _compute_group_summary(summary)
         except Exception as e:
