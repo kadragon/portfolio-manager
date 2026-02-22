@@ -1,12 +1,15 @@
 <tr id="holding-{{ holding.id }}">
+  {% set ticker = stock_map[holding.stock_id].ticker if holding.stock_id in stock_map else holding.stock_id %}
+  {% set stock_name = stock_name_map[holding.stock_id] if holding.stock_id in stock_name_map else ticker %}
   <td>
     <form id="edit-holding-{{ holding.id }}"
           hx-put="/accounts/{{ account_id }}/holdings/{{ holding.id }}"
           hx-target="closest tr"
           hx-swap="outerHTML"
           data-request-message="보유 수량을 저장하는 중…">
-      <code>{{ stock_map[holding.stock_id].ticker if holding.stock_id in stock_map else holding.stock_id }}</code>
+      <code>{{ ticker }}</code>
   </td>
+  <td>{{ stock_name }}</td>
   <td>
       <label class="sr-only" for="holding-qty-{{ holding.id }}">수량</label>
       <input id="holding-qty-{{ holding.id }}" type="number" name="quantity" value="{{ holding.quantity }}"

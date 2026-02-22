@@ -1,14 +1,76 @@
 """Accounts + Holdings CRUD routes."""
 
+import logging
 from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, Response
+from postgrest.exceptions import APIError
 
 from portfolio_manager.web.deps import get_container, get_templates
 
 router = APIRouter(prefix="/accounts")
+logger = logging.getLogger(__name__)
+
+
+def _format_stock_name(name: str) -> str:
+    return name.replace("증권상장지수투자신탁(주식)", "").strip()
+
+
+def _build_stock_name_map(container, stocks: list | None = None) -> dict:
+    stock_items = container.stock_repository.list_all() if stocks is None else stocks
+
+    price_service = getattr(container, "price_service", None)
+    if price_service is None or not hasattr(price_service, "get_stock_price"):
+        return {}
+
+    stock_name_map = {}
+    for stock in stock_items:
+        resolved_name = ""
+        try:
+            _, _, resolved_name, _ = price_service.get_stock_price(
+                stock.ticker, preferred_exchange=stock.exchange
+            )
+        except (APIError, ValueError):
+            resolved_name = ""
+        if resolved_name:
+            stock_name_map[stock.id] = _format_stock_name(resolved_name)
+    return stock_name_map
+
+
+def _render_holdings_rows(request: Request, templates, container, account_id: UUID):
+    holdings = container.holding_repository.list_by_account(account_id)
+    stocks = container.stock_repository.list_all()
+    stock_map = {stock.id: stock for stock in stocks}
+    stock_name_map = _build_stock_name_map(container, stocks)
+    return templates.TemplateResponse(
+        request=request,
+        name="accounts/_holdings_rows.html",
+        context={
+            "holdings": holdings,
+            "stock_map": stock_map,
+            "stock_name_map": stock_name_map,
+            "account_id": account_id,
+        },
+    )
+
+
+def _normalize_bulk_update_error(exc: Exception) -> str:
+    """Map backend/internal errors into user-facing bulk update messages."""
+    message = str(exc).strip()
+    if not message:
+        return "보유 수량 일괄 저장 중 오류가 발생했습니다."
+
+    known_map = {
+        "all holdings must belong to account": "요청한 holding_id가 현재 계좌에 속하지 않습니다.",
+        "선택한 보유 내역이 해당 계좌에 속하지 않습니다.": "요청한 holding_id가 현재 계좌에 속하지 않습니다.",
+        "duplicate holding_ids are not allowed": "요청에 중복된 holding_id가 포함되어 있습니다.",
+        "quantity must be greater than zero": "모든 수량은 0보다 커야 합니다.",
+        "holding_ids and quantities length mismatch": "holding_id와 quantity 개수가 일치하지 않습니다.",
+        "holding_ids and quantities are required": "holding_id와 quantity가 모두 필요합니다.",
+    }
+    return known_map.get(message, message)
 
 
 @router.get("", response_class=HTMLResponse)
@@ -114,9 +176,9 @@ def list_holdings(request: Request, account_id: UUID) -> HTMLResponse:
     if account is None:
         return Response(status_code=404)  # type: ignore[return-value]
     holdings = container.holding_repository.list_by_account(account_id)
-    stocks = container.stock_repository.list_all()
-    stock_map = {s.id: s for s in stocks}
-    all_stocks = stocks
+    all_stocks = container.stock_repository.list_all()
+    stock_map = {s.id: s for s in all_stocks}
+    stock_name_map = _build_stock_name_map(container, all_stocks)
     return templates.TemplateResponse(
         request=request,
         name="accounts/holdings.html",
@@ -124,6 +186,7 @@ def list_holdings(request: Request, account_id: UUID) -> HTMLResponse:
             "account": account,
             "holdings": holdings,
             "stock_map": stock_map,
+            "stock_name_map": stock_name_map,
             "all_stocks": all_stocks,
             "active_page": "accounts",
         },
@@ -139,17 +202,74 @@ def create_holding(
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
-    holding = container.holding_repository.create(
+    container.holding_repository.create(
         account_id=account_id,
         stock_id=stock_id,
         quantity=quantity,
     )
+    return _render_holdings_rows(request, templates, container, account_id)
+
+
+@router.put("/{account_id}/holdings/bulk", response_class=HTMLResponse)
+def bulk_update_holdings(
+    request: Request,
+    account_id: UUID,
+    holding_id: list[UUID] = Form(default=[]),
+    quantity: list[Decimal] = Form(default=[]),
+) -> HTMLResponse:
+    container = get_container(request)
+    templates = get_templates(request)
+
+    def _error(message: str) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request=request,
+            name="accounts/_holdings_bulk_result.html",
+            context={
+                "success": False,
+                "message": message,
+                "holdings": None,
+                "stock_map": None,
+                "account_id": account_id,
+            },
+            status_code=400,
+        )
+
+    if not holding_id:
+        return _error("요청 payload에 holding_id가 없습니다.")
+
+    if len(holding_id) != len(quantity):
+        return _error("holding_id와 quantity 개수가 일치하지 않습니다.")
+    if len(set(holding_id)) != len(holding_id):
+        return _error("요청에 중복된 holding_id가 포함되어 있습니다.")
+    if any(value < Decimal("0.000001") for value in quantity):
+        return _error("모든 수량은 0보다 커야 합니다.")
+
+    updates = list(zip(holding_id, quantity))
+    try:
+        container.holding_repository.bulk_update_by_account(account_id, updates)
+    except (ValueError, APIError) as exc:
+        logger.exception(
+            "Bulk update failed for account_id=%s with holding_count=%d",
+            account_id,
+            len(holding_id),
+        )
+        return _error(_normalize_bulk_update_error(exc))
+
+    holdings = container.holding_repository.list_by_account(account_id)
     stocks = container.stock_repository.list_all()
-    stock_map = {s.id: s for s in stocks}
+    stock_map = {stock.id: stock for stock in stocks}
+    stock_name_map = _build_stock_name_map(container, stocks)
     return templates.TemplateResponse(
         request=request,
-        name="accounts/_holding_row.html",
-        context={"holding": holding, "stock_map": stock_map, "account_id": account_id},
+        name="accounts/_holdings_bulk_result.html",
+        context={
+            "success": True,
+            "message": "보유 수량을 일괄 저장했습니다.",
+            "holdings": holdings,
+            "stock_map": stock_map,
+            "stock_name_map": stock_name_map,
+            "account_id": account_id,
+        },
     )
 
 
@@ -165,11 +285,17 @@ def get_holding_row(
     if holding is None:
         return Response(status_code=404)  # type: ignore[return-value]
     stocks = container.stock_repository.list_all()
-    stock_map = {s.id: s for s in stocks}
+    stock_map = {stock.id: stock for stock in stocks}
+    stock_name_map = _build_stock_name_map(container, stocks)
     return templates.TemplateResponse(
         request=request,
         name="accounts/_holding_row.html",
-        context={"holding": holding, "stock_map": stock_map, "account_id": account_id},
+        context={
+            "holding": holding,
+            "stock_map": stock_map,
+            "stock_name_map": stock_name_map,
+            "account_id": account_id,
+        },
     )
 
 
@@ -184,11 +310,17 @@ def edit_holding_form(
     if holding is None:
         return Response(status_code=404)  # type: ignore[return-value]
     stocks = container.stock_repository.list_all()
-    stock_map = {s.id: s for s in stocks}
+    stock_map = {stock.id: stock for stock in stocks}
+    stock_name_map = _build_stock_name_map(container, stocks)
     return templates.TemplateResponse(
         request=request,
         name="accounts/_holding_form.html",
-        context={"holding": holding, "stock_map": stock_map, "account_id": account_id},
+        context={
+            "holding": holding,
+            "stock_map": stock_map,
+            "stock_name_map": stock_name_map,
+            "account_id": account_id,
+        },
     )
 
 
@@ -205,11 +337,17 @@ def update_holding(
         holding_id=holding_id, quantity=quantity
     )
     stocks = container.stock_repository.list_all()
-    stock_map = {s.id: s for s in stocks}
+    stock_map = {stock.id: stock for stock in stocks}
+    stock_name_map = _build_stock_name_map(container, stocks)
     return templates.TemplateResponse(
         request=request,
         name="accounts/_holding_row.html",
-        context={"holding": holding, "stock_map": stock_map, "account_id": account_id},
+        context={
+            "holding": holding,
+            "stock_map": stock_map,
+            "stock_name_map": stock_name_map,
+            "account_id": account_id,
+        },
     )
 
 

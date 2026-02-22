@@ -118,6 +118,42 @@ class FakeHoldingRepository:
                 return updated
         raise ValueError("holding not found")
 
+    def bulk_update_by_account(
+        self, account_id: UUID, updates: list[tuple[UUID, Decimal]]
+    ) -> list[Holding]:
+        if not updates:
+            return []
+
+        holding_ids = [holding_id for holding_id, _ in updates]
+        if len(set(holding_ids)) != len(holding_ids):
+            raise ValueError("duplicate holding_ids are not allowed")
+        if any(quantity <= 0 for _, quantity in updates):
+            raise ValueError("quantity must be greater than zero")
+
+        index_by_id = {holding.id: idx for idx, holding in enumerate(self._holdings)}
+        for holding_id, _ in updates:
+            if holding_id not in index_by_id:
+                raise ValueError("선택한 보유 내역이 해당 계좌에 속하지 않습니다.")
+            if self._holdings[index_by_id[holding_id]].account_id != account_id:
+                raise ValueError("선택한 보유 내역이 해당 계좌에 속하지 않습니다.")
+
+        now = datetime.now(timezone.utc)
+        updated_holdings: list[Holding] = []
+        for holding_id, quantity in updates:
+            idx = index_by_id[holding_id]
+            current = self._holdings[idx]
+            updated = Holding(
+                id=current.id,
+                account_id=current.account_id,
+                stock_id=current.stock_id,
+                quantity=quantity,
+                created_at=current.created_at,
+                updated_at=now,
+            )
+            self._holdings[idx] = updated
+            updated_holdings.append(updated)
+        return updated_holdings
+
     def delete(self, holding_id: UUID) -> None:
         self._holdings = [
             holding for holding in self._holdings if holding.id != holding_id
