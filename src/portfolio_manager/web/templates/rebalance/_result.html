@@ -1,5 +1,5 @@
-<div id="execute-result" class="section-card" aria-live="polite">
-  <div class="flash flash-{{ 'success' if success else 'error' }}" role="status" aria-live="polite">{{ message }}</div>
+<div id="execute-result" class="section-card" role="status" aria-live="polite" aria-atomic="true">
+  <div class="flash flash-{{ 'success' if success else 'error' }}">{{ message }}</div>
 
   {% if result %}
   {% set executions = result.executions or [] %}
