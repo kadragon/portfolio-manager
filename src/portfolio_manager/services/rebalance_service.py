@@ -464,16 +464,14 @@ class RebalanceService:
 
             target_sell = min(target_sell, total_sleeve_value)
             account_values: dict[UUID, Decimal] = defaultdict(Decimal)
+            account_name_by_id: dict[UUID, str] = {}
             for position in sleeve_positions:
                 account_values[position.account_id] += position.value_krw
+                account_name_by_id[position.account_id] = position.account_name
 
             account_ids = sorted(
                 account_values.keys(),
-                key=lambda account_id: next(
-                    pos.account_name
-                    for pos in sleeve_positions
-                    if pos.account_id == account_id
-                ),
+                key=lambda account_id: account_name_by_id.get(account_id, ""),
             )
 
             remaining_sleeve_sell = target_sell
@@ -526,7 +524,6 @@ class RebalanceService:
                             proportional, remaining_account_sell, position.value_krw
                         )
 
-                    account_total_value -= position.value_krw
                     if sell_krw <= 0:
                         continue
 

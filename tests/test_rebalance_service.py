@@ -308,6 +308,145 @@ def test_build_plan_applies_half_rule_sell_with_safety_cap() -> None:
     assert by_account["B"] == Decimal("40")
 
 
+def test_build_plan_sell_allocation_uses_fixed_account_total_denominator() -> None:
+    groups = make_standard_groups()
+    group_by_name = {group.name: group for group in groups}
+
+    stock_growth_a = make_stock("100001", group_by_name["국내성장"].id)
+    stock_growth_b = make_stock("100002", group_by_name["국내성장"].id)
+    stock_growth_c = make_stock("100003", group_by_name["국내성장"].id)
+    stock_kr_div = make_stock("200001", group_by_name["국내배당"].id)
+    stock_us_growth = make_stock("QQQ", group_by_name["해외성장"].id)
+    stock_us_stable = make_stock("VOO", group_by_name["해외안정"].id)
+    stock_us_div = make_stock("SCHD", group_by_name["해외배당"].id)
+
+    summary = PortfolioSummary(
+        holdings=[
+            (
+                group_by_name["국내성장"],
+                StockHoldingWithPrice(
+                    stock=stock_growth_a,
+                    quantity=Decimal("250"),
+                    price=Decimal("1"),
+                    currency="KRW",
+                    name=stock_growth_a.ticker,
+                    value_krw=Decimal("250"),
+                ),
+            ),
+            (
+                group_by_name["국내성장"],
+                StockHoldingWithPrice(
+                    stock=stock_growth_b,
+                    quantity=Decimal("150"),
+                    price=Decimal("1"),
+                    currency="KRW",
+                    name=stock_growth_b.ticker,
+                    value_krw=Decimal("150"),
+                ),
+            ),
+            (
+                group_by_name["국내성장"],
+                StockHoldingWithPrice(
+                    stock=stock_growth_c,
+                    quantity=Decimal("100"),
+                    price=Decimal("1"),
+                    currency="KRW",
+                    name=stock_growth_c.ticker,
+                    value_krw=Decimal("100"),
+                ),
+            ),
+            (
+                group_by_name["국내배당"],
+                StockHoldingWithPrice(
+                    stock=stock_kr_div,
+                    quantity=Decimal("100"),
+                    price=Decimal("1"),
+                    currency="KRW",
+                    name=stock_kr_div.ticker,
+                    value_krw=Decimal("100"),
+                ),
+            ),
+            (
+                group_by_name["해외성장"],
+                StockHoldingWithPrice(
+                    stock=stock_us_growth,
+                    quantity=Decimal("200"),
+                    price=Decimal("1"),
+                    currency="USD",
+                    name=stock_us_growth.ticker,
+                    value_krw=Decimal("200"),
+                ),
+            ),
+            (
+                group_by_name["해외안정"],
+                StockHoldingWithPrice(
+                    stock=stock_us_stable,
+                    quantity=Decimal("100"),
+                    price=Decimal("1"),
+                    currency="USD",
+                    name=stock_us_stable.ticker,
+                    value_krw=Decimal("100"),
+                ),
+            ),
+            (
+                group_by_name["해외배당"],
+                StockHoldingWithPrice(
+                    stock=stock_us_div,
+                    quantity=Decimal("100"),
+                    price=Decimal("1"),
+                    currency="USD",
+                    name=stock_us_div.ticker,
+                    value_krw=Decimal("100"),
+                ),
+            ),
+        ],
+        total_value=Decimal("1000"),
+        total_assets=Decimal("1000"),
+    )
+
+    account = make_account("A", Decimal("0"))
+    holdings_by_account = {
+        account.id: [
+            make_holding(account.id, stock_growth_a.id, Decimal("250")),
+            make_holding(account.id, stock_growth_b.id, Decimal("150")),
+            make_holding(account.id, stock_growth_c.id, Decimal("100")),
+            make_holding(account.id, stock_kr_div.id, Decimal("100")),
+            make_holding(account.id, stock_us_growth.id, Decimal("200")),
+            make_holding(account.id, stock_us_stable.id, Decimal("100")),
+            make_holding(account.id, stock_us_div.id, Decimal("100")),
+        ]
+    }
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=[account],
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=[
+            stock_growth_a,
+            stock_growth_b,
+            stock_growth_c,
+            stock_kr_div,
+            stock_us_growth,
+            stock_us_stable,
+            stock_us_div,
+        ],
+    )
+
+    growth_sells = [
+        rec
+        for rec in plan.sell_recommendations
+        if rec.sleeve_name == "국내성장" and rec.account_name == "A"
+    ]
+    assert len(growth_sells) == 3
+
+    amount_by_ticker = {rec.ticker: rec.amount_krw for rec in growth_sells}
+    assert amount_by_ticker["100001"] == Decimal("50")
+    assert amount_by_ticker["100002"] == Decimal("30")
+    assert amount_by_ticker["100003"] == Decimal("20")
+
+
 def test_build_plan_skips_sell_when_only_lower_breaches_exist() -> None:
     groups = make_standard_groups()
     stocks = make_standard_stocks(groups)
