@@ -346,10 +346,13 @@ def test_build_plan_skips_sell_when_only_lower_breaches_exist() -> None:
         stocks=list(stocks.values()),
     )
 
+    # total = 1000; 해외배당 = 10% vs target 15% (lower 12%) → lower breach
     assert plan.sell_recommendations == []
-    assert sum(
-        (rec.amount_krw or Decimal("0")) for rec in plan.buy_recommendations
-    ) <= Decimal("50")
+    assert len(plan.buy_recommendations) == 1
+    buy = plan.buy_recommendations[0]
+    assert buy.sleeve_name == "해외배당"
+    assert buy.ticker == "SCHD"
+    assert buy.amount_krw == Decimal("50")
 
 
 def test_build_plan_reinvests_cash_only_within_same_account() -> None:

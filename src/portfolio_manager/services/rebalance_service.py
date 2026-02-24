@@ -31,14 +31,6 @@ _SLEEVE_BANDS: dict[str, Decimal] = {
     "해외배당": Decimal("3"),
 }
 
-_NORMALIZED_GROUP_TO_SLEEVE = {
-    "국내성장": "국내성장",
-    "국내배당": "국내배당",
-    "해외성장": "해외성장",
-    "해외안정": "해외안정",
-    "해외배당": "해외배당",
-}
-
 
 @dataclass
 class SleeveDiagnostic:
@@ -508,7 +500,9 @@ class RebalanceService:
                 ]
                 account_positions.sort(
                     key=lambda position: (
-                        0 if is_domestic_ticker(position.ticker) else 1,
+                        1
+                        if is_domestic_ticker(position.ticker)
+                        else 0,  # overseas (USD) first
                         position.ticker,
                     )
                 )
@@ -536,7 +530,12 @@ class RebalanceService:
                     if sell_krw <= 0:
                         continue
 
-                    amount_local = self._to_local_amount(sell_krw, position)
+                    amount_local = self._krw_to_local_amount(
+                        sell_krw,
+                        position.currency,
+                        position.value_local,
+                        position.value_krw,
+                    )
                     quantity = self._calculate_quantity(
                         amount_local=amount_local,
                         position_local_value=position.value_local,
@@ -634,9 +633,11 @@ class RebalanceService:
                 if buy_krw <= 0:
                     break
 
-                amount_local = self._to_local_amount_from_candidate(
-                    amount_krw=buy_krw,
-                    candidate=candidate,
+                amount_local = self._krw_to_local_amount(
+                    buy_krw,
+                    candidate.currency,
+                    candidate.value_local_base,
+                    candidate.value_krw_base,
                 )
                 quantity = self._calculate_quantity(
                     amount_local=amount_local,
@@ -693,6 +694,8 @@ class RebalanceService:
         candidates.sort(
             key=lambda sleeve_name: (
                 need_by_sleeve.get(sleeve_name, Decimal("0")),
+                # tiebreak: higher index in _SLEEVE_ORDER wins (해외 sleeves last → buy
+                # US positions only after KR needs are met), negated for reverse sort
                 -_SLEEVE_ORDER.index(sleeve_name),
             ),
             reverse=True,
@@ -739,34 +742,17 @@ class RebalanceService:
             return None
         return candidates[0]
 
-    def _to_local_amount(
-        self, amount_krw: Decimal, position: _AccountPosition
+    @staticmethod
+    def _krw_to_local_amount(
+        amount_krw: Decimal,
+        currency: str,
+        value_local: Decimal,
+        value_krw: Decimal,
     ) -> Decimal:
-        if (
-            position.currency == "USD"
-            and position.value_local > 0
-            and position.value_krw > 0
-        ):
-            fx = position.value_krw / position.value_local
+        if currency == "USD" and value_local > 0 and value_krw > 0:
+            fx = value_krw / value_local
             if fx > 0:
                 return amount_krw / fx
-        return amount_krw
-
-    def _to_local_amount_from_candidate(
-        self,
-        *,
-        amount_krw: Decimal,
-        candidate: _BuyCandidate,
-    ) -> Decimal:
-        if (
-            candidate.currency == "USD"
-            and candidate.value_local_base > 0
-            and candidate.quantity_base > 0
-        ):
-            if candidate.value_krw_base > 0:
-                fx = candidate.value_krw_base / candidate.value_local_base
-                if fx > 0:
-                    return amount_krw / fx
         return amount_krw
 
     def _calculate_quantity(
@@ -787,4 +773,4 @@ class RebalanceService:
 
     def _to_sleeve(self, group_name: str) -> str | None:
         normalized = "".join(group_name.split())
-        return _NORMALIZED_GROUP_TO_SLEEVE.get(normalized)
+        return normalized if normalized in _SLEEVE_BANDS else None
