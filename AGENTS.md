@@ -8,6 +8,7 @@
 - Local verification script: `scripts/check_exim_usd_rate.py` (loads `.env`, requires `EXIM_AUTH_KEY`; optional `EXIM_SEARCH_DATE` with previous business day fallback).
 - `KIS_ENV` accepts `real/prod` and `demo/vps/paper` (also tolerates `real/prod` form and whitespace).
 - Overseas current price endpoint: `/uapi/overseas-price/v1/quotations/price` with TR ID `HHDFS00000300`.
+- Web UI entry point: `portfolio-web` (starts FastAPI via uvicorn on `http://127.0.0.1:8000` with reload).
 
 ## Supabase Integration
 - Supabase credentials stored in `.env`: `SUPABASE_URL` and `SUPABASE_KEY`.

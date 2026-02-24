@@ -45,3 +45,14 @@ def test_execute_rebalance_returns_failure_when_summary_fetch_raises(
 
     assert response.status_code == 200
     assert "rebalance summary failed" in response.text
+
+
+def test_view_rebalance_shows_error_when_group_mapping_is_invalid(
+    client, fake_container
+):
+    fake_container.group.name = "국내 주식"
+
+    response = client.get("/rebalance")
+
+    assert response.status_code == 200
+    assert "슬리브 매핑 불가 그룹" in response.text

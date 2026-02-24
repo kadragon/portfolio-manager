@@ -68,3 +68,25 @@ class TestRebalanceRecommendation:
         )
 
         assert recommendation.group_name == "US Stocks"
+
+    def test_recommendation_optional_v2_metadata_fields(self) -> None:
+        """RebalanceRecommendation should support v2 metadata fields."""
+        recommendation = RebalanceRecommendation(
+            ticker="AAPL",
+            action=RebalanceAction.SELL,
+            amount=Decimal("1000"),
+            priority=1,
+            account_name="ISA",
+            sleeve_name="해외성장",
+            reason="과열 슬리브 절반 감축",
+            trigger_type="sleeve",
+            amount_krw=Decimal("1300000"),
+            amount_local=Decimal("1000"),
+        )
+
+        assert recommendation.account_name == "ISA"
+        assert recommendation.sleeve_name == "해외성장"
+        assert recommendation.reason == "과열 슬리브 절반 감축"
+        assert recommendation.trigger_type == "sleeve"
+        assert recommendation.amount_krw == Decimal("1300000")
+        assert recommendation.amount_local == Decimal("1000")

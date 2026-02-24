@@ -6,10 +6,34 @@ from fastapi.responses import HTMLResponse
 from portfolio_manager.services.rebalance_execution_service import (
     RebalanceExecutionService,
 )
-from portfolio_manager.services.rebalance_service import RebalanceService
+from portfolio_manager.services.portfolio_service import PortfolioSummary
+from portfolio_manager.services.rebalance_service import RebalancePlan, RebalanceService
 from portfolio_manager.web.deps import get_container, get_templates
 
 router = APIRouter(prefix="/rebalance")
+
+
+def _build_rebalance_plan(container) -> tuple[PortfolioSummary, RebalancePlan]:
+    portfolio_service = container.get_portfolio_service()
+    summary = portfolio_service.get_portfolio_summary(include_change_rates=False)
+
+    accounts = container.account_repository.list_all()
+    holdings_by_account = {
+        account.id: container.holding_repository.list_by_account(account.id)
+        for account in accounts
+    }
+    groups = container.group_repository.list_all()
+    stocks = container.stock_repository.list_all()
+
+    rebalance_service = RebalanceService()
+    plan = rebalance_service.build_plan(
+        summary=summary,
+        accounts=accounts,
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=stocks,
+    )
+    return summary, plan
 
 
 @router.get("", response_class=HTMLResponse)
@@ -27,15 +51,12 @@ def view_rebalance(request: Request) -> HTMLResponse:
                 "sell_recommendations": [],
                 "buy_recommendations": [],
                 "summary": None,
+                "plan": None,
             },
         )
 
     try:
-        portfolio_service = container.get_portfolio_service()
-        summary = portfolio_service.get_portfolio_summary(include_change_rates=False)
-        rebalance_service = RebalanceService()
-        sell_recommendations = rebalance_service.get_sell_recommendations(summary)
-        buy_recommendations = rebalance_service.get_buy_recommendations(summary)
+        summary, plan = _build_rebalance_plan(container)
         error = None
     except Exception as e:
         return templates.TemplateResponse(
@@ -47,6 +68,7 @@ def view_rebalance(request: Request) -> HTMLResponse:
                 "sell_recommendations": [],
                 "buy_recommendations": [],
                 "summary": None,
+                "plan": None,
             },
         )
 
@@ -56,9 +78,10 @@ def view_rebalance(request: Request) -> HTMLResponse:
         context={
             "active_page": "rebalance",
             "error": error,
-            "sell_recommendations": sell_recommendations,
-            "buy_recommendations": buy_recommendations,
+            "sell_recommendations": plan.sell_recommendations,
+            "buy_recommendations": plan.buy_recommendations,
             "summary": summary,
+            "plan": plan,
             "has_order_client": container.order_client is not None,
         },
     )
@@ -80,12 +103,8 @@ def execute_rebalance(
         )
 
     try:
-        portfolio_service = container.get_portfolio_service()
-        summary = portfolio_service.get_portfolio_summary(include_change_rates=False)
-        rebalance_service = RebalanceService()
-        sell_recs = rebalance_service.get_sell_recommendations(summary)
-        buy_recs = rebalance_service.get_buy_recommendations(summary)
-        all_recs = sell_recs + buy_recs
+        _summary, plan = _build_rebalance_plan(container)
+        all_recs = plan.sell_recommendations + plan.buy_recommendations
 
         # Build exchange map from stocks
         stocks = container.stock_repository.list_all()

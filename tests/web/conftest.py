@@ -366,10 +366,10 @@ class FakeContainer:
 
         self.group = Group(
             id=uuid4(),
-            name="국내 주식",
+            name="국내성장",
             created_at=now,
             updated_at=now,
-            target_percentage=0.0,
+            target_percentage=35.0,
         )
         self.stock = Stock(
             id=uuid4(),
