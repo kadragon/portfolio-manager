@@ -22,11 +22,11 @@
         <li><strong class="brand-title">Portfolio Manager</strong></li>
       </ul>
       <ul class="nav-links">
-        <li><a href="/" class="{{ 'active' if active_page == 'dashboard' else '' }}">대시보드</a></li>
-        <li><a href="/groups" class="{{ 'active' if active_page == 'groups' else '' }}">그룹</a></li>
-        <li><a href="/accounts" class="{{ 'active' if active_page == 'accounts' else '' }}">계좌</a></li>
-        <li><a href="/deposits" class="{{ 'active' if active_page == 'deposits' else '' }}">입금</a></li>
-        <li><a href="/rebalance" class="{{ 'active' if active_page == 'rebalance' else '' }}">리밸런싱</a></li>
+        <li><a href="/" class="{{ 'active' if active_page == 'dashboard' else '' }}" {% if active_page == 'dashboard' %}aria-current="page"{% endif %}>대시보드</a></li>
+        <li><a href="/groups" class="{{ 'active' if active_page == 'groups' else '' }}" {% if active_page == 'groups' %}aria-current="page"{% endif %}>그룹</a></li>
+        <li><a href="/accounts" class="{{ 'active' if active_page == 'accounts' else '' }}" {% if active_page == 'accounts' %}aria-current="page"{% endif %}>계좌</a></li>
+        <li><a href="/deposits" class="{{ 'active' if active_page == 'deposits' else '' }}" {% if active_page == 'deposits' %}aria-current="page"{% endif %}>입금</a></li>
+        <li><a href="/rebalance" class="{{ 'active' if active_page == 'rebalance' else '' }}" {% if active_page == 'rebalance' %}aria-current="page"{% endif %}>리밸런싱</a></li>
       </ul>
     </nav>
   </header>

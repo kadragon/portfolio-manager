@@ -26,5 +26,9 @@
     document.body.addEventListener("htmx:responseError", function () {
       setStatus("요청에 실패했습니다. 다시 시도해 주세요.");
     });
+
+    document.body.addEventListener("htmx:sendError", function () {
+      setStatus("네트워크 오류가 발생했습니다. 연결 상태를 확인해 주세요.");
+    });
   });
 })();

@@ -2,7 +2,7 @@
 {% block title %}입금 내역 — 포트폴리오 매니저{% endblock %}
 
 {% block content %}
-<h2 class="page-header">입금 내역</h2>
+<h1 class="page-header">입금 내역</h1>
 <p class="page-subtitle">총투자원금: <strong>{{ total | format_krw }}</strong></p>
 
 <section class="section-card">
@@ -11,7 +11,7 @@
   <form hx-post="/deposits"
         hx-target="#deposits-body"
         hx-swap="afterbegin"
-        hx-on::after-request="this.reset()"
+        hx-on::after-request="if (event.detail.successful) { this.reset(); }"
         data-request-message="입금 내역을 저장하는 중…">
     <div class="form-grid">
       <label class="form-field form-field-mid">
@@ -34,8 +34,9 @@
 </section>
 
 <section class="section-card">
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" aria-label="입금 내역 표 가로 스크롤 영역">
     <table class="table-compact">
+      <caption>날짜별 입금 금액과 메모</caption>
       <thead>
         <tr>
           <th>날짜</th>

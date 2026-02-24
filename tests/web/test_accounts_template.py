@@ -8,6 +8,12 @@ def test_accounts_page_uses_buttons_for_edit_sync_delete(client):
     body = response.text
 
     assert "계좌 추가" in body
+    assert '<h1 class="page-header">계좌</h1>' in body
+    assert "계좌별 예수금과 작업" in body
+    assert (
+        'hx-on::after-request="if (event.detail.successful) { this.reset(); }"' in body
+    )
+    assert 'hx-on::after-request="this.reset()"' not in body
     assert "KIS 동기화" in body
     assert 'hx-post="/accounts/' in body
     assert 'hx-delete="/accounts/' in body
@@ -78,6 +84,10 @@ def test_holdings_page_contains_labeled_inputs_and_required_fields(
     body = response.text
 
     assert "보유 추가" in body
+    assert (
+        f'<h1 class="page-header">{fake_container.account.name} 보유 내역</h1>' in body
+    )
+    assert f"{fake_container.account.name} 계좌 보유 종목과 수량" in body
     assert "종목명" in body
     assert "일괄 저장" in body
     assert f'hx-put="/accounts/{fake_container.account.id}/holdings/bulk"' in body
@@ -87,6 +97,7 @@ def test_holdings_page_contains_labeled_inputs_and_required_fields(
     assert 'name="group_id"' in body
     assert 'name="new_group_name"' in body
     assert 'name="holding_id"' in body
+    assert 'hx-on::after-request="this.reset()"' not in body
     assert "required-marker" in body
     assert (
         f"/accounts/{fake_container.account.id}/holdings/{fake_container.holding.id}/edit"
@@ -352,6 +363,7 @@ def test_account_sync_partial_renders_live_message(client, fake_container):
     body = response.text
 
     assert 'id="sync-result-' in body
+    assert 'role="status"' in body
     assert 'aria-live="polite"' in body
 
 

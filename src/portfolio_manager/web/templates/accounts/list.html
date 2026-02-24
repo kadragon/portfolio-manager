@@ -2,12 +2,13 @@
 {% block title %}계좌 — 포트폴리오 매니저{% endblock %}
 
 {% block content %}
-<h2 class="page-header">계좌</h2>
+<h1 class="page-header">계좌</h1>
 <p class="page-subtitle">계좌별 예수금과 보유 내역을 관리합니다.</p>
 
 <section class="section-card">
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" aria-label="계좌 목록 표 가로 스크롤 영역">
     <table class="table-compact">
+      <caption>계좌별 예수금과 작업</caption>
       <thead>
         <tr>
           <th>이름</th>
@@ -51,7 +52,7 @@
       </div>
     </div>
   </form>
-  <p id="bulk-cash-status" class="request-status" aria-live="polite"></p>
+  <p id="bulk-cash-status" class="request-status" role="status" aria-live="polite" aria-atomic="true"></p>
 </section>
 {% endif %}
 
@@ -60,7 +61,7 @@
   <form hx-post="/accounts"
         hx-target="#accounts-body"
         hx-swap="afterbegin"
-        hx-on::after-request="this.reset()"
+        hx-on::after-request="if (event.detail.successful) { this.reset(); }"
         data-request-message="계좌를 추가하는 중…">
     <div class="form-grid">
       <label class="form-field form-field-wide">
