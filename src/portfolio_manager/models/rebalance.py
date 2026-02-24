@@ -24,3 +24,9 @@ class RebalanceRecommendation:
     quantity: Decimal | None = None
     stock_name: str | None = None
     group_name: str | None = None
+    account_name: str | None = None
+    sleeve_name: str | None = None
+    reason: str | None = None
+    trigger_type: str | None = None
+    amount_krw: Decimal | None = None
+    amount_local: Decimal | None = None

@@ -3,10 +3,77 @@
 
 {% block content %}
 <h2 class="page-header">리밸런싱 추천</h2>
-<p class="page-subtitle">목표 비중 대비 과대/과소 상태를 기준으로 매매 권고를 표시합니다.</p>
+<p class="page-subtitle">슬리브 밴드와 지역 비중 트리거를 기준으로 계좌별 매매 권고를 표시합니다.</p>
 
 {% if error %}
 <div class="flash flash-error" role="alert" aria-live="polite">{{ error }}</div>
+{% endif %}
+
+{% if plan %}
+<section class="section-card">
+  <h3>진단 요약</h3>
+  <div class="table-wrap">
+    <table class="table-compact">
+      <thead>
+        <tr>
+          <th>구분</th>
+          <th class="text-right">목표</th>
+          <th class="text-right">현재</th>
+          <th class="text-right">허용 밴드</th>
+          <th>상태</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>지역(국내)</td>
+          <td class="text-right">{{ "%.2f"|format(plan.region_diagnostic.target_kr_percentage) }}%</td>
+          <td class="text-right">{{ "%.2f"|format(plan.region_diagnostic.current_kr_percentage) }}%</td>
+          <td class="text-right">{{ "%.2f"|format(plan.region_diagnostic.lower_kr_percentage) }}% ~ {{ "%.2f"|format(plan.region_diagnostic.upper_kr_percentage) }}%</td>
+          <td>
+            {% if plan.region_diagnostic.is_triggered %}
+            <span class="badge badge-sell">트리거 발동</span>
+            {% else %}
+            <span class="badge badge-buy">정상 범위</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table-compact">
+      <thead>
+        <tr>
+          <th>슬리브</th>
+          <th class="text-right">목표</th>
+          <th class="text-right">현재</th>
+          <th class="text-right">허용 밴드</th>
+          <th>상태</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for diag in plan.sleeve_diagnostics %}
+        <tr>
+          <td>{{ diag.sleeve_name }}</td>
+          <td class="text-right">{{ "%.2f"|format(diag.target_percentage) }}%</td>
+          <td class="text-right">{{ "%.2f"|format(diag.current_percentage) }}%</td>
+          <td class="text-right">{{ "%.2f"|format(diag.lower_percentage) }}% ~ {{ "%.2f"|format(diag.upper_percentage) }}%</td>
+          <td>
+            {% if diag.is_upper_breached %}
+            <span class="badge badge-sell">상단 이탈</span>
+            {% elif diag.is_lower_breached %}
+            <span class="badge badge-buy">하단 이탈</span>
+            {% else %}
+            <span>정상</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 {% endif %}
 
 {% if sell_recommendations %}
@@ -16,25 +83,33 @@
     <table class="table-compact">
       <thead>
         <tr>
+          <th>계좌</th>
+          <th>슬리브</th>
           <th>그룹</th>
           <th>티커</th>
           <th>종목명</th>
-          <th class="text-right">금액</th>
+          <th class="text-right">금액(통화)</th>
+          <th class="text-right">금액(KRW)</th>
           <th class="text-right">수량</th>
           <th>통화</th>
+          <th>근거</th>
         </tr>
       </thead>
       <tbody>
         {% for rec in sell_recommendations %}
         <tr>
+          <td>{{ rec.account_name or "-" }}</td>
+          <td>{{ rec.sleeve_name or "-" }}</td>
           <td>{{ rec.group_name or "-" }}</td>
           <td><code>{{ rec.ticker }}</code></td>
           <td>{{ rec.stock_name or "-" }}</td>
           <td class="text-right value-negative">
             {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
           </td>
+          <td class="text-right value-negative">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
           <td class="text-right">{% if rec.quantity is not none %}{{ rec.quantity | int }}{% else %}-{% endif %}</td>
           <td>{{ rec.currency or "-" }}</td>
+          <td>{{ rec.reason or "-" }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -50,25 +125,33 @@
     <table class="table-compact">
       <thead>
         <tr>
+          <th>계좌</th>
+          <th>슬리브</th>
           <th>그룹</th>
           <th>티커</th>
           <th>종목명</th>
-          <th class="text-right">금액</th>
+          <th class="text-right">금액(통화)</th>
+          <th class="text-right">금액(KRW)</th>
           <th class="text-right">수량</th>
           <th>통화</th>
+          <th>근거</th>
         </tr>
       </thead>
       <tbody>
         {% for rec in buy_recommendations %}
         <tr>
+          <td>{{ rec.account_name or "-" }}</td>
+          <td>{{ rec.sleeve_name or "-" }}</td>
           <td>{{ rec.group_name or "-" }}</td>
           <td><code>{{ rec.ticker }}</code></td>
           <td>{{ rec.stock_name or "-" }}</td>
           <td class="text-right value-positive">
             {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
           </td>
+          <td class="text-right value-positive">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
           <td class="text-right">{% if rec.quantity is not none %}{{ rec.quantity | int }}{% else %}-{% endif %}</td>
           <td>{{ rec.currency or "-" }}</td>
+          <td>{{ rec.reason or "-" }}</td>
         </tr>
         {% endfor %}
       </tbody>

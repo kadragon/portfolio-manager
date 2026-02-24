@@ -1,11 +1,12 @@
-"""Tests for RebalanceService."""
+"""Tests for RebalanceService v2.0."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
-from portfolio_manager.models import Group, Stock
-from portfolio_manager.models.rebalance import RebalanceAction
+import pytest
+
+from portfolio_manager.models import Account, Group, Holding, Stock
 from portfolio_manager.services.portfolio_service import (
     PortfolioSummary,
     StockHoldingWithPrice,
@@ -14,8 +15,7 @@ from portfolio_manager.services.rebalance_service import RebalanceService
 
 
 def make_group(name: str, target_percentage: float) -> Group:
-    """Create a test group."""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     return Group(
         id=uuid4(),
         name=name,
@@ -26,8 +26,7 @@ def make_group(name: str, target_percentage: float) -> Group:
 
 
 def make_stock(ticker: str, group_id) -> Stock:
-    """Create a test stock."""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     return Stock(
         id=uuid4(),
         ticker=ticker,
@@ -37,476 +36,365 @@ def make_stock(ticker: str, group_id) -> Stock:
     )
 
 
-def make_holding(
-    stock: Stock,
-    quantity: Decimal,
-    price: Decimal,
-    currency: str,
-    name: str = "",
-    value_krw: Decimal | None = None,
-) -> StockHoldingWithPrice:
-    """Create a test holding with price."""
-    return StockHoldingWithPrice(
-        stock=stock,
-        quantity=quantity,
-        price=price,
-        currency=currency,
+def make_account(name: str, cash_balance: Decimal) -> Account:
+    now = datetime.now(timezone.utc)
+    return Account(
+        id=uuid4(),
         name=name,
-        value_krw=value_krw,
+        cash_balance=cash_balance,
+        created_at=now,
+        updated_at=now,
     )
 
 
-class TestGroupDifferenceCalculation:
-    """Test group difference calculation."""
+def make_holding(account_id, stock_id, quantity: Decimal) -> Holding:
+    now = datetime.now(timezone.utc)
+    return Holding(
+        id=uuid4(),
+        account_id=account_id,
+        stock_id=stock_id,
+        quantity=quantity,
+        created_at=now,
+        updated_at=now,
+    )
 
-    def test_calculate_group_differences_single_group(self) -> None:
-        """Should calculate difference for a single group."""
-        group = make_group("US Stocks", target_percentage=60.0)
-        stock = make_stock("AAPL", group.id)
-        holding = make_holding(
+
+def make_standard_groups() -> list[Group]:
+    return [
+        make_group("국내성장", 35.0),
+        make_group("국내배당", 15.0),
+        make_group("해외성장", 25.0),
+        make_group("해외안정", 10.0),
+        make_group("해외배당", 15.0),
+    ]
+
+
+def make_standard_stocks(groups: list[Group]) -> dict[str, Stock]:
+    group_by_name = {group.name: group for group in groups}
+    return {
+        "국내성장": make_stock("005930", group_by_name["국내성장"].id),
+        "국내배당": make_stock("000660", group_by_name["국내배당"].id),
+        "해외성장": make_stock("QQQ", group_by_name["해외성장"].id),
+        "해외안정": make_stock("VOO", group_by_name["해외안정"].id),
+        "해외배당": make_stock("SCHD", group_by_name["해외배당"].id),
+    }
+
+
+def make_summary(
+    groups: list[Group],
+    stocks_by_sleeve: dict[str, Stock],
+    sleeve_values: dict[str, Decimal],
+) -> PortfolioSummary:
+    group_by_name = {group.name: group for group in groups}
+    holdings: list[tuple[Group, StockHoldingWithPrice]] = []
+    total_value = Decimal("0")
+
+    for sleeve_name, value in sleeve_values.items():
+        stock = stocks_by_sleeve[sleeve_name]
+        currency = "KRW" if sleeve_name.startswith("국내") else "USD"
+        holding = StockHoldingWithPrice(
             stock=stock,
-            quantity=Decimal("10"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("2000000"),
+            quantity=value,
+            price=Decimal("1"),
+            currency=currency,
+            name=stock.ticker,
+            value_krw=value,
+        )
+        holdings.append((group_by_name[sleeve_name], holding))
+        total_value += value
+
+    return PortfolioSummary(
+        holdings=holdings,
+        total_value=total_value,
+        total_assets=total_value,
+    )
+
+
+def make_holdings_by_account(
+    accounts: list[Account],
+    stocks_by_sleeve: dict[str, Stock],
+    per_account_sleeve_values: dict[str, dict[str, Decimal]],
+) -> dict:
+    account_by_name = {account.name: account for account in accounts}
+    result = {}
+    for account_name, sleeve_values in per_account_sleeve_values.items():
+        account = account_by_name[account_name]
+        result[account.id] = [
+            make_holding(
+                account_id=account.id,
+                stock_id=stocks_by_sleeve[sleeve_name].id,
+                quantity=quantity,
+            )
+            for sleeve_name, quantity in sleeve_values.items()
+            if quantity > 0
+        ]
+    return result
+
+
+def test_build_plan_raises_for_unmapped_group_name() -> None:
+    group = make_group("국내 주식", 100.0)
+    stock = make_stock("005930", group.id)
+    summary = PortfolioSummary(
+        holdings=[
+            (
+                group,
+                StockHoldingWithPrice(
+                    stock=stock,
+                    quantity=Decimal("100"),
+                    price=Decimal("1"),
+                    currency="KRW",
+                    name="삼성전자",
+                    value_krw=Decimal("100"),
+                ),
+            )
+        ],
+        total_value=Decimal("100"),
+        total_assets=Decimal("100"),
+    )
+
+    service = RebalanceService()
+    with pytest.raises(ValueError, match="슬리브 매핑 불가 그룹"):
+        service.build_plan(
+            summary=summary,
+            accounts=[],
+            holdings_by_account={},
+            groups=[group],
+            stocks=[stock],
         )
 
-        summary = PortfolioSummary(
-            holdings=[(group, holding)],
-            total_value=Decimal("2000000"),
-            total_assets=Decimal("2000000"),
+
+def test_build_plan_flags_upper_and_lower_band_breaches() -> None:
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    summary = make_summary(
+        groups,
+        stocks,
+        {
+            "국내성장": Decimal("500"),
+            "국내배당": Decimal("120"),
+            "해외성장": Decimal("240"),
+            "해외안정": Decimal("100"),
+            "해외배당": Decimal("40"),
+        },
+    )
+    account = make_account("A", Decimal("0"))
+    holdings_by_account = make_holdings_by_account(
+        [account],
+        stocks,
+        {
+            "A": {
+                "국내성장": Decimal("500"),
+                "국내배당": Decimal("120"),
+                "해외성장": Decimal("240"),
+                "해외안정": Decimal("100"),
+                "해외배당": Decimal("40"),
+            }
+        },
+    )
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=[account],
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=list(stocks.values()),
+    )
+
+    diag = {item.sleeve_name: item for item in plan.sleeve_diagnostics}
+    assert diag["국내성장"].is_upper_breached is True
+    assert diag["해외배당"].is_lower_breached is True
+
+
+def test_build_plan_region_trigger_uses_sleeve_target_sum() -> None:
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    summary = make_summary(
+        groups,
+        stocks,
+        {
+            "국내성장": Decimal("400"),
+            "국내배당": Decimal("200"),
+            "해외성장": Decimal("180"),
+            "해외안정": Decimal("120"),
+            "해외배당": Decimal("100"),
+        },
+    )
+    account = make_account("A", Decimal("0"))
+    holdings_by_account = make_holdings_by_account(
+        [account],
+        stocks,
+        {
+            "A": {
+                "국내성장": Decimal("400"),
+                "국내배당": Decimal("200"),
+                "해외성장": Decimal("180"),
+                "해외안정": Decimal("120"),
+                "해외배당": Decimal("100"),
+            }
+        },
+    )
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=[account],
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=list(stocks.values()),
+    )
+
+    assert plan.region_diagnostic.target_kr_percentage == Decimal("50")
+    assert plan.region_diagnostic.current_kr_percentage == Decimal("60")
+    assert plan.region_diagnostic.is_triggered is True
+
+
+def test_build_plan_applies_half_rule_sell_with_safety_cap() -> None:
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    summary = make_summary(
+        groups,
+        stocks,
+        {
+            "국내성장": Decimal("500"),
+            "국내배당": Decimal("100"),
+            "해외성장": Decimal("200"),
+            "해외안정": Decimal("100"),
+            "해외배당": Decimal("100"),
+        },
+    )
+    accounts = [make_account("A", Decimal("0")), make_account("B", Decimal("0"))]
+    holdings_by_account = make_holdings_by_account(
+        accounts,
+        stocks,
+        {
+            "A": {
+                "국내성장": Decimal("300"),
+                "국내배당": Decimal("100"),
+                "해외성장": Decimal("200"),
+                "해외안정": Decimal("100"),
+                "해외배당": Decimal("100"),
+            },
+            "B": {
+                "국내성장": Decimal("200"),
+            },
+        },
+    )
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=accounts,
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=list(stocks.values()),
+    )
+
+    sell_total = sum(
+        (rec.amount_krw or Decimal("0")) for rec in plan.sell_recommendations
+    )
+    by_account = {
+        name: sum(
+            (rec.amount_krw or Decimal("0"))
+            for rec in plan.sell_recommendations
+            if rec.account_name == name
         )
-
-        service = RebalanceService()
-        differences = service.calculate_group_differences(summary)
-
-        assert len(differences) == 1
-        diff = differences[0]
-        assert diff.group == group
-        assert diff.current_value == Decimal("2000000")
-        assert diff.target_value == Decimal("1200000")  # 60% of 2M
-        assert diff.difference == Decimal("800000")  # current - target (overweight)
-
-    def test_calculate_group_differences_multiple_groups(self) -> None:
-        """Should calculate differences for multiple groups."""
-        group_us = make_group("US Stocks", target_percentage=40.0)
-        group_kr = make_group("KR Stocks", target_percentage=60.0)
-
-        stock_us = make_stock("AAPL", group_us.id)
-        stock_kr = make_stock("005930", group_kr.id)
-
-        holding_us = make_holding(
-            stock=stock_us,
-            quantity=Decimal("10"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("2000000"),
-        )
-        holding_kr = make_holding(
-            stock=stock_kr,
-            quantity=Decimal("100"),
-            price=Decimal("80000"),
-            currency="KRW",
-            value_krw=Decimal("8000000"),
-        )
-
-        summary = PortfolioSummary(
-            holdings=[(group_us, holding_us), (group_kr, holding_kr)],
-            total_value=Decimal("10000000"),
-            total_assets=Decimal("10000000"),
-        )
-
-        service = RebalanceService()
-        differences = service.calculate_group_differences(summary)
-
-        assert len(differences) == 2
-
-        us_diff = next(d for d in differences if d.group.name == "US Stocks")
-        kr_diff = next(d for d in differences if d.group.name == "KR Stocks")
-
-        # US: current 2M, target 4M (40%), difference -2M (underweight)
-        assert us_diff.current_value == Decimal("2000000")
-        assert us_diff.target_value == Decimal("4000000")
-        assert us_diff.difference == Decimal("-2000000")
-
-        # KR: current 8M, target 6M (60%), difference +2M (overweight)
-        assert kr_diff.current_value == Decimal("8000000")
-        assert kr_diff.target_value == Decimal("6000000")
-        assert kr_diff.difference == Decimal("2000000")
-
-    def test_calculate_group_differences_multiple_stocks_same_group(self) -> None:
-        """Should sum holdings for stocks in the same group."""
-        group = make_group("US Stocks", target_percentage=50.0)
-
-        stock1 = make_stock("AAPL", group.id)
-        stock2 = make_stock("GOOGL", group.id)
-
-        holding1 = make_holding(
-            stock=stock1,
-            quantity=Decimal("10"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("2000000"),
-        )
-        holding2 = make_holding(
-            stock=stock2,
-            quantity=Decimal("5"),
-            price=Decimal("200"),
-            currency="USD",
-            value_krw=Decimal("1500000"),
-        )
-
-        summary = PortfolioSummary(
-            holdings=[(group, holding1), (group, holding2)],
-            total_value=Decimal("3500000"),
-            total_assets=Decimal("3500000"),
-        )
-
-        service = RebalanceService()
-        differences = service.calculate_group_differences(summary)
-
-        assert len(differences) == 1
-        diff = differences[0]
-        assert diff.current_value == Decimal("3500000")  # sum of both holdings
-        assert diff.target_value == Decimal("1750000")  # 50% of total
-        assert diff.difference == Decimal("1750000")  # overweight
-
-
-class TestSellRecommendations:
-    """Test sell recommendations with overseas stock priority."""
-
-    def test_sell_recommendations_include_quantity(self) -> None:
-        """Sell recommendations should include calculated share quantity."""
-        group = make_group("US Stocks", target_percentage=50.0)
-
-        stock = make_stock("AAPL", group.id)
-        holding = make_holding(
-            stock=stock,
-            quantity=Decimal("10"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("2000000"),
-        )
-
-        # Total 2M, target 50% = 1M, need to sell 1M (half the holding)
-        summary = PortfolioSummary(
-            holdings=[(group, holding)],
-            total_value=Decimal("2000000"),
-            total_assets=Decimal("2000000"),
-        )
-
-        service = RebalanceService()
-        recommendations = service.get_sell_recommendations(summary)
-
-        assert recommendations[0].quantity == Decimal("5")
-
-    def test_sell_recommendations_overseas_first(self) -> None:
-        """When selling, should recommend overseas stocks (USD) first."""
-        group = make_group("Mixed Portfolio", target_percentage=50.0)
-
-        stock_us = make_stock("AAPL", group.id)
-        stock_kr = make_stock("005930", group.id)
-
-        holding_us = make_holding(
-            stock=stock_us,
-            quantity=Decimal("10"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("2000000"),
-        )
-        holding_kr = make_holding(
-            stock=stock_kr,
-            quantity=Decimal("100"),
-            price=Decimal("80000"),
-            currency="KRW",
-            value_krw=Decimal("8000000"),
-        )
-
-        # Total 10M, target 50% = 5M, current = 10M, need to sell 5M
-        summary = PortfolioSummary(
-            holdings=[(group, holding_us), (group, holding_kr)],
-            total_value=Decimal("10000000"),
-            total_assets=Decimal("10000000"),
-        )
-
-        service = RebalanceService()
-        recommendations = service.get_sell_recommendations(summary)
-
-        # Should recommend selling overseas stock first
-        assert len(recommendations) > 0
-        first_rec = recommendations[0]
-        assert first_rec.ticker == "AAPL"
-        assert first_rec.action == RebalanceAction.SELL
-        assert first_rec.currency == "USD"
-
-    def test_sell_recommendations_overseas_exhausted_then_domestic(self) -> None:
-        """When overseas holdings exhausted, should recommend domestic stocks."""
-        group = make_group("Mixed Portfolio", target_percentage=20.0)
-
-        stock_us = make_stock("AAPL", group.id)
-        stock_kr = make_stock("005930", group.id)
-
-        # Small overseas position
-        holding_us = make_holding(
-            stock=stock_us,
-            quantity=Decimal("5"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("1000000"),  # 1M
-        )
-        # Large domestic position
-        holding_kr = make_holding(
-            stock=stock_kr,
-            quantity=Decimal("100"),
-            price=Decimal("90000"),
-            currency="KRW",
-            value_krw=Decimal("9000000"),  # 9M
-        )
-
-        # Total 10M, target 20% = 2M, current = 10M, need to sell 8M
-        # Overseas only has 1M, so need to sell 7M from domestic
-        summary = PortfolioSummary(
-            holdings=[(group, holding_us), (group, holding_kr)],
-            total_value=Decimal("10000000"),
-            total_assets=Decimal("10000000"),
-        )
-
-        service = RebalanceService()
-        recommendations = service.get_sell_recommendations(summary)
-
-        # Should have recommendations for both, overseas first
-        assert len(recommendations) >= 2
-
-        # First should be overseas
-        assert recommendations[0].ticker == "AAPL"
-        assert recommendations[0].currency == "USD"
-
-        # Second should be domestic
-        assert recommendations[1].ticker == "005930"
-        assert recommendations[1].currency == "KRW"
-
-    def test_sell_recommendations_only_for_overweight_groups(self) -> None:
-        """Should only generate sell recommendations for overweight groups."""
-        group_overweight = make_group("Overweight", target_percentage=30.0)
-        group_underweight = make_group("Underweight", target_percentage=70.0)
-
-        stock_over = make_stock("AAPL", group_overweight.id)
-        stock_under = make_stock("005930", group_underweight.id)
-
-        holding_over = make_holding(
-            stock=stock_over,
-            quantity=Decimal("10"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("5000000"),  # 5M (overweight: target 3M)
-        )
-        holding_under = make_holding(
-            stock=stock_under,
-            quantity=Decimal("50"),
-            price=Decimal("100000"),
-            currency="KRW",
-            value_krw=Decimal("5000000"),  # 5M (underweight: target 7M)
-        )
-
-        summary = PortfolioSummary(
-            holdings=[
-                (group_overweight, holding_over),
-                (group_underweight, holding_under),
-            ],
-            total_value=Decimal("10000000"),
-            total_assets=Decimal("10000000"),
-        )
-
-        service = RebalanceService()
-        recommendations = service.get_sell_recommendations(summary)
-
-        # Should only have sell recommendations for overweight group
-        for rec in recommendations:
-            assert rec.action == RebalanceAction.SELL
-            # Should only recommend selling AAPL (from overweight group)
-            assert rec.ticker == "AAPL"
-
-
-class TestBuyRecommendations:
-    """Test buy recommendations with domestic stock priority."""
-
-    def test_buy_recommendations_domestic_first(self) -> None:
-        """When buying, should recommend domestic stocks (KRW) first."""
-        group = make_group("Mixed Portfolio", target_percentage=100.0)
-
-        stock_us = make_stock("AAPL", group.id)
-        stock_kr = make_stock("005930", group.id)
-
-        holding_us = make_holding(
-            stock=stock_us,
-            quantity=Decimal("5"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("1000000"),  # 1M
-        )
-        holding_kr = make_holding(
-            stock=stock_kr,
-            quantity=Decimal("50"),
-            price=Decimal("80000"),
-            currency="KRW",
-            value_krw=Decimal("4000000"),  # 4M
-        )
-
-        # Total 5M, target 100% = 10M (with total_value=10M), need to buy 5M
-        summary = PortfolioSummary(
-            holdings=[(group, holding_us), (group, holding_kr)],
-            total_value=Decimal("10000000"),
-            total_assets=Decimal("10000000"),
-        )
-
-        service = RebalanceService()
-        recommendations = service.get_buy_recommendations(summary)
-
-        # Should recommend buying domestic stock first
-        assert len(recommendations) > 0
-        first_rec = recommendations[0]
-        assert first_rec.ticker == "005930"
-        assert first_rec.action == RebalanceAction.BUY
-        assert first_rec.currency == "KRW"
-
-    def test_buy_recommendations_only_for_underweight_groups(self) -> None:
-        """Should only generate buy recommendations for underweight groups."""
-        group_overweight = make_group("Overweight", target_percentage=30.0)
-        group_underweight = make_group("Underweight", target_percentage=70.0)
-
-        stock_over = make_stock("AAPL", group_overweight.id)
-        stock_under = make_stock("005930", group_underweight.id)
-
-        holding_over = make_holding(
-            stock=stock_over,
-            quantity=Decimal("10"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("5000000"),  # 5M (overweight: target 3M)
-        )
-        holding_under = make_holding(
-            stock=stock_under,
-            quantity=Decimal("50"),
-            price=Decimal("100000"),
-            currency="KRW",
-            value_krw=Decimal("5000000"),  # 5M (underweight: target 7M)
-        )
-
-        summary = PortfolioSummary(
-            holdings=[
-                (group_overweight, holding_over),
-                (group_underweight, holding_under),
-            ],
-            total_value=Decimal("10000000"),
-            total_assets=Decimal("10000000"),
-        )
-
-        service = RebalanceService()
-        recommendations = service.get_buy_recommendations(summary)
-
-        # Should only have buy recommendations for underweight group
-        for rec in recommendations:
-            assert rec.action == RebalanceAction.BUY
-            # Should only recommend buying 005930 (from underweight group)
-            assert rec.ticker == "005930"
-
-    def test_buy_recommendations_with_multiple_domestic_stocks(self) -> None:
-        """Should distribute buy amount across domestic stocks."""
-        group = make_group("Korean Stocks", target_percentage=100.0)
-
-        stock_kr1 = make_stock("005930", group.id)  # Samsung
-        stock_kr2 = make_stock("000660", group.id)  # SK Hynix
-
-        holding_kr1 = make_holding(
-            stock=stock_kr1,
-            quantity=Decimal("50"),
-            price=Decimal("80000"),
-            currency="KRW",
-            value_krw=Decimal("4000000"),
-        )
-        holding_kr2 = make_holding(
-            stock=stock_kr2,
-            quantity=Decimal("30"),
-            price=Decimal("200000"),
-            currency="KRW",
-            value_krw=Decimal("6000000"),
-        )
-
-        # Total 10M, target 100% = 20M, need to buy 10M
-        summary = PortfolioSummary(
-            holdings=[(group, holding_kr1), (group, holding_kr2)],
-            total_value=Decimal("20000000"),
-            total_assets=Decimal("20000000"),
-        )
-
-        service = RebalanceService()
-        recommendations = service.get_buy_recommendations(summary)
-
-        # Should have buy recommendations for both stocks
-        assert len(recommendations) >= 1
-        # All should be domestic
-        for rec in recommendations:
-            assert rec.currency == "KRW"
-            assert rec.action == RebalanceAction.BUY
-
-
-class TestCashBalanceInRebalancing:
-    """Test that cash balance is included in rebalancing target calculation."""
-
-    def test_calculate_group_differences_uses_total_assets(self) -> None:
-        """Target should be based on total_assets (stocks + cash), not just stock value."""
-        group = make_group("US Stocks", target_percentage=50.0)
-        stock = make_stock("AAPL", group.id)
-        holding = make_holding(
-            stock=stock,
-            quantity=Decimal("10"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("8000000"),
-        )
-
-        # 주식 800만 + 현금 200만 = 총자산 1000만
-        summary = PortfolioSummary(
-            holdings=[(group, holding)],
-            total_value=Decimal("8000000"),
-            total_assets=Decimal("10000000"),
-        )
-
-        service = RebalanceService()
-        differences = service.calculate_group_differences(summary)
-
-        assert len(differences) == 1
-        diff = differences[0]
-        # target = 50% of total_assets (10M) = 5M, not 50% of total_value (8M) = 4M
-        assert diff.target_value == Decimal("5000000")
-        assert diff.current_value == Decimal("8000000")
-        assert diff.difference == Decimal("3000000")  # overweight by 3M
-
-    def test_calculate_group_differences_uses_negative_total_assets(self) -> None:
-        """Target should use total_assets when cash is negative."""
-        group = make_group("US Stocks", target_percentage=50.0)
-        stock = make_stock("AAPL", group.id)
-        holding = make_holding(
-            stock=stock,
-            quantity=Decimal("10"),
-            price=Decimal("150"),
-            currency="USD",
-            value_krw=Decimal("8000000"),
-        )
-
-        # 주식 800만 + 현금 -100만 = 총자산 700만
-        summary = PortfolioSummary(
-            holdings=[(group, holding)],
-            total_value=Decimal("8000000"),
-            total_assets=Decimal("7000000"),
-        )
-
-        service = RebalanceService()
-        differences = service.calculate_group_differences(summary)
-
-        assert len(differences) == 1
-        diff = differences[0]
-        # target = 50% of total_assets (7M) = 3.5M
-        assert diff.target_value == Decimal("3500000")
-        assert diff.current_value == Decimal("8000000")
-        assert diff.difference == Decimal("4500000")
+        for name in ("A", "B")
+    }
+
+    # 국내성장 50% -> 목표35%, 상단40%: sell 10% of total assets = 100
+    assert sell_total == Decimal("100")
+    assert by_account["A"] == Decimal("60")
+    assert by_account["B"] == Decimal("40")
+
+
+def test_build_plan_skips_sell_when_only_lower_breaches_exist() -> None:
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    summary = make_summary(
+        groups,
+        stocks,
+        {
+            "국내성장": Decimal("380"),
+            "국내배당": Decimal("160"),
+            "해외성장": Decimal("260"),
+            "해외안정": Decimal("100"),
+            "해외배당": Decimal("100"),
+        },
+    )
+    account = make_account("A", Decimal("50"))
+    holdings_by_account = make_holdings_by_account(
+        [account],
+        stocks,
+        {
+            "A": {
+                "국내성장": Decimal("380"),
+                "국내배당": Decimal("160"),
+                "해외성장": Decimal("260"),
+                "해외안정": Decimal("100"),
+                "해외배당": Decimal("100"),
+            }
+        },
+    )
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=[account],
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=list(stocks.values()),
+    )
+
+    assert plan.sell_recommendations == []
+    assert sum(
+        (rec.amount_krw or Decimal("0")) for rec in plan.buy_recommendations
+    ) <= Decimal("50")
+
+
+def test_build_plan_reinvests_cash_only_within_same_account() -> None:
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    summary = make_summary(
+        groups,
+        stocks,
+        {
+            "국내성장": Decimal("500"),
+            "국내배당": Decimal("150"),
+            "해외성장": Decimal("150"),
+            "해외안정": Decimal("100"),
+            "해외배당": Decimal("100"),
+        },
+    )
+
+    accounts = [make_account("A", Decimal("0")), make_account("B", Decimal("0"))]
+    holdings_by_account = make_holdings_by_account(
+        accounts,
+        stocks,
+        {
+            "A": {
+                "국내성장": Decimal("500"),
+                "해외성장": Decimal("20"),
+            },
+            "B": {
+                "국내배당": Decimal("150"),
+                "해외성장": Decimal("130"),
+                "해외안정": Decimal("100"),
+                "해외배당": Decimal("100"),
+            },
+        },
+    )
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=accounts,
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=list(stocks.values()),
+    )
+
+    assert plan.sell_recommendations
+    assert all(rec.account_name == "A" for rec in plan.sell_recommendations)
+    assert plan.buy_recommendations
+    assert all(rec.account_name == "A" for rec in plan.buy_recommendations)
