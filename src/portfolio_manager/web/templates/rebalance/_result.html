@@ -1,5 +1,5 @@
 <div id="execute-result" class="section-card" aria-live="polite">
-  <div class="flash flash-{{ 'success' if success else 'error' }}">{{ message }}</div>
+  <div class="flash flash-{{ 'success' if success else 'error' }}" role="status" aria-live="polite">{{ message }}</div>
 
   {% if result %}
   {% set executions = result.executions or [] %}
@@ -20,8 +20,9 @@
   {% set failed_execs = executions | selectattr('status', 'equalto', 'failed') | list %}
   {% if failed_execs %}
   <h4>실패한 주문</h4>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" aria-label="실패한 주문 표 가로 스크롤 영역">
     <table class="table-compact">
+      <caption>실패한 주문과 오류 코드</caption>
       <thead>
         <tr><th>티커</th><th>구분</th><th>msg_cd</th><th>msg1</th></tr>
       </thead>

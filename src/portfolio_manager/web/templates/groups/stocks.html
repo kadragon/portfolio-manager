@@ -9,12 +9,13 @@
   </ol>
 </nav>
 
-<h2 class="page-header">{{ group.name }} 종목</h2>
+<h1 class="page-header">{{ group.name }} 종목</h1>
 <p class="page-subtitle">그룹에 포함된 종목을 관리합니다.</p>
 
 <section class="section-card">
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" aria-label="그룹 종목 목록 표 가로 스크롤 영역">
     <table class="table-compact">
+      <caption>{{ group.name }} 그룹 종목 목록과 작업</caption>
       <thead>
         <tr>
           <th>티커</th>
@@ -38,7 +39,7 @@
   <form hx-post="/groups/{{ group.id }}/stocks"
         hx-target="#stocks-body"
         hx-swap="afterbegin"
-        hx-on::after-request="this.reset()"
+        hx-on::after-request="if (event.detail.successful) { this.reset(); }"
         data-request-message="종목을 추가하는 중…">
     <div class="form-grid">
       <label class="form-field form-field-wide">
