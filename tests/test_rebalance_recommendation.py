@@ -2,6 +2,8 @@
 
 from decimal import Decimal
 
+import pytest
+
 from portfolio_manager.models.rebalance import RebalanceRecommendation, RebalanceAction
 
 
@@ -91,14 +93,31 @@ class TestRebalanceRecommendation:
         assert recommendation.amount_krw == Decimal("1300000")
         assert recommendation.amount_local == Decimal("1000")
 
-    def test_rebalance_group_name_field_syncs_with_sleeve_alias(self) -> None:
+    @pytest.mark.parametrize(
+        "input_group, input_sleeve, expected_group, expected_sleeve",
+        [
+            ("A", None, "A", "A"),
+            (None, "B", "B", "B"),
+            ("A", "B", "A", "A"),
+            ("C", "C", "C", "C"),
+            (None, None, None, None),
+        ],
+    )
+    def test_rebalance_group_name_field_syncs_with_sleeve_alias(
+        self,
+        input_group: str | None,
+        input_sleeve: str | None,
+        expected_group: str | None,
+        expected_sleeve: str | None,
+    ) -> None:
         recommendation = RebalanceRecommendation(
             ticker="AAPL",
             action=RebalanceAction.SELL,
             amount=Decimal("1000"),
             priority=1,
-            rebalance_group_name="해외성장",
+            rebalance_group_name=input_group,
+            sleeve_name=input_sleeve,
         )
 
-        assert recommendation.rebalance_group_name == "해외성장"
-        assert recommendation.sleeve_name == "해외성장"
+        assert recommendation.rebalance_group_name == expected_group
+        assert recommendation.sleeve_name == expected_sleeve

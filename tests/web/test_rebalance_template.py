@@ -1,5 +1,10 @@
 from decimal import Decimal
 
+from portfolio_manager.models.rebalance import RebalanceAction, RebalanceRecommendation
+from portfolio_manager.services.portfolio_service import PortfolioSummary
+from portfolio_manager.services.rebalance_service import RebalancePlan, RegionDiagnostic
+from portfolio_manager.web.routes import rebalance as rebalance_routes
+
 
 def test_rebalance_page_shows_text_badges_and_execute_button(client):
     response = client.get("/rebalance")
@@ -30,17 +35,46 @@ def test_rebalance_execute_partial_has_live_region(client):
     assert 'aria-live="polite"' in body
 
 
-def test_rebalance_page_shows_fractional_quantity_for_overseas(client, fake_container):
-    fake_container.group.name = "해외성장"
-    fake_container.group.target_percentage = 35.0
-    fake_container.stock.ticker = "AAPL"
-    fake_container.holding.quantity = Decimal("0.5")
-    summary_holding = fake_container.portfolio_service.summary.holdings[0][1]
-    summary_holding.stock.ticker = "AAPL"
-    summary_holding.quantity = Decimal("0.5")
-    summary_holding.price = Decimal("100")
-    summary_holding.currency = "USD"
-    summary_holding.value_krw = Decimal("700000")
+def test_rebalance_page_shows_fractional_quantity_for_overseas(client, monkeypatch):
+    recommendation = RebalanceRecommendation(
+        ticker="AAPL",
+        action=RebalanceAction.BUY,
+        amount=Decimal("100"),
+        priority=1,
+        currency="USD",
+        quantity=Decimal("0.214286"),
+        stock_name="Apple Inc",
+        group_name="해외성장",
+        account_name="메인 계좌",
+        rebalance_group_name="해외성장",
+        reason="테스트 추천",
+        trigger_type="group",
+        amount_krw=Decimal("130000"),
+    )
+
+    plan = RebalancePlan(
+        sell_recommendations=[],
+        buy_recommendations=[recommendation],
+        group_diagnostics=[],
+        region_diagnostic=RegionDiagnostic(
+            target_kr_percentage=Decimal("50"),
+            target_us_percentage=Decimal("50"),
+            current_kr_percentage=Decimal("50"),
+            current_us_percentage=Decimal("50"),
+            lower_kr_percentage=Decimal("45"),
+            upper_kr_percentage=Decimal("55"),
+            is_triggered=False,
+        ),
+        total_assets_krw=Decimal("1000000"),
+    )
+
+    summary = PortfolioSummary(holdings=[], total_value=Decimal("0"))
+
+    monkeypatch.setattr(
+        rebalance_routes,
+        "_build_rebalance_plan",
+        lambda _container: (summary, plan),
+    )
 
     response = client.get("/rebalance")
 

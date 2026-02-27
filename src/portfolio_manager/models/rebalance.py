@@ -33,13 +33,7 @@ class RebalanceRecommendation:
     amount_local: Decimal | None = None
 
     def __post_init__(self) -> None:
-        if self.rebalance_group_name is None and self.sleeve_name is not None:
+        if self.rebalance_group_name is not None:
+            self.sleeve_name = self.rebalance_group_name
+        elif self.sleeve_name is not None:
             self.rebalance_group_name = self.sleeve_name
-        elif self.rebalance_group_name is not None and self.sleeve_name is None:
-            self.sleeve_name = self.rebalance_group_name
-        elif (
-            self.rebalance_group_name is not None
-            and self.sleeve_name is not None
-            and self.rebalance_group_name != self.sleeve_name
-        ):
-            self.sleeve_name = self.rebalance_group_name

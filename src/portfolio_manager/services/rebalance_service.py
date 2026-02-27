@@ -56,7 +56,23 @@ class GroupDiagnostic:
         return self.rebalance_group_name
 
 
-SleeveDiagnostic = GroupDiagnostic
+@dataclass
+class SleeveDiagnostic:
+    """Backward-compatible diagnostic shape that accepts sleeve_name."""
+
+    sleeve_name: str
+    target_percentage: Decimal
+    band_percentage: Decimal
+    lower_percentage: Decimal
+    upper_percentage: Decimal
+    current_percentage: Decimal
+    current_value_krw: Decimal
+    is_upper_breached: bool
+    is_lower_breached: bool
+
+    @property
+    def rebalance_group_name(self) -> str:
+        return self.sleeve_name
 
 
 @dataclass
@@ -78,16 +94,42 @@ class RebalancePlan:
 
     sell_recommendations: list[RebalanceRecommendation]
     buy_recommendations: list[RebalanceRecommendation]
-    group_diagnostics: list[GroupDiagnostic] | None
     region_diagnostic: RegionDiagnostic
     total_assets_krw: Decimal
-    sleeve_diagnostics: list[GroupDiagnostic] | None = None
+    group_diagnostics: list[GroupDiagnostic] | None = None
+    sleeve_diagnostics: list[SleeveDiagnostic] | None = None
 
     def __post_init__(self) -> None:
         if self.group_diagnostics is None and self.sleeve_diagnostics is not None:
-            self.group_diagnostics = self.sleeve_diagnostics
+            self.group_diagnostics = [
+                GroupDiagnostic(
+                    rebalance_group_name=diag.sleeve_name,
+                    target_percentage=diag.target_percentage,
+                    band_percentage=diag.band_percentage,
+                    lower_percentage=diag.lower_percentage,
+                    upper_percentage=diag.upper_percentage,
+                    current_percentage=diag.current_percentage,
+                    current_value_krw=diag.current_value_krw,
+                    is_upper_breached=diag.is_upper_breached,
+                    is_lower_breached=diag.is_lower_breached,
+                )
+                for diag in self.sleeve_diagnostics
+            ]
         elif self.sleeve_diagnostics is None and self.group_diagnostics is not None:
-            self.sleeve_diagnostics = self.group_diagnostics
+            self.sleeve_diagnostics = [
+                SleeveDiagnostic(
+                    sleeve_name=diag.rebalance_group_name,
+                    target_percentage=diag.target_percentage,
+                    band_percentage=diag.band_percentage,
+                    lower_percentage=diag.lower_percentage,
+                    upper_percentage=diag.upper_percentage,
+                    current_percentage=diag.current_percentage,
+                    current_value_krw=diag.current_value_krw,
+                    is_upper_breached=diag.is_upper_breached,
+                    is_lower_breached=diag.is_lower_breached,
+                )
+                for diag in self.group_diagnostics
+            ]
         elif self.group_diagnostics is None and self.sleeve_diagnostics is None:
             self.group_diagnostics = []
             self.sleeve_diagnostics = []
@@ -716,6 +758,9 @@ class RebalanceService:
         candidates.sort(
             key=lambda group_name: (
                 need_by_group.get(group_name, Decimal("0")),
+                # tiebreak: higher index in _GROUP_ORDER wins (해외 groups last
+                # -> buy US positions only after KR needs are met), negated for
+                # reverse sort.
                 -_GROUP_ORDER.index(group_name),
             ),
             reverse=True,
