@@ -55,4 +55,4 @@ def test_view_rebalance_shows_error_when_group_mapping_is_invalid(
     response = client.get("/rebalance")
 
     assert response.status_code == 200
-    assert "슬리브 매핑 불가 그룹" in response.text
+    assert "리밸런싱 그룹 매핑 불가 그룹" in response.text

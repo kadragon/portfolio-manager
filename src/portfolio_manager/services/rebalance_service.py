@@ -1,4 +1,4 @@
-"""Rebalance service implementing sleeve/region based v2.0 logic."""
+"""Rebalance service implementing group/region based v2.0 logic."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from portfolio_manager.services.portfolio_service import PortfolioSummary
 _PERCENT_BASE = Decimal("100")
 _REGION_BAND = Decimal("5")
 
-_SLEEVE_ORDER = (
+_GROUP_ORDER = (
     "국내성장",
     "국내배당",
     "해외성장",
@@ -23,7 +23,7 @@ _SLEEVE_ORDER = (
     "해외배당",
 )
 
-_SLEEVE_BANDS: dict[str, Decimal] = {
+_GROUP_BANDS: dict[str, Decimal] = {
     "국내성장": Decimal("5"),
     "국내배당": Decimal("3"),
     "해외성장": Decimal("5"),
@@ -31,10 +31,34 @@ _SLEEVE_BANDS: dict[str, Decimal] = {
     "해외배당": Decimal("3"),
 }
 
+# Backward compatibility aliases.
+_SLEEVE_ORDER = _GROUP_ORDER
+_SLEEVE_BANDS = _GROUP_BANDS
+
+
+@dataclass
+class GroupDiagnostic:
+    """Current/target/band status for a rebalance group."""
+
+    rebalance_group_name: str
+    target_percentage: Decimal
+    band_percentage: Decimal
+    lower_percentage: Decimal
+    upper_percentage: Decimal
+    current_percentage: Decimal
+    current_value_krw: Decimal
+    is_upper_breached: bool
+    is_lower_breached: bool
+
+    @property
+    def sleeve_name(self) -> str:
+        """Backward-compatible alias for old naming."""
+        return self.rebalance_group_name
+
 
 @dataclass
 class SleeveDiagnostic:
-    """Current/target/band status for a sleeve."""
+    """Backward-compatible diagnostic shape that accepts sleeve_name."""
 
     sleeve_name: str
     target_percentage: Decimal
@@ -45,6 +69,10 @@ class SleeveDiagnostic:
     current_value_krw: Decimal
     is_upper_breached: bool
     is_lower_breached: bool
+
+    @property
+    def rebalance_group_name(self) -> str:
+        return self.sleeve_name
 
 
 @dataclass
@@ -66,16 +94,52 @@ class RebalancePlan:
 
     sell_recommendations: list[RebalanceRecommendation]
     buy_recommendations: list[RebalanceRecommendation]
-    sleeve_diagnostics: list[SleeveDiagnostic]
     region_diagnostic: RegionDiagnostic
     total_assets_krw: Decimal
+    group_diagnostics: list[GroupDiagnostic] | None = None
+    sleeve_diagnostics: list[SleeveDiagnostic] | None = None
+
+    def __post_init__(self) -> None:
+        if self.group_diagnostics is None and self.sleeve_diagnostics is not None:
+            self.group_diagnostics = [
+                GroupDiagnostic(
+                    rebalance_group_name=diag.sleeve_name,
+                    target_percentage=diag.target_percentage,
+                    band_percentage=diag.band_percentage,
+                    lower_percentage=diag.lower_percentage,
+                    upper_percentage=diag.upper_percentage,
+                    current_percentage=diag.current_percentage,
+                    current_value_krw=diag.current_value_krw,
+                    is_upper_breached=diag.is_upper_breached,
+                    is_lower_breached=diag.is_lower_breached,
+                )
+                for diag in self.sleeve_diagnostics
+            ]
+        elif self.sleeve_diagnostics is None and self.group_diagnostics is not None:
+            self.sleeve_diagnostics = [
+                SleeveDiagnostic(
+                    sleeve_name=diag.rebalance_group_name,
+                    target_percentage=diag.target_percentage,
+                    band_percentage=diag.band_percentage,
+                    lower_percentage=diag.lower_percentage,
+                    upper_percentage=diag.upper_percentage,
+                    current_percentage=diag.current_percentage,
+                    current_value_krw=diag.current_value_krw,
+                    is_upper_breached=diag.is_upper_breached,
+                    is_lower_breached=diag.is_lower_breached,
+                )
+                for diag in self.group_diagnostics
+            ]
+        elif self.group_diagnostics is None and self.sleeve_diagnostics is None:
+            self.group_diagnostics = []
+            self.sleeve_diagnostics = []
 
 
 @dataclass
 class _TickerSnapshot:
     ticker: str
-    sleeve_name: str
-    group_name: str
+    rebalance_group_name: str
+    source_group_name: str
     currency: str
     stock_name: str
     total_quantity: Decimal
@@ -88,8 +152,8 @@ class _AccountPosition:
     account_id: UUID
     account_name: str
     ticker: str
-    sleeve_name: str
-    group_name: str
+    rebalance_group_name: str
+    source_group_name: str
     currency: str
     stock_name: str
     quantity: Decimal
@@ -102,8 +166,8 @@ class _BuyCandidate:
     ticker: str
     currency: str
     stock_name: str
-    group_name: str
-    sleeve_name: str
+    source_group_name: str
+    rebalance_group_name: str
     quantity_base: Decimal
     value_local_base: Decimal
     value_krw_base: Decimal
@@ -128,7 +192,7 @@ class RebalanceService:
             return RebalancePlan(
                 sell_recommendations=[],
                 buy_recommendations=[],
-                sleeve_diagnostics=[],
+                group_diagnostics=[],
                 region_diagnostic=RegionDiagnostic(
                     target_kr_percentage=Decimal("0"),
                     target_us_percentage=Decimal("0"),
@@ -145,25 +209,27 @@ class RebalanceService:
         stock_by_id = {stock.id: stock for stock in stocks}
         account_by_id = {account.id: account for account in accounts}
 
-        target_by_sleeve = self._build_target_by_sleeve(groups)
-        current_by_sleeve: dict[str, Decimal] = {
-            sleeve: Decimal("0") for sleeve in _SLEEVE_ORDER
+        target_by_group = self._build_target_by_group(groups)
+        current_by_group: dict[str, Decimal] = {
+            group_name: Decimal("0") for group_name in _GROUP_ORDER
         }
         ticker_snapshots = self._build_ticker_snapshots(summary)
 
         for snapshot in ticker_snapshots.values():
-            current_by_sleeve[snapshot.sleeve_name] += snapshot.total_value_krw
+            current_by_group[snapshot.rebalance_group_name] += snapshot.total_value_krw
 
-        sleeve_diagnostics = self._build_sleeve_diagnostics(
-            current_by_sleeve=current_by_sleeve,
-            target_by_sleeve=target_by_sleeve,
+        group_diagnostics = self._build_group_diagnostics(
+            current_by_group=current_by_group,
+            target_by_group=target_by_group,
             total_assets=total_assets,
         )
-        sleeve_diag_by_name = {diag.sleeve_name: diag for diag in sleeve_diagnostics}
+        group_diag_by_name = {
+            diag.rebalance_group_name: diag for diag in group_diagnostics
+        }
 
         region_diagnostic = self._build_region_diagnostic(
-            current_by_sleeve=current_by_sleeve,
-            target_by_sleeve=target_by_sleeve,
+            current_by_group=current_by_group,
+            target_by_group=target_by_group,
             total_assets=total_assets,
         )
 
@@ -175,38 +241,38 @@ class RebalanceService:
             ticker_snapshots=ticker_snapshots,
         )
 
-        sell_by_sleeve = self._calculate_sell_amounts_by_sleeve(
-            sleeve_diagnostics=sleeve_diagnostics,
+        sell_by_group = self._calculate_sell_amounts_by_group(
+            group_diagnostics=group_diagnostics,
             total_assets=total_assets,
         )
 
-        sell_recommendations, sold_by_sleeve, sell_cash_by_account = (
+        sell_recommendations, sold_by_group, sell_cash_by_account = (
             self._build_sell_recommendations(
-                sell_by_sleeve=sell_by_sleeve,
+                sell_by_group=sell_by_group,
                 positions=positions,
-                sleeve_diag_by_name=sleeve_diag_by_name,
+                group_diag_by_name=group_diag_by_name,
             )
         )
 
-        buy_candidates_by_sleeve: dict[str, list[_BuyCandidate]] = defaultdict(list)
+        buy_candidates_by_group: dict[str, list[_BuyCandidate]] = defaultdict(list)
         for snapshot in ticker_snapshots.values():
             if snapshot.total_quantity <= 0 or snapshot.total_value_local <= 0:
                 continue
-            buy_candidates_by_sleeve[snapshot.sleeve_name].append(
+            buy_candidates_by_group[snapshot.rebalance_group_name].append(
                 _BuyCandidate(
                     ticker=snapshot.ticker,
                     currency=snapshot.currency,
                     stock_name=snapshot.stock_name,
-                    group_name=snapshot.group_name,
-                    sleeve_name=snapshot.sleeve_name,
+                    source_group_name=snapshot.source_group_name,
+                    rebalance_group_name=snapshot.rebalance_group_name,
                     quantity_base=snapshot.total_quantity,
                     value_local_base=snapshot.total_value_local,
                     value_krw_base=snapshot.total_value_krw,
                 )
             )
 
-        for sleeve in buy_candidates_by_sleeve:
-            buy_candidates_by_sleeve[sleeve].sort(
+        for group_name in buy_candidates_by_group:
+            buy_candidates_by_group[group_name].sort(
                 key=lambda candidate: (
                     0 if is_domestic_ticker(candidate.ticker) else 1,
                     candidate.ticker,
@@ -216,32 +282,34 @@ class RebalanceService:
         buy_recommendations = self._build_buy_recommendations(
             accounts=accounts,
             positions=positions,
-            target_by_sleeve=target_by_sleeve,
-            current_by_sleeve=current_by_sleeve,
-            sold_by_sleeve=sold_by_sleeve,
+            target_by_group=target_by_group,
+            current_by_group=current_by_group,
+            sold_by_group=sold_by_group,
             sell_cash_by_account=sell_cash_by_account,
-            buy_candidates_by_sleeve=buy_candidates_by_sleeve,
+            buy_candidates_by_group=buy_candidates_by_group,
             total_assets=total_assets,
         )
 
         return RebalancePlan(
             sell_recommendations=sell_recommendations,
             buy_recommendations=buy_recommendations,
-            sleeve_diagnostics=sleeve_diagnostics,
+            group_diagnostics=group_diagnostics,
             region_diagnostic=region_diagnostic,
             total_assets_krw=total_assets,
         )
 
-    def _build_target_by_sleeve(self, groups: list[Group]) -> dict[str, Decimal]:
-        target_by_sleeve: dict[str, Decimal] = {
-            sleeve: Decimal("0") for sleeve in _SLEEVE_ORDER
+    def _build_target_by_group(self, groups: list[Group]) -> dict[str, Decimal]:
+        target_by_group: dict[str, Decimal] = {
+            group_name: Decimal("0") for group_name in _GROUP_ORDER
         }
         for group in groups:
-            sleeve_name = self._to_sleeve(group.name)
-            if sleeve_name is None:
+            rebalance_group_name = self._to_group(group.name)
+            if rebalance_group_name is None:
                 continue
-            target_by_sleeve[sleeve_name] += Decimal(str(group.target_percentage))
-        return target_by_sleeve
+            target_by_group[rebalance_group_name] += Decimal(
+                str(group.target_percentage)
+            )
+        return target_by_group
 
     def _build_ticker_snapshots(
         self, summary: PortfolioSummary
@@ -249,10 +317,10 @@ class RebalanceService:
         snapshots: dict[str, _TickerSnapshot] = {}
 
         for group, holding in summary.holdings:
-            sleeve_name = self._to_sleeve(group.name)
-            if sleeve_name is None:
+            rebalance_group_name = self._to_group(group.name)
+            if rebalance_group_name is None:
                 raise ValueError(
-                    f"슬리브 매핑 불가 그룹이 있습니다: {group.name}. "
+                    f"리밸런싱 그룹 매핑 불가 그룹이 있습니다: {group.name}. "
                     "그룹명은 국내성장/국내배당/해외성장/해외안정/해외배당 중 하나여야 합니다."
                 )
 
@@ -267,8 +335,8 @@ class RebalanceService:
             if existing is None:
                 snapshots[ticker] = _TickerSnapshot(
                     ticker=ticker,
-                    sleeve_name=sleeve_name,
-                    group_name=group.name,
+                    rebalance_group_name=rebalance_group_name,
+                    source_group_name=group.name,
                     currency=holding.currency,
                     stock_name=stock_name,
                     total_quantity=holding.quantity,
@@ -279,8 +347,8 @@ class RebalanceService:
 
             snapshots[ticker] = _TickerSnapshot(
                 ticker=ticker,
-                sleeve_name=existing.sleeve_name,
-                group_name=existing.group_name,
+                rebalance_group_name=existing.rebalance_group_name,
+                source_group_name=existing.source_group_name,
                 currency=existing.currency,
                 stock_name=existing.stock_name,
                 total_quantity=existing.total_quantity + holding.quantity,
@@ -290,24 +358,24 @@ class RebalanceService:
 
         return snapshots
 
-    def _build_sleeve_diagnostics(
+    def _build_group_diagnostics(
         self,
         *,
-        current_by_sleeve: dict[str, Decimal],
-        target_by_sleeve: dict[str, Decimal],
+        current_by_group: dict[str, Decimal],
+        target_by_group: dict[str, Decimal],
         total_assets: Decimal,
-    ) -> list[SleeveDiagnostic]:
-        diagnostics: list[SleeveDiagnostic] = []
-        for sleeve_name in _SLEEVE_ORDER:
-            target = target_by_sleeve.get(sleeve_name, Decimal("0"))
-            band = _SLEEVE_BANDS[sleeve_name]
-            current_value = current_by_sleeve.get(sleeve_name, Decimal("0"))
+    ) -> list[GroupDiagnostic]:
+        diagnostics: list[GroupDiagnostic] = []
+        for group_name in _GROUP_ORDER:
+            target = target_by_group.get(group_name, Decimal("0"))
+            band = _GROUP_BANDS[group_name]
+            current_value = current_by_group.get(group_name, Decimal("0"))
             current = self._to_percent(current_value, total_assets)
             lower = target - band
             upper = target + band
             diagnostics.append(
-                SleeveDiagnostic(
-                    sleeve_name=sleeve_name,
+                GroupDiagnostic(
+                    rebalance_group_name=group_name,
                     target_percentage=target,
                     band_percentage=band,
                     lower_percentage=lower,
@@ -323,18 +391,18 @@ class RebalanceService:
     def _build_region_diagnostic(
         self,
         *,
-        current_by_sleeve: dict[str, Decimal],
-        target_by_sleeve: dict[str, Decimal],
+        current_by_group: dict[str, Decimal],
+        target_by_group: dict[str, Decimal],
         total_assets: Decimal,
     ) -> RegionDiagnostic:
-        target_kr = target_by_sleeve["국내성장"] + target_by_sleeve["국내배당"]
+        target_kr = target_by_group["국내성장"] + target_by_group["국내배당"]
         target_us = (
-            target_by_sleeve["해외성장"]
-            + target_by_sleeve["해외안정"]
-            + target_by_sleeve["해외배당"]
+            target_by_group["해외성장"]
+            + target_by_group["해외안정"]
+            + target_by_group["해외배당"]
         )
 
-        current_kr_value = current_by_sleeve["국내성장"] + current_by_sleeve["국내배당"]
+        current_kr_value = current_by_group["국내성장"] + current_by_group["국내배당"]
         current_kr = self._to_percent(current_kr_value, total_assets)
         current_us = _PERCENT_BASE - current_kr
 
@@ -375,10 +443,10 @@ class RebalanceService:
                 group = group_by_id.get(stock.group_id)
                 if group is None:
                     continue
-                sleeve_name = self._to_sleeve(group.name)
-                if sleeve_name is None:
+                rebalance_group_name = self._to_group(group.name)
+                if rebalance_group_name is None:
                     raise ValueError(
-                        f"슬리브 매핑 불가 그룹이 있습니다: {group.name}. "
+                        f"리밸런싱 그룹 매핑 불가 그룹이 있습니다: {group.name}. "
                         "그룹명은 국내성장/국내배당/해외성장/해외안정/해외배당 중 하나여야 합니다."
                     )
 
@@ -394,8 +462,8 @@ class RebalanceService:
                         account_id=account.id,
                         account_name=account.name,
                         ticker=stock.ticker,
-                        sleeve_name=sleeve_name,
-                        group_name=group.name,
+                        rebalance_group_name=rebalance_group_name,
+                        source_group_name=group.name,
                         currency=snapshot.currency,
                         stock_name=snapshot.stock_name or stock.ticker,
                         quantity=holding.quantity,
@@ -405,13 +473,13 @@ class RebalanceService:
                 )
         return positions
 
-    def _calculate_sell_amounts_by_sleeve(
+    def _calculate_sell_amounts_by_group(
         self,
         *,
-        sleeve_diagnostics: list[SleeveDiagnostic],
+        group_diagnostics: list[GroupDiagnostic],
         total_assets: Decimal,
     ) -> dict[str, Decimal]:
-        upper_breaches = [diag for diag in sleeve_diagnostics if diag.is_upper_breached]
+        upper_breaches = [diag for diag in group_diagnostics if diag.is_upper_breached]
         if not upper_breaches:
             return {}
 
@@ -420,52 +488,53 @@ class RebalanceService:
             reverse=True,
         )
 
-        sell_by_sleeve: dict[str, Decimal] = {}
+        sell_by_group: dict[str, Decimal] = {}
         for diag in upper_breaches:
             midpoint = (diag.current_percentage + diag.target_percentage) / Decimal("2")
             next_weight = min(midpoint, diag.upper_percentage)
             sell_weight = diag.current_percentage - next_weight
             if sell_weight <= 0:
                 continue
-            sell_by_sleeve[diag.sleeve_name] = (
+            sell_by_group[diag.rebalance_group_name] = (
                 sell_weight / _PERCENT_BASE
             ) * total_assets
-        return sell_by_sleeve
+        return sell_by_group
 
     def _build_sell_recommendations(
         self,
         *,
-        sell_by_sleeve: dict[str, Decimal],
+        sell_by_group: dict[str, Decimal],
         positions: list[_AccountPosition],
-        sleeve_diag_by_name: dict[str, SleeveDiagnostic],
+        group_diag_by_name: dict[str, GroupDiagnostic],
     ) -> tuple[list[RebalanceRecommendation], dict[str, Decimal], dict[UUID, Decimal]]:
         recommendations: list[RebalanceRecommendation] = []
-        sold_by_sleeve: dict[str, Decimal] = defaultdict(Decimal)
+        sold_by_group: dict[str, Decimal] = defaultdict(Decimal)
         sell_cash_by_account: dict[UUID, Decimal] = defaultdict(Decimal)
 
-        for sleeve_name in _SLEEVE_ORDER:
-            target_sell = sell_by_sleeve.get(sleeve_name, Decimal("0"))
+        for group_name in _GROUP_ORDER:
+            target_sell = sell_by_group.get(group_name, Decimal("0"))
             if target_sell <= 0:
                 continue
 
-            sleeve_positions = [
+            group_positions = [
                 position
                 for position in positions
-                if position.sleeve_name == sleeve_name and position.value_krw > 0
+                if position.rebalance_group_name == group_name
+                and position.value_krw > 0
             ]
-            if not sleeve_positions:
+            if not group_positions:
                 continue
 
-            total_sleeve_value = sum(
-                (position.value_krw for position in sleeve_positions), Decimal("0")
+            total_group_value = sum(
+                (position.value_krw for position in group_positions), Decimal("0")
             )
-            if total_sleeve_value <= 0:
+            if total_group_value <= 0:
                 continue
 
-            target_sell = min(target_sell, total_sleeve_value)
+            target_sell = min(target_sell, total_group_value)
             account_values: dict[UUID, Decimal] = defaultdict(Decimal)
             account_name_by_id: dict[UUID, str] = {}
-            for position in sleeve_positions:
+            for position in group_positions:
                 account_values[position.account_id] += position.value_krw
                 account_name_by_id[position.account_id] = position.account_name
 
@@ -474,18 +543,18 @@ class RebalanceService:
                 key=lambda account_id: account_name_by_id.get(account_id, ""),
             )
 
-            remaining_sleeve_sell = target_sell
+            remaining_group_sell = target_sell
             for account_index, account_id in enumerate(account_ids):
                 account_value = account_values[account_id]
                 if account_value <= 0:
                     continue
 
                 if account_index == len(account_ids) - 1:
-                    account_sell = min(remaining_sleeve_sell, account_value)
+                    account_sell = min(remaining_group_sell, account_value)
                 else:
-                    proportional = target_sell * (account_value / total_sleeve_value)
+                    proportional = target_sell * (account_value / total_group_value)
                     account_sell = min(
-                        proportional, remaining_sleeve_sell, account_value
+                        proportional, remaining_group_sell, account_value
                     )
 
                 if account_sell <= 0:
@@ -493,14 +562,12 @@ class RebalanceService:
 
                 account_positions = [
                     position
-                    for position in sleeve_positions
+                    for position in group_positions
                     if position.account_id == account_id
                 ]
                 account_positions.sort(
                     key=lambda position: (
-                        1
-                        if is_domestic_ticker(position.ticker)
-                        else 0,  # overseas (USD) first
+                        1 if is_domestic_ticker(position.ticker) else 0,
                         position.ticker,
                     )
                 )
@@ -539,7 +606,7 @@ class RebalanceService:
                         position_quantity=position.quantity,
                     )
 
-                    diag = sleeve_diag_by_name[sleeve_name]
+                    diag = group_diag_by_name[group_name]
                     recommendations.append(
                         RebalanceRecommendation(
                             ticker=position.ticker,
@@ -549,52 +616,52 @@ class RebalanceService:
                             currency=position.currency,
                             quantity=quantity,
                             stock_name=position.stock_name or position.ticker,
-                            group_name=position.group_name,
+                            group_name=position.source_group_name,
                             account_name=position.account_name,
-                            sleeve_name=sleeve_name,
+                            rebalance_group_name=group_name,
                             reason=(
-                                "과열 슬리브 절반 감축 "
+                                "과열 그룹 절반 감축 "
                                 f"({diag.current_percentage:.2f}% -> 목표근접, "
                                 f"상단 {diag.upper_percentage:.2f}%)"
                             ),
-                            trigger_type="sleeve",
+                            trigger_type="group",
                             amount_krw=sell_krw,
                             amount_local=amount_local,
                         )
                     )
 
                     remaining_account_sell -= sell_krw
-                    remaining_sleeve_sell -= sell_krw
-                    sold_by_sleeve[sleeve_name] += sell_krw
+                    remaining_group_sell -= sell_krw
+                    sold_by_group[group_name] += sell_krw
                     sell_cash_by_account[position.account_id] += sell_krw
 
-        return recommendations, dict(sold_by_sleeve), dict(sell_cash_by_account)
+        return recommendations, dict(sold_by_group), dict(sell_cash_by_account)
 
     def _build_buy_recommendations(
         self,
         *,
         accounts: list[Account],
         positions: list[_AccountPosition],
-        target_by_sleeve: dict[str, Decimal],
-        current_by_sleeve: dict[str, Decimal],
-        sold_by_sleeve: dict[str, Decimal],
+        target_by_group: dict[str, Decimal],
+        current_by_group: dict[str, Decimal],
+        sold_by_group: dict[str, Decimal],
         sell_cash_by_account: dict[UUID, Decimal],
-        buy_candidates_by_sleeve: dict[str, list[_BuyCandidate]],
+        buy_candidates_by_group: dict[str, list[_BuyCandidate]],
         total_assets: Decimal,
     ) -> list[RebalanceRecommendation]:
         recommendations: list[RebalanceRecommendation] = []
 
-        projected_by_sleeve: dict[str, Decimal] = {}
-        need_by_sleeve: dict[str, Decimal] = {}
-        for sleeve_name in _SLEEVE_ORDER:
-            projected_value = current_by_sleeve.get(
-                sleeve_name, Decimal("0")
-            ) - sold_by_sleeve.get(sleeve_name, Decimal("0"))
+        projected_by_group: dict[str, Decimal] = {}
+        need_by_group: dict[str, Decimal] = {}
+        for group_name in _GROUP_ORDER:
+            projected_value = current_by_group.get(
+                group_name, Decimal("0")
+            ) - sold_by_group.get(group_name, Decimal("0"))
             target_value = (
-                target_by_sleeve.get(sleeve_name, Decimal("0")) / _PERCENT_BASE
+                target_by_group.get(group_name, Decimal("0")) / _PERCENT_BASE
             ) * total_assets
-            projected_by_sleeve[sleeve_name] = projected_value
-            need_by_sleeve[sleeve_name] = max(
+            projected_by_group[group_name] = projected_value
+            need_by_group[group_name] = max(
                 Decimal("0"), target_value - projected_value
             )
 
@@ -605,25 +672,25 @@ class RebalanceService:
             if cash <= 0:
                 continue
 
-            blocked_sleeves: set[str] = set()
+            blocked_groups: set[str] = set()
             while cash > 0:
-                sleeve_name = self._pick_next_sleeve(need_by_sleeve, blocked_sleeves)
-                if sleeve_name is None:
+                group_name = self._pick_next_group(need_by_group, blocked_groups)
+                if group_name is None:
                     break
 
-                need = need_by_sleeve[sleeve_name]
+                need = need_by_group[group_name]
                 if need <= 0:
-                    blocked_sleeves.add(sleeve_name)
+                    blocked_groups.add(group_name)
                     continue
 
                 candidate = self._select_buy_candidate(
                     account_id=account.id,
-                    sleeve_name=sleeve_name,
+                    rebalance_group_name=group_name,
                     positions=positions,
-                    buy_candidates_by_sleeve=buy_candidates_by_sleeve,
+                    buy_candidates_by_group=buy_candidates_by_group,
                 )
                 if candidate is None:
-                    blocked_sleeves.add(sleeve_name)
+                    blocked_groups.add(group_name)
                     continue
 
                 buy_krw = min(cash, need)
@@ -643,7 +710,7 @@ class RebalanceService:
                 )
 
                 projected_weight = self._to_percent(
-                    projected_by_sleeve[sleeve_name], total_assets
+                    projected_by_group[group_name], total_assets
                 )
                 recommendations.append(
                     RebalanceRecommendation(
@@ -654,46 +721,47 @@ class RebalanceService:
                         currency=candidate.currency,
                         quantity=quantity,
                         stock_name=candidate.stock_name or candidate.ticker,
-                        group_name=candidate.group_name,
+                        group_name=candidate.source_group_name,
                         account_name=account.name,
-                        sleeve_name=sleeve_name,
+                        rebalance_group_name=group_name,
                         reason=(
                             "목표 대비 부족 수분 공급 "
-                            f"({projected_weight:.2f}% -> 목표 {target_by_sleeve[sleeve_name]:.2f}%)"
+                            f"({projected_weight:.2f}% -> 목표 {target_by_group[group_name]:.2f}%)"
                         ),
-                        trigger_type="sleeve",
+                        trigger_type="group",
                         amount_krw=buy_krw,
                         amount_local=amount_local,
                     )
                 )
 
                 cash -= buy_krw
-                projected_by_sleeve[sleeve_name] += buy_krw
-                need_by_sleeve[sleeve_name] = max(
-                    Decimal("0"), need_by_sleeve[sleeve_name] - buy_krw
+                projected_by_group[group_name] += buy_krw
+                need_by_group[group_name] = max(
+                    Decimal("0"), need_by_group[group_name] - buy_krw
                 )
 
         return recommendations
 
-    def _pick_next_sleeve(
+    def _pick_next_group(
         self,
-        need_by_sleeve: dict[str, Decimal],
-        blocked_sleeves: set[str],
+        need_by_group: dict[str, Decimal],
+        blocked_groups: set[str],
     ) -> str | None:
         candidates = [
-            sleeve_name
-            for sleeve_name in _SLEEVE_ORDER
-            if sleeve_name not in blocked_sleeves
-            and need_by_sleeve.get(sleeve_name, Decimal("0")) > 0
+            group_name
+            for group_name in _GROUP_ORDER
+            if group_name not in blocked_groups
+            and need_by_group.get(group_name, Decimal("0")) > 0
         ]
         if not candidates:
             return None
         candidates.sort(
-            key=lambda sleeve_name: (
-                need_by_sleeve.get(sleeve_name, Decimal("0")),
-                # tiebreak: higher index in _SLEEVE_ORDER wins (해외 sleeves last → buy
-                # US positions only after KR needs are met), negated for reverse sort
-                -_SLEEVE_ORDER.index(sleeve_name),
+            key=lambda group_name: (
+                need_by_group.get(group_name, Decimal("0")),
+                # tiebreak: higher index in _GROUP_ORDER wins (해외 groups last
+                # -> buy US positions only after KR needs are met), negated for
+                # reverse sort.
+                -_GROUP_ORDER.index(group_name),
             ),
             reverse=True,
         )
@@ -703,15 +771,15 @@ class RebalanceService:
         self,
         *,
         account_id: UUID,
-        sleeve_name: str,
+        rebalance_group_name: str,
         positions: list[_AccountPosition],
-        buy_candidates_by_sleeve: dict[str, list[_BuyCandidate]],
+        buy_candidates_by_group: dict[str, list[_BuyCandidate]],
     ) -> _BuyCandidate | None:
         account_positions = [
             position
             for position in positions
             if position.account_id == account_id
-            and position.sleeve_name == sleeve_name
+            and position.rebalance_group_name == rebalance_group_name
             and position.value_local > 0
         ]
         if account_positions:
@@ -727,14 +795,14 @@ class RebalanceService:
                 ticker=top.ticker,
                 currency=top.currency,
                 stock_name=top.stock_name,
-                group_name=top.group_name,
-                sleeve_name=top.sleeve_name,
+                source_group_name=top.source_group_name,
+                rebalance_group_name=top.rebalance_group_name,
                 quantity_base=top.quantity,
                 value_local_base=top.value_local,
                 value_krw_base=top.value_krw,
             )
 
-        candidates = buy_candidates_by_sleeve.get(sleeve_name, [])
+        candidates = buy_candidates_by_group.get(rebalance_group_name, [])
         if not candidates:
             return None
         return candidates[0]
@@ -768,6 +836,10 @@ class RebalanceService:
             return Decimal("0")
         return (value / total_assets) * _PERCENT_BASE
 
-    def _to_sleeve(self, group_name: str) -> str | None:
+    def _to_group(self, group_name: str) -> str | None:
         normalized = "".join(group_name.split())
-        return normalized if normalized in _SLEEVE_BANDS else None
+        return normalized if normalized in _GROUP_BANDS else None
+
+    # Backward-compatible alias for old method name.
+    def _to_sleeve(self, group_name: str) -> str | None:
+        return self._to_group(group_name)

@@ -3,7 +3,7 @@
 
 {% block content %}
 <h1 class="page-header">리밸런싱 추천</h1>
-<p class="page-subtitle">슬리브 밴드와 지역 비중 트리거를 기준으로 계좌별 매매 권고를 표시합니다.</p>
+<p class="page-subtitle">그룹 밴드와 지역 비중 트리거를 기준으로 계좌별 매매 권고를 표시합니다.</p>
 
 {% if error %}
 <div class="flash flash-error" role="alert" aria-live="polite">{{ error }}</div>
@@ -40,19 +40,19 @@
         </tr>
         {% if plan.region_diagnostic.is_triggered and not sell_recommendations %}
         <tr>
-          <td colspan="5" class="hint">지역 불균형이 감지되었으나 슬리브 상단 이탈이 없어 매도 추천은 생성되지 않았습니다.</td>
+          <td colspan="5" class="hint">지역 불균형이 감지되었으나 그룹 상단 이탈이 없어 매도 추천은 생성되지 않았습니다.</td>
         </tr>
         {% endif %}
       </tbody>
     </table>
   </div>
 
-  <div class="table-wrap" tabindex="0" aria-label="슬리브 진단 요약 표 가로 스크롤 영역">
+  <div class="table-wrap" tabindex="0" aria-label="그룹 진단 요약 표 가로 스크롤 영역">
     <table class="table-compact">
-      <caption>슬리브별 목표 비중 대비 현재 상태</caption>
+      <caption>그룹별 목표 비중 대비 현재 상태</caption>
       <thead>
         <tr>
-          <th>슬리브</th>
+          <th>그룹</th>
           <th class="text-right">목표</th>
           <th class="text-right">현재</th>
           <th class="text-right">허용 밴드</th>
@@ -60,9 +60,9 @@
         </tr>
       </thead>
       <tbody>
-        {% for diag in plan.sleeve_diagnostics %}
+        {% for diag in plan.group_diagnostics %}
         <tr>
-          <td>{{ diag.sleeve_name }}</td>
+          <td>{{ diag.rebalance_group_name }}</td>
           <td class="text-right">{{ "%.2f"|format(diag.target_percentage) }}%</td>
           <td class="text-right">{{ "%.2f"|format(diag.current_percentage) }}%</td>
           <td class="text-right">{{ "%.2f"|format(diag.lower_percentage) }}% ~ {{ "%.2f"|format(diag.upper_percentage) }}%</td>
@@ -92,8 +92,8 @@
       <thead>
         <tr>
           <th>계좌</th>
-          <th>슬리브</th>
-          <th>그룹</th>
+          <th>리밸런싱 그룹</th>
+          <th>원본 그룹</th>
           <th>티커</th>
           <th>종목명</th>
           <th class="text-right">금액(통화)</th>
@@ -107,7 +107,7 @@
         {% for rec in sell_recommendations %}
         <tr>
           <td>{{ rec.account_name or "-" }}</td>
-          <td>{{ rec.sleeve_name or "-" }}</td>
+          <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
           <td>{{ rec.group_name or "-" }}</td>
           <td><code>{{ rec.ticker }}</code></td>
           <td>{{ rec.stock_name or "-" }}</td>
@@ -115,7 +115,7 @@
             {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
           </td>
           <td class="text-right value-negative">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
-          <td class="text-right">{% if rec.quantity is not none %}{{ rec.quantity | int }}{% else %}-{% endif %}</td>
+          <td class="text-right">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
           <td>{{ rec.currency or "-" }}</td>
           <td>{{ rec.reason or "-" }}</td>
         </tr>
@@ -135,8 +135,8 @@
       <thead>
         <tr>
           <th>계좌</th>
-          <th>슬리브</th>
-          <th>그룹</th>
+          <th>리밸런싱 그룹</th>
+          <th>원본 그룹</th>
           <th>티커</th>
           <th>종목명</th>
           <th class="text-right">금액(통화)</th>
@@ -150,7 +150,7 @@
         {% for rec in buy_recommendations %}
         <tr>
           <td>{{ rec.account_name or "-" }}</td>
-          <td>{{ rec.sleeve_name or "-" }}</td>
+          <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
           <td>{{ rec.group_name or "-" }}</td>
           <td><code>{{ rec.ticker }}</code></td>
           <td>{{ rec.stock_name or "-" }}</td>
@@ -158,7 +158,7 @@
             {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
           </td>
           <td class="text-right value-positive">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
-          <td class="text-right">{% if rec.quantity is not none %}{{ rec.quantity | int }}{% else %}-{% endif %}</td>
+          <td class="text-right">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
           <td>{{ rec.currency or "-" }}</td>
           <td>{{ rec.reason or "-" }}</td>
         </tr>
