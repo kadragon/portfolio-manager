@@ -153,7 +153,7 @@ def test_build_plan_raises_for_unmapped_group_name() -> None:
     )
 
     service = RebalanceService()
-    with pytest.raises(ValueError, match="슬리브 매핑 불가 그룹"):
+    with pytest.raises(ValueError, match="리밸런싱 그룹 매핑 불가 그룹"):
         service.build_plan(
             summary=summary,
             accounts=[],
@@ -201,9 +201,11 @@ def test_build_plan_flags_upper_and_lower_band_breaches() -> None:
         stocks=list(stocks.values()),
     )
 
-    diag = {item.sleeve_name: item for item in plan.sleeve_diagnostics}
+    assert plan.group_diagnostics is not None
+    diag = {item.rebalance_group_name: item for item in plan.group_diagnostics}
     assert diag["국내성장"].is_upper_breached is True
     assert diag["해외배당"].is_lower_breached is True
+    assert plan.sleeve_diagnostics == plan.group_diagnostics
 
 
 def test_build_plan_region_trigger_uses_sleeve_target_sum() -> None:
@@ -490,6 +492,7 @@ def test_build_plan_skips_sell_when_only_lower_breaches_exist() -> None:
     assert len(plan.buy_recommendations) == 1
     buy = plan.buy_recommendations[0]
     assert buy.sleeve_name == "해외배당"
+    assert buy.rebalance_group_name == "해외배당"
     assert buy.ticker == "SCHD"
     assert buy.amount_krw == Decimal("50")
 

@@ -90,3 +90,15 @@ class TestRebalanceRecommendation:
         assert recommendation.trigger_type == "sleeve"
         assert recommendation.amount_krw == Decimal("1300000")
         assert recommendation.amount_local == Decimal("1000")
+
+    def test_rebalance_group_name_field_syncs_with_sleeve_alias(self) -> None:
+        recommendation = RebalanceRecommendation(
+            ticker="AAPL",
+            action=RebalanceAction.SELL,
+            amount=Decimal("1000"),
+            priority=1,
+            rebalance_group_name="해외성장",
+        )
+
+        assert recommendation.rebalance_group_name == "해외성장"
+        assert recommendation.sleeve_name == "해외성장"

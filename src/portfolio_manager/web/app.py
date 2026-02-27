@@ -1,7 +1,7 @@
 """FastAPI web application factory."""
 
 from contextlib import asynccontextmanager
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -63,11 +63,22 @@ def _add_filters(templates: Jinja2Templates) -> None:
             return value
         return abs(Decimal(str(value)))  # type: ignore[arg-type]
 
+    def format_rebalance_quantity(value: object, currency: object) -> str:
+        if value is None:
+            return "-"
+        amount = Decimal(str(value))
+        if str(currency) == "KRW":
+            whole = amount.to_integral_value(rounding=ROUND_DOWN)
+            return f"{whole:,.0f}"
+        formatted = f"{amount:,.6f}".rstrip("0").rstrip(".")
+        return formatted if formatted != "-0" else "0"
+
     templates.env.filters["format_krw"] = format_krw
     templates.env.filters["format_usd"] = format_usd
     templates.env.filters["format_percent"] = format_percent
     templates.env.filters["format_signed_percent"] = format_signed_percent
     templates.env.filters["abs"] = abs_value
+    templates.env.filters["format_rebalance_quantity"] = format_rebalance_quantity
 
 
 def create_app() -> FastAPI:
