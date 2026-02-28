@@ -35,8 +35,9 @@ docker compose logs -f web
 ## 5) 구성 요약
 
 - 서비스명: `web`
-- 포트: `8000:8000`
+- 포트: `127.0.0.1:8000:8000` (로컬 머신에서만 접근)
 - 실행 사용자: `${LOCAL_UID:-1000}:${LOCAL_GID:-1000}` (호스트 UID/GID 매핑)
+- 이미지 기본 사용자: `app` (non-root)
 - 환경변수: `env_file: .env`
 - 코드 마운트: `./src:/app/src` (코드 변경 시 `--reload`로 자동 반영)
 - 토큰 캐시 마운트: `./.data:/app/.data` (KIS 토큰 파일 유지)
