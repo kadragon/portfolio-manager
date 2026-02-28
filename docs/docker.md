@@ -8,6 +8,12 @@
 docker compose up -d --build web
 ```
 
+Linux에서 Docker와 로컬 실행을 번갈아 사용할 경우 `.data` 권한 충돌 방지를 위해 호스트 UID/GID를 함께 지정하세요.
+
+```bash
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose up -d --build web
+```
+
 ## 2) 이후 빠른 재개 / 중지
 
 ```bash
@@ -30,6 +36,7 @@ docker compose logs -f web
 
 - 서비스명: `web`
 - 포트: `8000:8000`
+- 실행 사용자: `${LOCAL_UID:-1000}:${LOCAL_GID:-1000}` (호스트 UID/GID 매핑)
 - 환경변수: `env_file: .env`
 - 코드 마운트: `./src:/app/src` (코드 변경 시 `--reload`로 자동 반영)
 - 토큰 캐시 마운트: `./.data:/app/.data` (KIS 토큰 파일 유지)
@@ -56,3 +63,13 @@ docker compose logs -f web
 
 - `src` 하위 파일을 수정했는지 확인하세요. 현재 마운트 대상은 `./src`입니다.
 - 컨테이너 로그에서 `reload` 이벤트를 확인하세요.
+
+### `.data/kis_token.json` 권한 오류
+
+- Linux에서는 컨테이너 생성 시 UID/GID를 지정해 실행하세요.
+- 이미 루트 소유 파일이 생겼다면 권한을 정리한 뒤 재시작하세요.
+
+```bash
+sudo chown -R "$(id -u):$(id -g)" .data
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose up -d --build web
+```
