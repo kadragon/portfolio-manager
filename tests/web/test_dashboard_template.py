@@ -5,7 +5,8 @@ def test_dashboard_uses_text_badges_and_compact_summary_layout(client):
     body = response.text
 
     assert '<h1 class="page-header">대시보드</h1>' in body
-    assert "투자 요약" in body
+    assert "summary-bar" in body
+    assert "summary-item" in body
     assert "그룹별 보유 종목, 현재가, 평가액과 기간 수익률" in body
     assert "그룹별 평가액, 현재 비중, 목표 대비 차이와 권장 동작" in body
     assert 'tabindex="0"' in body
@@ -18,7 +19,6 @@ def test_dashboard_uses_text_badges_and_compact_summary_layout(client):
     assert ">1Y<" in body
     assert ">6M<" in body
     assert ">1M<" in body
-    assert body.index("투자 요약") < body.index("보유 종목")
     assert 'hx-target="body"' not in body
     assert "📊" not in body
     assert "🔴" not in body

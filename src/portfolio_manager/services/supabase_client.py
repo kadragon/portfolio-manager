@@ -34,25 +34,72 @@ def extract_project_ref(supabase_url: str) -> str:
     return match.group(1)
 
 
+def get_project_status(project_ref: str, access_token: str) -> str | None:
+    """Get the current status of a Supabase project.
+
+    Returns:
+        Status string (e.g., 'ACTIVE_HEALTHY', 'INACTIVE', 'RESTORING')
+        or None if the request fails.
+    """
+    with httpx.Client(base_url=SUPABASE_MANAGEMENT_API_URL) as client:
+        try:
+            response = client.get(
+                f"/v1/projects/{project_ref}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "[Supabase] HTTP error while getting project status: %s", exc
+            )
+            return None
+        if response.status_code == 200:
+            return response.json().get("status")
+        logger.warning(
+            "[Supabase] Get project status returned HTTP %d: %s",
+            response.status_code,
+            response.text,
+        )
+        return None
+
+
 def restore_paused_project(project_ref: str, access_token: str) -> bool:
     """Restore a paused Supabase project via Management API.
+
+    Checks project status first — if already restoring, skips the restore
+    request and returns True so the caller proceeds to wait.
 
     Args:
         project_ref: Project reference string.
         access_token: Supabase Personal Access Token.
 
     Returns:
-        True if restore request was successful.
+        True if restore was initiated or already in progress.
     """
+    status = get_project_status(project_ref, access_token)
+    logger.info("[Supabase] Current project status: %s", status)
+
+    _SKIP_RESTORE_STATUSES = {"ACTIVE_HEALTHY", "RESTORING", "COMING_UP"}
+    if status and status in _SKIP_RESTORE_STATUSES:
+        logger.info("[Supabase] Project is '%s', skipping restore request.", status)
+        return True
+
     with httpx.Client(base_url=SUPABASE_MANAGEMENT_API_URL) as client:
         try:
             response = client.post(
                 f"/v1/projects/{project_ref}/restore",
                 headers={"Authorization": f"Bearer {access_token}"},
             )
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            logger.error("[Supabase] Restore request failed: %s", exc)
             return False
-        return response.status_code == 201
+        if response.status_code != 201:
+            logger.error(
+                "[Supabase] Restore returned HTTP %d: %s",
+                response.status_code,
+                response.text,
+            )
+            return False
+        return True
 
 
 def wait_for_project_ready(
@@ -131,6 +178,9 @@ def with_auto_resume(func: Callable[[], T]) -> T:
     except Exception as e:
         if not is_paused_project_error(e):
             raise
+        logger.info(
+            "[Supabase] Connection error detected (%s: %s)", type(e).__name__, e
+        )
 
         url = os.getenv("SUPABASE_URL")
         access_token = os.getenv("SUPABASE_ACCESS_TOKEN")
@@ -150,7 +200,8 @@ def with_auto_resume(func: Callable[[], T]) -> T:
         if not restore_paused_project(project_ref, access_token):
             raise RuntimeError(
                 f"Failed to restore Supabase project {project_ref}. "
-                "Check your SUPABASE_ACCESS_TOKEN permissions."
+                "Check your SUPABASE_ACCESS_TOKEN permissions. "
+                f"Original error: {e}"
             ) from e
 
         logger.info(
