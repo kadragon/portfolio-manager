@@ -47,10 +47,18 @@ def get_project_status(project_ref: str, access_token: str) -> str | None:
                 f"/v1/projects/{project_ref}",
                 headers={"Authorization": f"Bearer {access_token}"},
             )
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "[Supabase] HTTP error while getting project status: %s", exc
+            )
             return None
         if response.status_code == 200:
             return response.json().get("status")
+        logger.warning(
+            "[Supabase] Get project status returned HTTP %d: %s",
+            response.status_code,
+            response.text,
+        )
         return None
 
 
@@ -70,8 +78,8 @@ def restore_paused_project(project_ref: str, access_token: str) -> bool:
     status = get_project_status(project_ref, access_token)
     logger.info("[Supabase] Current project status: %s", status)
 
-    if status and status not in ("INACTIVE",):
-        # Already restoring or in some transitional state — just wait
+    _SKIP_RESTORE_STATUSES = {"ACTIVE_HEALTHY", "RESTORING", "COMING_UP"}
+    if status and status in _SKIP_RESTORE_STATUSES:
         logger.info("[Supabase] Project is '%s', skipping restore request.", status)
         return True
 

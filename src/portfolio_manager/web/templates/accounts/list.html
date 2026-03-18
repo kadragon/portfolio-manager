@@ -26,7 +26,7 @@
   </div>
 
   {% if accounts %}
-  <div style="margin-top: var(--space-4); border-top: 1px solid var(--app-border); padding-top: var(--space-4);">
+  <div class="section-divider">
     <h3>일괄 예수금 수정</h3>
     <form hx-put="/accounts/bulk-cash"
           hx-target="#bulk-cash-status"
@@ -59,7 +59,7 @@
         hx-swap="afterbegin"
         hx-on::after-request="if (event.detail.successful) { this.reset(); }"
         data-request-message="계좌를 추가하는 중…"
-        style="margin-top: var(--space-4); border-top: 1px solid var(--app-border); padding-top: var(--space-4);">
+        class="section-divider">
     <div class="form-grid">
       <label class="form-field form-field-wide">
         이름<span class="required-marker" aria-hidden="true">*</span>

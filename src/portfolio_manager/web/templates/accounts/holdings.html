@@ -39,7 +39,7 @@
     </div>
   </form>
 
-  <div style="margin-top: var(--space-4); border-top: 1px solid var(--app-border); padding-top: var(--space-4);">
+  <div class="section-divider">
     <h3>보유 추가</h3>
     <form hx-post="/accounts/{{ account.id }}/holdings"
           hx-target="#holdings-body"
@@ -67,7 +67,7 @@
     </form>
   </div>
 
-  <div style="margin-top: var(--space-4); border-top: 1px solid var(--app-border); padding-top: var(--space-4);">
+  <div class="section-divider">
     <h3>보유 추가 (티커 직접 입력)</h3>
     <p class="form-hint">새 티커는 그룹을 선택해야 하며, 그룹이 없으면 새 그룹 이름으로 자동 생성할 수 있습니다.</p>
     <form hx-post="/accounts/{{ account.id }}/holdings/by-ticker"

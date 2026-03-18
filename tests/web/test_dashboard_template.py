@@ -4,6 +4,7 @@ def test_dashboard_uses_text_badges_and_compact_summary_layout(client):
     assert response.status_code == 200
     body = response.text
 
+    assert '<h1 class="page-header">대시보드</h1>' in body
     assert "summary-bar" in body
     assert "summary-item" in body
     assert "그룹별 보유 종목, 현재가, 평가액과 기간 수익률" in body

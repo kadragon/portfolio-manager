@@ -493,6 +493,12 @@ textarea::placeholder {
   margin-right: var(--space-3);
 }
 
+.section-divider {
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--app-border);
+  padding-top: var(--space-4);
+}
+
 .summary-bar {
   display: flex;
   flex-wrap: wrap;

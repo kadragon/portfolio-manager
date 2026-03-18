@@ -2,6 +2,7 @@
 {% block title %}대시보드 — 포트폴리오 매니저{% endblock %}
 
 {% block content %}
+<h1 class="page-header">대시보드</h1>
 <p id="dashboard-rate-periods" class="sr-only">1Y는 1년, 6M은 6개월, 1M은 1개월 수익률을 의미합니다.</p>
 
 {% if error %}
@@ -92,7 +93,7 @@
     </div>
 
     {% if group_summary %}
-    <div class="table-wrap" tabindex="0" aria-label="그룹 비중 요약 표 가로 스크롤 영역" style="margin-top: var(--space-4); border-top: 1px solid var(--app-border);">
+    <div class="table-wrap section-divider" tabindex="0" aria-label="그룹 비중 요약 표 가로 스크롤 영역">
       <table class="table-compact">
         <caption class="sr-only">그룹별 평가액, 현재 비중, 목표 대비 차이와 권장 동작</caption>
         <thead>
