@@ -3,7 +3,6 @@
 
 {% block content %}
 <h1 class="page-header">그룹</h1>
-<p class="page-subtitle">자산군 목표 비중을 설정하고 종목을 연결합니다.</p>
 
 <section class="section-card">
   <div class="table-wrap" tabindex="0" aria-label="그룹 목록 표 가로 스크롤 영역">
@@ -25,15 +24,13 @@
       </tbody>
     </table>
   </div>
-</section>
 
-<section class="section-card">
-  <h3>그룹 추가</h3>
   <form hx-post="/groups"
         hx-target="#groups-body"
         hx-swap="afterbegin"
         hx-on::after-request="if (event.detail.successful) { this.reset(); }"
-        data-request-message="그룹을 추가하는 중…">
+        data-request-message="그룹을 추가하는 중…"
+        style="margin-top: var(--space-4); border-top: 1px solid var(--app-border); padding-top: var(--space-4);">
     <div class="form-grid">
       <label class="form-field form-field-wide">
         이름<span class="required-marker" aria-hidden="true">*</span>

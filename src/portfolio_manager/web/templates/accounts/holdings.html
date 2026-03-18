@@ -10,7 +10,6 @@
 </nav>
 
 <h1 class="page-header">{{ account.name }} 보유 내역</h1>
-<p class="page-subtitle">계좌의 종목별 수량을 관리합니다.</p>
 
 <section class="section-card">
   <div id="holdings-bulk-feedback" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -35,75 +34,75 @@
         </tbody>
       </table>
     </div>
-    <div class="inline-actions">
+    <div class="inline-actions" style="margin-top: var(--space-3);">
       <button type="submit" class="btn btn-primary">일괄 저장</button>
     </div>
   </form>
-</section>
 
-<section class="section-card">
-  <h3>보유 추가</h3>
-  <form hx-post="/accounts/{{ account.id }}/holdings"
-        hx-target="#holdings-body"
-        hx-swap="innerHTML"
-        hx-on::after-request="if (event.detail.successful) { this.reset(); }"
-        data-request-message="보유 내역을 추가하는 중…">
-    <div class="form-grid">
-      <label class="form-field form-field-wide">
-        종목<span class="required-marker" aria-hidden="true">*</span>
-        <select name="stock_id" required>
-          <option value="">종목을 선택하세요…</option>
-          {% for stock in all_stocks %}
-          <option value="{{ stock.id }}">{{ stock.ticker }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="form-field form-field-mid">
-        수량<span class="required-marker" aria-hidden="true">*</span>
-        <input type="number" name="quantity" value="0" min="0" step="0.000001" required autocomplete="off">
-      </label>
-      <div>
-        <button type="submit" class="btn btn-primary">보유 추가</button>
+  <div style="margin-top: var(--space-4); border-top: 1px solid var(--app-border); padding-top: var(--space-4);">
+    <h3>보유 추가</h3>
+    <form hx-post="/accounts/{{ account.id }}/holdings"
+          hx-target="#holdings-body"
+          hx-swap="innerHTML"
+          hx-on::after-request="if (event.detail.successful) { this.reset(); }"
+          data-request-message="보유 내역을 추가하는 중…">
+      <div class="form-grid">
+        <label class="form-field form-field-wide">
+          종목<span class="required-marker" aria-hidden="true">*</span>
+          <select name="stock_id" required>
+            <option value="">종목을 선택하세요…</option>
+            {% for stock in all_stocks %}
+            <option value="{{ stock.id }}">{{ stock.ticker }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="form-field form-field-mid">
+          수량<span class="required-marker" aria-hidden="true">*</span>
+          <input type="number" name="quantity" value="0" min="0" step="0.000001" required autocomplete="off">
+        </label>
+        <div>
+          <button type="submit" class="btn btn-primary">보유 추가</button>
+        </div>
       </div>
-    </div>
-  </form>
-</section>
+    </form>
+  </div>
 
-<section class="section-card">
-  <h3>보유 추가 (티커 직접 입력)</h3>
-  <p class="form-hint">새 티커는 그룹을 선택해야 하며, 그룹이 없으면 새 그룹 이름으로 자동 생성할 수 있습니다.</p>
-  <form hx-post="/accounts/{{ account.id }}/holdings/by-ticker"
-        hx-target="#holdings-body"
-        hx-swap="innerHTML"
-        hx-on::after-request="if (event.detail.successful) { this.reset(); document.getElementById('by-ticker-error').textContent = ''; }"
-        data-request-message="티커로 보유 내역을 추가하는 중…">
-    <div class="form-grid">
-      <label class="form-field form-field-wide">
-        티커<span class="required-marker" aria-hidden="true">*</span>
-        <input class="input-uppercase" type="text" name="ticker" placeholder="예: AAPL 또는 005930…" required autocomplete="off">
-      </label>
-      <label class="form-field form-field-mid">
-        수량<span class="required-marker" aria-hidden="true">*</span>
-        <input type="number" name="quantity" value="0" min="0" step="0.000001" required autocomplete="off">
-      </label>
-      <label class="form-field form-field-mid">
-        그룹 선택 (신규 티커일 때)
-        <select name="group_id">
-          <option value="">선택 안 함</option>
-          {% for group in all_groups %}
-          <option value="{{ group.id }}">{{ group.name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="form-field form-field-wide">
-        새 그룹 이름 (그룹이 없을 때만)
-        <input type="text" name="new_group_name" placeholder="예: KIS 자동동기화…" autocomplete="off">
-      </label>
-      <div>
-        <button type="submit" class="btn btn-primary">티커로 추가</button>
+  <div style="margin-top: var(--space-4); border-top: 1px solid var(--app-border); padding-top: var(--space-4);">
+    <h3>보유 추가 (티커 직접 입력)</h3>
+    <p class="form-hint">새 티커는 그룹을 선택해야 하며, 그룹이 없으면 새 그룹 이름으로 자동 생성할 수 있습니다.</p>
+    <form hx-post="/accounts/{{ account.id }}/holdings/by-ticker"
+          hx-target="#holdings-body"
+          hx-swap="innerHTML"
+          hx-on::after-request="if (event.detail.successful) { this.reset(); document.getElementById('by-ticker-error').textContent = ''; }"
+          data-request-message="티커로 보유 내역을 추가하는 중…">
+      <div class="form-grid">
+        <label class="form-field form-field-wide">
+          티커<span class="required-marker" aria-hidden="true">*</span>
+          <input class="input-uppercase" type="text" name="ticker" placeholder="예: AAPL 또는 005930…" required autocomplete="off">
+        </label>
+        <label class="form-field form-field-mid">
+          수량<span class="required-marker" aria-hidden="true">*</span>
+          <input type="number" name="quantity" value="0" min="0" step="0.000001" required autocomplete="off">
+        </label>
+        <label class="form-field form-field-mid">
+          그룹 선택 (신규 티커일 때)
+          <select name="group_id">
+            <option value="">선택 안 함</option>
+            {% for group in all_groups %}
+            <option value="{{ group.id }}">{{ group.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="form-field form-field-wide">
+          새 그룹 이름 (그룹이 없을 때만)
+          <input type="text" name="new_group_name" placeholder="예: KIS 자동동기화…" autocomplete="off">
+        </label>
+        <div>
+          <button type="submit" class="btn btn-primary">티커로 추가</button>
+        </div>
       </div>
-    </div>
-  </form>
-  <p id="by-ticker-error" class="request-status" role="status" aria-live="polite" aria-atomic="true"></p>
+    </form>
+    <p id="by-ticker-error" class="request-status" role="status" aria-live="polite" aria-atomic="true"></p>
+  </div>
 </section>
 {% endblock %}
