@@ -48,7 +48,7 @@ docker compose logs -f web
 ### `docker compose config`에서 `.env` 관련 오류
 
 - 프로젝트 루트에 `.env`가 있어야 합니다.
-- 최소 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (또는 `SUPABASE_KEY`)를 확인하세요.
+- 최소 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`를 확인하세요.
 
 ### `http://localhost:8000` 접속 불가
 

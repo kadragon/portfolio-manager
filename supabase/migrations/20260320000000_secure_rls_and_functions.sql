@@ -132,7 +132,11 @@ BEGIN
 END;
 $$;
 
--- 4. Revoke anon execute on RPC functions
-REVOKE EXECUTE ON FUNCTION aggregate_holdings_by_stock() FROM anon;
-REVOKE EXECUTE ON FUNCTION bulk_update_account_holdings(uuid, uuid[], numeric[]) FROM anon;
-REVOKE EXECUTE ON FUNCTION update_updated_at_column() FROM anon;
+-- 4. Revoke execute from PUBLIC and anon on RPC functions
+--    (PUBLIC is the default grantee for new functions in PostgreSQL;
+--     revoking from anon alone is insufficient because anon inherits from PUBLIC)
+REVOKE EXECUTE ON FUNCTION aggregate_holdings_by_stock() FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION bulk_update_account_holdings(uuid, uuid[], numeric[]) FROM PUBLIC, anon;
+
+-- Re-grant to authenticated (preserved by CREATE OR REPLACE, but explicit for clarity)
+GRANT EXECUTE ON FUNCTION bulk_update_account_holdings(uuid, uuid[], numeric[]) TO authenticated;
