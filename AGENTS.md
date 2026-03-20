@@ -11,7 +11,7 @@
 - Web UI entry point: `portfolio-web` (starts FastAPI via uvicorn on `http://127.0.0.1:8000` with reload).
 
 ## Supabase Integration
-- Supabase credentials stored in `.env`: `SUPABASE_URL` and `SUPABASE_KEY`.
+- Supabase credentials stored in `.env`: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (required; bypasses RLS). The anon key (`SUPABASE_KEY`) is no longer supported due to RLS policies.
 - Auto-resume for paused projects: Set `SUPABASE_ACCESS_TOKEN` (Personal Access Token from https://supabase.com/dashboard/account/tokens) to automatically restore paused Supabase projects on connection failure.
 - Database schema:
   - `groups` table: stores stock groups (id, name, target_percentage, created_at, updated_at)
