@@ -220,7 +220,8 @@ def with_auto_resume(func: Callable[[], T]) -> T:
 def get_supabase_client() -> Client:
     """Create and return a Supabase client with auto-resume support.
 
-    Requires SUPABASE_URL and SUPABASE_KEY environment variables.
+    Uses SUPABASE_SERVICE_ROLE_KEY (preferred, bypasses RLS) or falls back
+    to SUPABASE_KEY with a warning.
     Optionally uses SUPABASE_ACCESS_TOKEN for auto-resume of paused projects.
 
     Returns:
@@ -230,12 +231,22 @@ def get_supabase_client() -> Client:
         ValueError: If required environment variables are not set.
     """
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not key:
+        key = os.getenv("SUPABASE_KEY")
+        if key:
+            logger.warning(
+                "SUPABASE_SERVICE_ROLE_KEY is not set; falling back to SUPABASE_KEY. "
+                "This may fail if RLS policies restrict anon access."
+            )
 
     if not url:
         raise ValueError("SUPABASE_URL environment variable is not set")
     if not key:
-        raise ValueError("SUPABASE_KEY environment variable is not set")
+        raise ValueError(
+            "SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY) environment variable is not set"
+        )
 
     def create_and_test_client() -> Client:
         client = create_client(url, key)
