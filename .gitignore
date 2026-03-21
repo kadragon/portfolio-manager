@@ -9,3 +9,8 @@ htmlcov/
 .serena/
 
 *.egg-info/
+
+# Tailwind standalone CLI binary
+bin/
+# DaisyUI CSS bundle (downloaded)
+src/portfolio_manager/web/tailwind/daisyui.css

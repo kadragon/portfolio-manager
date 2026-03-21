@@ -8,7 +8,7 @@ def test_accounts_page_uses_buttons_for_edit_sync_delete(client):
     body = response.text
 
     assert "계좌 추가" in body
-    assert '<h1 class="page-header">계좌</h1>' in body
+    assert ">계좌</h1>" in body
     assert "계좌별 예수금과 작업" in body
     assert (
         'hx-on::after-request="if (event.detail.successful) { this.reset(); }"' in body
@@ -84,9 +84,7 @@ def test_holdings_page_contains_labeled_inputs_and_required_fields(
     body = response.text
 
     assert "보유 추가" in body
-    assert (
-        f'<h1 class="page-header">{fake_container.account.name} 보유 내역</h1>' in body
-    )
+    assert f">{fake_container.account.name} 보유 내역</h1>" in body
     assert f"{fake_container.account.name} 계좌 보유 종목과 수량" in body
     assert "종목명" in body
     assert "일괄 저장" in body
@@ -98,7 +96,7 @@ def test_holdings_page_contains_labeled_inputs_and_required_fields(
     assert 'name="new_group_name"' in body
     assert 'name="holding_id"' in body
     assert 'hx-on::after-request="this.reset()"' not in body
-    assert "required-marker" in body
+    assert "text-error" in body
     assert (
         f"/accounts/{fake_container.account.id}/holdings/{fake_container.holding.id}/edit"
         not in body

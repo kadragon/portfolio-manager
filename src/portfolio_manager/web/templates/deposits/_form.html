@@ -6,24 +6,24 @@
           hx-swap="outerHTML"
           data-request-message="입금 내역을 저장하는 중…">
       <label class="sr-only" for="deposit-date-{{ deposit.id }}">입금 날짜</label>
-      <input id="deposit-date-{{ deposit.id }}" type="date" name="deposit_date" value="{{ deposit.deposit_date }}" required autocomplete="off">
+      <input id="deposit-date-{{ deposit.id }}" type="date" name="deposit_date" value="{{ deposit.deposit_date }}" required autocomplete="off" class="input input-bordered input-sm">
   </td>
   <td>
       <label class="sr-only" for="deposit-amount-{{ deposit.id }}">입금 금액</label>
       <input id="deposit-amount-{{ deposit.id }}" type="number" name="amount" value="{{ deposit.amount }}"
-             min="0" step="1" required autocomplete="off">
+             min="0" step="1" required autocomplete="off" class="input input-bordered input-sm">
   </td>
   <td>
       <label class="sr-only" for="deposit-note-{{ deposit.id }}">메모</label>
       <input id="deposit-note-{{ deposit.id }}" type="text" name="note" value="{{ deposit.note or '' }}"
-             placeholder="예: 메모 입력…" autocomplete="off">
-      <small class="form-hint">빈 값은 기존 메모 유지, <code>/clear</code> 입력 시 메모 삭제</small>
+             placeholder="예: 메모 입력…" autocomplete="off" class="input input-bordered input-sm">
+      <small class="text-xs text-base-content/50 mt-0.5">빈 값은 기존 메모 유지, <code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">/clear</code> 입력 시 메모 삭제</small>
   </td>
   <td>
-      <div class="inline-actions">
-        <button type="submit" class="btn btn-primary">저장</button>
+      <div class="flex flex-wrap gap-1.5">
+        <button type="submit" class="btn btn-primary btn-sm">저장</button>
         <button type="button"
-                class="btn btn-ghost"
+                class="btn btn-ghost btn-xs"
                 hx-get="/deposits/{{ deposit.id }}"
                 hx-target="closest tr"
                 hx-swap="outerHTML"

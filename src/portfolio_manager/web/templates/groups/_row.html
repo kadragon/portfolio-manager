@@ -1,19 +1,19 @@
 <tr id="group-{{ group.id }}">
   <td>{{ group.name }}</td>
-  <td class="text-right">{{ group.target_percentage }}%</td>
+  <td class="text-right font-mono">{{ group.target_percentage }}%</td>
   <td>
-    <div class="inline-actions">
+    <div class="flex flex-wrap gap-1.5">
       <button type="button"
-              class="btn btn-ghost"
+              class="btn btn-ghost btn-xs"
               hx-get="/groups/{{ group.id }}/edit"
               hx-target="closest tr"
               hx-swap="outerHTML"
               data-request-message="그룹 수정 폼을 여는 중…">
         수정
       </button>
-      <a href="/groups/{{ group.id }}/stocks" class="btn btn-ghost">종목</a>
+      <a href="/groups/{{ group.id }}/stocks" class="btn btn-ghost btn-xs">종목</a>
       <button type="button"
-              class="btn btn-danger"
+              class="btn btn-error btn-xs"
               hx-delete="/groups/{{ group.id }}"
               hx-target="closest tr"
               hx-swap="outerHTML"

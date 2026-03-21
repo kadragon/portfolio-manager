@@ -1,0 +1,115 @@
+@import "tailwindcss";
+@import "./daisyui.css";
+
+@source "../templates/**/*.html";
+
+/* ── Custom Portfolio Dark Theme ──
+   Defined as CSS variables matching DaisyUI's theme system.
+   Applied via <html data-theme="portfolio"> in base.html.
+   Colors in oklch for perceptual uniformity.
+── */
+[data-theme="portfolio"] {
+  color-scheme: dark;
+
+  /* Base: deep navy-charcoal backgrounds */
+  --color-base-100: oklch(10% 0.015 250);
+  --color-base-200: oklch(15% 0.015 250);
+  --color-base-300: oklch(18% 0.02 250);
+  --color-base-content: oklch(83% 0.01 250);
+
+  /* Primary: vivid blue */
+  --color-primary: oklch(65% 0.19 255);
+  --color-primary-content: oklch(98% 0.005 255);
+
+  /* Secondary: soft blue-gray */
+  --color-secondary: oklch(55% 0.06 250);
+  --color-secondary-content: oklch(95% 0.005 250);
+
+  /* Accent: amber gold */
+  --color-accent: oklch(76% 0.145 75);
+  --color-accent-content: oklch(15% 0.03 75);
+
+  /* Neutral */
+  --color-neutral: oklch(22% 0.02 250);
+  --color-neutral-content: oklch(85% 0.01 250);
+
+  /* Semantic */
+  --color-info: oklch(65% 0.19 255);
+  --color-info-content: oklch(98% 0.005 255);
+
+  --color-success: oklch(75% 0.155 165);
+  --color-success-content: oklch(15% 0.03 165);
+
+  --color-warning: oklch(76% 0.145 75);
+  --color-warning-content: oklch(15% 0.03 75);
+
+  --color-error: oklch(63% 0.2 25);
+  --color-error-content: oklch(98% 0.005 25);
+
+  /* Radius */
+  --radius-selector: 0.375rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.5rem;
+
+  /* Sizing */
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+
+  /* Border */
+  --border: 1px;
+
+  /* Depth and texture */
+  --depth: 1;
+  --noise: 0;
+}
+
+/* ── Fonts ── */
+@layer base {
+  html {
+    font-family: "Pretendard", system-ui, sans-serif;
+  }
+  code, .font-mono {
+    font-family: "JetBrains Mono", "D2Coding", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ── HTMX transition animations ── */
+.htmx-swapping {
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+.htmx-settling {
+  opacity: 1;
+  transition: opacity 150ms ease-in;
+}
+.htmx-added {
+  opacity: 0;
+}
+.htmx-added.htmx-settling {
+  opacity: 1;
+  transition: opacity 300ms ease-in;
+}
+
+/* ── Accessibility ── */
+.skip-link {
+  position: absolute;
+  top: -2.5rem;
+  left: 0.5rem;
+  z-index: 50;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  border-radius: 0.25rem;
+}
+.skip-link:focus-visible {
+  top: 0.5rem;
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

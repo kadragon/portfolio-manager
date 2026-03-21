@@ -2,193 +2,203 @@
 {% block title %}리밸런싱 — 포트폴리오 매니저{% endblock %}
 
 {% block content %}
-<h1 class="page-header">리밸런싱 추천</h1>
+<h1 class="text-lg font-semibold text-base-content mb-3">리밸런싱 추천</h1>
 
 {% if error %}
-<div class="flash flash-error" role="alert" aria-live="polite">{{ error }}</div>
+<div class="alert alert-error text-sm py-2" role="alert" aria-live="polite">{{ error }}</div>
 {% endif %}
 
 {% if plan %}
-<section class="section-card">
-  <h3>진단 요약</h3>
-  <div class="table-wrap" tabindex="0" aria-label="지역 진단 요약 표 가로 스크롤 영역">
-    <table class="table-compact">
-      <caption>지역 비중 진단과 트리거 상태</caption>
-      <thead>
-        <tr>
-          <th>구분</th>
-          <th class="text-right">목표</th>
-          <th class="text-right">현재</th>
-          <th class="text-right">허용 밴드</th>
-          <th>상태</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>지역(국내)</td>
-          <td class="text-right">{{ "%.2f"|format(plan.region_diagnostic.target_kr_percentage) }}%</td>
-          <td class="text-right">{{ "%.2f"|format(plan.region_diagnostic.current_kr_percentage) }}%</td>
-          <td class="text-right">{{ "%.2f"|format(plan.region_diagnostic.lower_kr_percentage) }}% ~ {{ "%.2f"|format(plan.region_diagnostic.upper_kr_percentage) }}%</td>
-          <td>
-            {% if plan.region_diagnostic.is_triggered %}
-            <span class="badge badge-sell">트리거 발동</span>
-            {% else %}
-            <span class="badge badge-buy">정상 범위</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% if plan.region_diagnostic.is_triggered and not sell_recommendations %}
-        <tr>
-          <td colspan="5" class="hint">지역 불균형이 감지되었으나 그룹 상단 이탈이 없어 매도 추천은 생성되지 않았습니다.</td>
-        </tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
+<section class="card bg-base-200 shadow-md">
+  <div class="card-body p-4">
+    <h3 class="text-sm font-semibold text-base-content mb-2">진단 요약</h3>
+    <div class="overflow-x-auto" tabindex="0" aria-label="지역 진단 요약 표 가로 스크롤 영역">
+      <table class="table table-zebra table-sm">
+        <caption>지역 비중 진단과 트리거 상태</caption>
+        <thead>
+          <tr>
+            <th class="text-xs uppercase tracking-wider">구분</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">목표</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">현재</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">허용 밴드</th>
+            <th class="text-xs uppercase tracking-wider">상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>지역(국내)</td>
+            <td class="text-right font-mono">{{ "%.2f"|format(plan.region_diagnostic.target_kr_percentage) }}%</td>
+            <td class="text-right font-mono">{{ "%.2f"|format(plan.region_diagnostic.current_kr_percentage) }}%</td>
+            <td class="text-right font-mono">{{ "%.2f"|format(plan.region_diagnostic.lower_kr_percentage) }}% ~ {{ "%.2f"|format(plan.region_diagnostic.upper_kr_percentage) }}%</td>
+            <td>
+              {% if plan.region_diagnostic.is_triggered %}
+              <span class="badge badge-error badge-sm">트리거 발동</span>
+              {% else %}
+              <span class="badge badge-success badge-sm">정상 범위</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% if plan.region_diagnostic.is_triggered and not sell_recommendations %}
+          <tr>
+            <td colspan="5" class="text-xs text-base-content/40">지역 불균형이 감지되었으나 그룹 상단 이탈이 없어 매도 추천은 생성되지 않았습니다.</td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
 
-  <div class="table-wrap" tabindex="0" aria-label="그룹 진단 요약 표 가로 스크롤 영역">
-    <table class="table-compact">
-      <caption>그룹별 목표 비중 대비 현재 상태</caption>
-      <thead>
-        <tr>
-          <th>그룹</th>
-          <th class="text-right">목표</th>
-          <th class="text-right">현재</th>
-          <th class="text-right">허용 밴드</th>
-          <th>상태</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for diag in plan.group_diagnostics %}
-        <tr>
-          <td>{{ diag.rebalance_group_name }}</td>
-          <td class="text-right">{{ "%.2f"|format(diag.target_percentage) }}%</td>
-          <td class="text-right">{{ "%.2f"|format(diag.current_percentage) }}%</td>
-          <td class="text-right">{{ "%.2f"|format(diag.lower_percentage) }}% ~ {{ "%.2f"|format(diag.upper_percentage) }}%</td>
-          <td>
-            {% if diag.is_upper_breached %}
-            <span class="badge badge-sell">상단 이탈</span>
-            {% elif diag.is_lower_breached %}
-            <span class="badge badge-buy">하단 이탈</span>
-            {% else %}
-            <span>정상</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="overflow-x-auto" tabindex="0" aria-label="그룹 진단 요약 표 가로 스크롤 영역">
+      <table class="table table-zebra table-sm">
+        <caption>그룹별 목표 비중 대비 현재 상태</caption>
+        <thead>
+          <tr>
+            <th class="text-xs uppercase tracking-wider">그룹</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">목표</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">현재</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">허용 밴드</th>
+            <th class="text-xs uppercase tracking-wider">상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for diag in plan.group_diagnostics %}
+          <tr>
+            <td>{{ diag.rebalance_group_name }}</td>
+            <td class="text-right font-mono">{{ "%.2f"|format(diag.target_percentage) }}%</td>
+            <td class="text-right font-mono">{{ "%.2f"|format(diag.current_percentage) }}%</td>
+            <td class="text-right font-mono">{{ "%.2f"|format(diag.lower_percentage) }}% ~ {{ "%.2f"|format(diag.upper_percentage) }}%</td>
+            <td>
+              {% if diag.is_upper_breached %}
+              <span class="badge badge-error badge-sm">상단 이탈</span>
+              {% elif diag.is_lower_breached %}
+              <span class="badge badge-success badge-sm">하단 이탈</span>
+              {% else %}
+              <span>정상</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
 {% endif %}
 
 {% if sell_recommendations %}
-<section class="section-card">
-  <h3><span class="badge badge-sell">매도</span> 추천</h3>
-  <div class="table-wrap" tabindex="0" aria-label="매도 추천 표 가로 스크롤 영역">
-    <table class="table-compact">
-      <caption>매도 추천 종목, 금액, 수량, 근거</caption>
-      <thead>
-        <tr>
-          <th>계좌</th>
-          <th>리밸런싱 그룹</th>
-          <th>원본 그룹</th>
-          <th>티커</th>
-          <th>종목명</th>
-          <th class="text-right">금액(통화)</th>
-          <th class="text-right">금액(KRW)</th>
-          <th class="text-right">수량</th>
-          <th>통화</th>
-          <th>근거</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for rec in sell_recommendations %}
-        <tr>
-          <td>{{ rec.account_name or "-" }}</td>
-          <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
-          <td>{{ rec.group_name or "-" }}</td>
-          <td><code>{{ rec.ticker }}</code></td>
-          <td>{{ rec.stock_name or "-" }}</td>
-          <td class="text-right value-negative">
-            {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
-          </td>
-          <td class="text-right value-negative">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
-          <td class="text-right">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
-          <td>{{ rec.currency or "-" }}</td>
-          <td>{{ rec.reason or "-" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<section class="card bg-base-200 shadow-md">
+  <div class="card-body p-4">
+    <h3 class="text-sm font-semibold text-base-content mb-2"><span class="badge badge-error badge-sm">매도</span> 추천</h3>
+    <div class="overflow-x-auto" tabindex="0" aria-label="매도 추천 표 가로 스크롤 영역">
+      <table class="table table-zebra table-sm">
+        <caption>매도 추천 종목, 금액, 수량, 근거</caption>
+        <thead>
+          <tr>
+            <th class="text-xs uppercase tracking-wider">계좌</th>
+            <th class="text-xs uppercase tracking-wider">리밸런싱 그룹</th>
+            <th class="text-xs uppercase tracking-wider">원본 그룹</th>
+            <th class="text-xs uppercase tracking-wider">티커</th>
+            <th class="text-xs uppercase tracking-wider">종목명</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">금액(통화)</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">금액(KRW)</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
+            <th class="text-xs uppercase tracking-wider">통화</th>
+            <th class="text-xs uppercase tracking-wider">근거</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rec in sell_recommendations %}
+          <tr>
+            <td>{{ rec.account_name or "-" }}</td>
+            <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
+            <td>{{ rec.group_name or "-" }}</td>
+            <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ rec.ticker }}</code></td>
+            <td>{{ rec.stock_name or "-" }}</td>
+            <td class="text-right font-mono text-error font-semibold">
+              {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
+            </td>
+            <td class="text-right font-mono text-error font-semibold">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
+            <td class="text-right font-mono">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
+            <td>{{ rec.currency or "-" }}</td>
+            <td>{{ rec.reason or "-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
 {% endif %}
 
 {% if buy_recommendations %}
-<section class="section-card">
-  <h3><span class="badge badge-buy">매수</span> 추천</h3>
-  <div class="table-wrap" tabindex="0" aria-label="매수 추천 표 가로 스크롤 영역">
-    <table class="table-compact">
-      <caption>매수 추천 종목, 금액, 수량, 근거</caption>
-      <thead>
-        <tr>
-          <th>계좌</th>
-          <th>리밸런싱 그룹</th>
-          <th>원본 그룹</th>
-          <th>티커</th>
-          <th>종목명</th>
-          <th class="text-right">금액(통화)</th>
-          <th class="text-right">금액(KRW)</th>
-          <th class="text-right">수량</th>
-          <th>통화</th>
-          <th>근거</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for rec in buy_recommendations %}
-        <tr>
-          <td>{{ rec.account_name or "-" }}</td>
-          <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
-          <td>{{ rec.group_name or "-" }}</td>
-          <td><code>{{ rec.ticker }}</code></td>
-          <td>{{ rec.stock_name or "-" }}</td>
-          <td class="text-right value-positive">
-            {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
-          </td>
-          <td class="text-right value-positive">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
-          <td class="text-right">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
-          <td>{{ rec.currency or "-" }}</td>
-          <td>{{ rec.reason or "-" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<section class="card bg-base-200 shadow-md">
+  <div class="card-body p-4">
+    <h3 class="text-sm font-semibold text-base-content mb-2"><span class="badge badge-success badge-sm">매수</span> 추천</h3>
+    <div class="overflow-x-auto" tabindex="0" aria-label="매수 추천 표 가로 스크롤 영역">
+      <table class="table table-zebra table-sm">
+        <caption>매수 추천 종목, 금액, 수량, 근거</caption>
+        <thead>
+          <tr>
+            <th class="text-xs uppercase tracking-wider">계좌</th>
+            <th class="text-xs uppercase tracking-wider">리밸런싱 그룹</th>
+            <th class="text-xs uppercase tracking-wider">원본 그룹</th>
+            <th class="text-xs uppercase tracking-wider">티커</th>
+            <th class="text-xs uppercase tracking-wider">종목명</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">금액(통화)</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">금액(KRW)</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
+            <th class="text-xs uppercase tracking-wider">통화</th>
+            <th class="text-xs uppercase tracking-wider">근거</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rec in buy_recommendations %}
+          <tr>
+            <td>{{ rec.account_name or "-" }}</td>
+            <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
+            <td>{{ rec.group_name or "-" }}</td>
+            <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ rec.ticker }}</code></td>
+            <td>{{ rec.stock_name or "-" }}</td>
+            <td class="text-right font-mono text-success font-semibold">
+              {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
+            </td>
+            <td class="text-right font-mono text-success font-semibold">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
+            <td class="text-right font-mono">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
+            <td>{{ rec.currency or "-" }}</td>
+            <td>{{ rec.reason or "-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
 {% endif %}
 
 {% if not sell_recommendations and not buy_recommendations and not error %}
-<section class="section-card">
-  <p>리밸런싱 추천이 없습니다. 현재 포트폴리오가 목표 비중에 가깝습니다.</p>
+<section class="card bg-base-200 shadow-md">
+  <div class="card-body p-4">
+    <p>리밸런싱 추천이 없습니다. 현재 포트폴리오가 목표 비중에 가깝습니다.</p>
+  </div>
 </section>
 {% endif %}
 
 {% if sell_recommendations or buy_recommendations %}
-<div id="execute-result" class="section-card">
-  <form hx-post="/rebalance/execute"
-        hx-target="#execute-result"
-        hx-swap="outerHTML"
-        hx-confirm="실제 주문을 실행하시겠습니까?"
-        data-request-message="주문을 실행하는 중…">
-    {% if has_order_client %}
-    <button type="submit" class="btn btn-primary" hx-disabled-elt="this">주문 실행</button>
-    {% else %}
-    <button type="button" class="btn" disabled title="KIS 주문 클라이언트가 설정되지 않았습니다.">주문 실행 불가 (KIS 미설정)</button>
-    {% endif %}
-  </form>
+<div id="execute-result" class="card bg-base-200 shadow-md">
+  <div class="card-body p-4">
+    <form hx-post="/rebalance/execute"
+          hx-target="#execute-result"
+          hx-swap="outerHTML"
+          hx-confirm="실제 주문을 실행하시겠습니까?"
+          data-request-message="주문을 실행하는 중…">
+      {% if has_order_client %}
+      <button type="submit" class="btn btn-primary btn-sm" hx-disabled-elt="this">주문 실행</button>
+      {% else %}
+      <button type="button" class="btn btn-sm btn-disabled" disabled title="KIS 주문 클라이언트가 설정되지 않았습니다.">주문 실행 불가 (KIS 미설정)</button>
+      {% endif %}
+    </form>
+  </div>
 </div>
 {% endif %}
 
-<p><a href="/rebalance" class="btn btn-ghost">추천 다시 조회</a></p>
+<p><a href="/rebalance" class="btn btn-ghost btn-xs">추천 다시 조회</a></p>
 {% endblock %}

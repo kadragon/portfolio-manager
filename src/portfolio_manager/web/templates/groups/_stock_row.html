@@ -1,11 +1,11 @@
 {% set stock_group_id = group_id if group_id is defined else stock.group_id %}
 <tr id="stock-{{ stock.id }}">
-  <td><code>{{ stock.ticker }}</code></td>
+  <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ stock.ticker }}</code></td>
   <td>{{ stock.exchange or "-" }}</td>
   <td>
-    <div class="inline-actions">
+    <div class="flex flex-wrap gap-1.5">
       <button type="button"
-              class="btn btn-ghost"
+              class="btn btn-ghost btn-xs"
               hx-get="/groups/{{ stock_group_id }}/stocks/{{ stock.id }}/edit"
               hx-target="closest tr"
               hx-swap="outerHTML"
@@ -13,7 +13,7 @@
         수정
       </button>
       <button type="button"
-              class="btn btn-danger"
+              class="btn btn-error btn-xs"
               hx-delete="/groups/{{ stock_group_id }}/stocks/{{ stock.id }}"
               hx-target="closest tr"
               hx-swap="outerHTML"

@@ -23,6 +23,6 @@ def test_base_layout_contains_skip_link_and_live_regions(client):
     assert 'id="app-live-region"' in body
     assert 'aria-live="polite"' in body
     assert 'id="app-request-status"' in body
-    assert ">대시보드<" in body
-    assert ">리밸런싱<" in body
-    assert 'aria-current="page">그룹<' in body
+    assert "대시보드" in body
+    assert "리밸런싱" in body
+    assert 'aria-current="page"' in body

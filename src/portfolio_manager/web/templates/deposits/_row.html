@@ -1,11 +1,11 @@
 <tr id="deposit-{{ deposit.id }}">
   <td>{{ deposit.deposit_date }}</td>
-  <td class="text-right">{{ deposit.amount | format_krw }}</td>
+  <td class="text-right font-mono">{{ deposit.amount | format_krw }}</td>
   <td>{{ deposit.note or "-" }}</td>
   <td>
-    <div class="inline-actions">
+    <div class="flex flex-wrap gap-1.5">
       <button type="button"
-              class="btn btn-ghost"
+              class="btn btn-ghost btn-xs"
               hx-get="/deposits/{{ deposit.id }}/edit"
               hx-target="closest tr"
               hx-swap="outerHTML"
@@ -13,7 +13,7 @@
         수정
       </button>
       <button type="button"
-              class="btn btn-danger"
+              class="btn btn-error btn-xs"
               hx-delete="/deposits/{{ deposit.id }}"
               hx-target="closest tr"
               hx-swap="outerHTML"

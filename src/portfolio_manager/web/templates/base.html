@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko" data-theme="dark">
+<html lang="ko" data-theme="portfolio">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,35 +9,67 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Pretendard:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <link rel="stylesheet" href="/static/css/app.css">
-  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous" defer></script>
   <script src="/static/js/app.js" defer></script>
 </head>
-<body>
+<body class="bg-base-100 text-base-content min-h-screen">
   <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
 
-  <header class="site-header">
-    <nav class="container-fluid site-nav" aria-label="주요 메뉴">
-      <ul>
-        <li><strong class="brand-title">Portfolio Manager</strong></li>
-      </ul>
-      <ul class="nav-links">
-        <li><a href="/" class="{{ 'active' if active_page == 'dashboard' else '' }}" {% if active_page == 'dashboard' %}aria-current="page"{% endif %}>대시보드</a></li>
-        <li><a href="/groups" class="{{ 'active' if active_page == 'groups' else '' }}" {% if active_page == 'groups' %}aria-current="page"{% endif %}>그룹</a></li>
-        <li><a href="/accounts" class="{{ 'active' if active_page == 'accounts' else '' }}" {% if active_page == 'accounts' %}aria-current="page"{% endif %}>계좌</a></li>
-        <li><a href="/deposits" class="{{ 'active' if active_page == 'deposits' else '' }}" {% if active_page == 'deposits' %}aria-current="page"{% endif %}>입금</a></li>
-        <li><a href="/rebalance" class="{{ 'active' if active_page == 'rebalance' else '' }}" {% if active_page == 'rebalance' %}aria-current="page"{% endif %}>리밸런싱</a></li>
+  <header class="navbar bg-base-200 border-b border-base-300 sticky top-0 z-30 px-4 min-h-12">
+    <div class="navbar-start">
+      <span class="text-xs font-bold tracking-widest uppercase text-base-content">Portfolio Manager</span>
+    </div>
+    <nav class="navbar-end" aria-label="주요 메뉴">
+      <ul class="menu menu-horizontal gap-0.5 text-sm px-0">
+        <li>
+          <a href="/"
+             class="{% if active_page == 'dashboard' %}bg-primary text-primary-content{% endif %} rounded-md px-3 py-1.5 text-xs font-semibold"
+             {% if active_page == 'dashboard' %}aria-current="page"{% endif %}>
+            대시보드
+          </a>
+        </li>
+        <li>
+          <a href="/groups"
+             class="{% if active_page == 'groups' %}bg-primary text-primary-content{% endif %} rounded-md px-3 py-1.5 text-xs font-semibold"
+             {% if active_page == 'groups' %}aria-current="page"{% endif %}>
+            그룹
+          </a>
+        </li>
+        <li>
+          <a href="/accounts"
+             class="{% if active_page == 'accounts' %}bg-primary text-primary-content{% endif %} rounded-md px-3 py-1.5 text-xs font-semibold"
+             {% if active_page == 'accounts' %}aria-current="page"{% endif %}>
+            계좌
+          </a>
+        </li>
+        <li>
+          <a href="/deposits"
+             class="{% if active_page == 'deposits' %}bg-primary text-primary-content{% endif %} rounded-md px-3 py-1.5 text-xs font-semibold"
+             {% if active_page == 'deposits' %}aria-current="page"{% endif %}>
+            입금
+          </a>
+        </li>
+        <li>
+          <a href="/rebalance"
+             class="{% if active_page == 'rebalance' %}bg-primary text-primary-content{% endif %} rounded-md px-3 py-1.5 text-xs font-semibold"
+             {% if active_page == 'rebalance' %}aria-current="page"{% endif %}>
+            리밸런싱
+          </a>
+        </li>
       </ul>
     </nav>
   </header>
 
-  <main id="main-content" class="container-fluid main-shell">
+  <main id="main-content" class="max-w-7xl mx-auto px-4 py-4">
     <div id="app-live-region" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-    <p id="app-request-status" class="request-status" aria-live="polite"></p>
+    <p id="app-request-status" class="text-xs text-base-content/40 min-h-4 mb-1" aria-live="polite"></p>
 
     {% if flash_message %}
-    <div class="flash flash-{{ flash_type|default('success') }}" role="status" aria-live="polite">{{ flash_message }}</div>
+    <div role="status" aria-live="polite"
+         class="alert {% if flash_type == 'error' %}alert-error{% else %}alert-success{% endif %} mb-4 text-sm py-2">
+      <span>{{ flash_message }}</span>
+    </div>
     {% endif %}
 
     {% block content %}{% endblock %}
