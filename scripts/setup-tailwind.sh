@@ -29,23 +29,40 @@ esac
 TAILWIND_BIN="$BIN_DIR/tailwindcss"
 DAISYUI_CSS="$TAILWIND_DIR/daisyui.css"
 
+# --- Pinned versions ---
+TAILWIND_VERSION="v4.2.2"
+DAISYUI_VERSION="5.5.19"
+
 # --- Download Tailwind CSS standalone CLI v4 ---
 if [ ! -f "$TAILWIND_BIN" ]; then
-  TAILWIND_URL="https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-${PLATFORM}-${ARCH_SUFFIX}"
-  echo "Downloading Tailwind CSS standalone CLI..."
-  curl -sL "$TAILWIND_URL" -o "$TAILWIND_BIN"
+  TAILWIND_URL="https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-${PLATFORM}-${ARCH_SUFFIX}"
+  echo "Downloading Tailwind CSS standalone CLI ${TAILWIND_VERSION}..."
+  curl -fSL "$TAILWIND_URL" -o "$TAILWIND_BIN"
   chmod +x "$TAILWIND_BIN"
-  echo "Tailwind CSS installed at $TAILWIND_BIN"
+  # Verify the downloaded binary is functional
+  DOWNLOADED_VERSION=$("$TAILWIND_BIN" --version 2>/dev/null || true)
+  if [ -z "$DOWNLOADED_VERSION" ]; then
+    echo "ERROR: Downloaded Tailwind binary is not executable or corrupt"
+    rm -f "$TAILWIND_BIN"
+    exit 1
+  fi
+  echo "Tailwind CSS ${DOWNLOADED_VERSION} installed at $TAILWIND_BIN"
 else
   echo "Tailwind CSS already installed at $TAILWIND_BIN"
 fi
 
 # --- Download DaisyUI CSS bundle ---
 if [ ! -f "$DAISYUI_CSS" ]; then
-  DAISYUI_URL="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css"
-  echo "Downloading DaisyUI CSS bundle..."
-  curl -sL "$DAISYUI_URL" -o "$DAISYUI_CSS"
-  echo "DaisyUI installed at $DAISYUI_CSS"
+  DAISYUI_URL="https://cdn.jsdelivr.net/npm/daisyui@${DAISYUI_VERSION}/daisyui.css"
+  echo "Downloading DaisyUI CSS bundle v${DAISYUI_VERSION}..."
+  curl -fSL "$DAISYUI_URL" -o "$DAISYUI_CSS"
+  # Verify the download is a valid CSS file (not an error page)
+  if ! head -1 "$DAISYUI_CSS" | grep -q "^/\*\|^@\|^\." 2>/dev/null; then
+    echo "ERROR: Downloaded DaisyUI file does not appear to be valid CSS"
+    rm -f "$DAISYUI_CSS"
+    exit 1
+  fi
+  echo "DaisyUI v${DAISYUI_VERSION} installed at $DAISYUI_CSS"
 else
   echo "DaisyUI already installed at $DAISYUI_CSS"
 fi

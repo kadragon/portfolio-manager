@@ -18,6 +18,7 @@ css-build:
 
 ## Run web server + CSS watcher together
 dev:
-	@echo "Starting CSS watcher in background..."
-	$(TAILWIND_BIN) -i $(INPUT_CSS) -o $(OUTPUT_CSS) --watch &
+	@$(TAILWIND_BIN) -i $(INPUT_CSS) -o $(OUTPUT_CSS) --watch & \
+	TAILWIND_PID=$$!; \
+	trap "kill $$TAILWIND_PID 2>/dev/null" EXIT; \
 	uv run portfolio-web
