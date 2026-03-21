@@ -2,16 +2,16 @@
   <td>
     <label class="sr-only" for="stock-ticker-{{ stock.id }}">티커</label>
     <input id="stock-ticker-{{ stock.id }}"
-           class="input-uppercase"
            type="text"
            name="ticker"
            value="{{ stock.ticker }}"
            required
-           autocomplete="off">
+           autocomplete="off"
+           class="input input-bordered input-sm uppercase">
   </td>
   <td>
     <label class="sr-only" for="stock-group-{{ stock.id }}">그룹 이동</label>
-    <select id="stock-group-{{ stock.id }}" name="target_group_id">
+    <select id="stock-group-{{ stock.id }}" name="target_group_id" class="select select-bordered select-sm">
       {% for group in groups %}
       <option value="{{ group.id }}" {% if group.id == stock.group_id %}selected{% endif %}>
         {{ group.name }}
@@ -20,9 +20,9 @@
     </select>
   </td>
   <td>
-    <div class="inline-actions">
+    <div class="flex flex-wrap gap-1.5">
       <button type="button"
-              class="btn btn-primary"
+              class="btn btn-primary btn-sm"
               hx-put="/groups/{{ group_id }}/stocks/{{ stock.id }}"
               hx-include="closest tr"
               hx-target="closest tr"
@@ -31,7 +31,7 @@
         저장
       </button>
       <button type="button"
-              class="btn btn-ghost"
+              class="btn btn-ghost btn-xs"
               hx-get="/groups/{{ group_id }}/stocks/{{ stock.id }}"
               hx-target="closest tr"
               hx-swap="outerHTML"

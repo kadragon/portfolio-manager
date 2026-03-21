@@ -5,7 +5,7 @@ def test_deposits_page_uses_button_semantics_and_korean_copy(client):
     body = response.text
 
     assert "입금 내역" in body
-    assert '<h1 class="page-header">입금 내역</h1>' in body
+    assert ">입금 내역</h1>" in body
     assert "날짜별 입금 금액과 메모" in body
     assert (
         'hx-on::after-request="if (event.detail.successful) { this.reset(); }"' in body
@@ -14,7 +14,7 @@ def test_deposits_page_uses_button_semantics_and_korean_copy(client):
     assert "입금 추가" in body
     assert 'hx-delete="/deposits/' in body
     assert "<a hx-delete" not in body
-    assert "required-marker" in body
+    assert "text-error" in body
     assert body.index("입금 추가") < body.index('id="deposits-body"')
 
 

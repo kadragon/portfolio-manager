@@ -1,5 +1,5 @@
 {% for holding in holdings %}
   {% include "accounts/_holding_row.html" %}
 {% else %}
-<tr class="empty-row"><td colspan="4">보유 내역이 없습니다. 아래에서 새 보유를 추가하세요.</td></tr>
+<tr><td colspan="4" class="text-center text-base-content/40">보유 내역이 없습니다. 아래에서 새 보유를 추가하세요.</td></tr>
 {% endfor %}

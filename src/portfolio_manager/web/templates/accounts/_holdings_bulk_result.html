@@ -1,8 +1,8 @@
 {% if success %}
-<div class="flash flash-success" role="status" aria-live="polite">{{ message }}</div>
+<div class="alert alert-success text-sm py-2" role="status" aria-live="polite">{{ message }}</div>
 <tbody id="holdings-body" hx-swap-oob="innerHTML">
   {% include "accounts/_holdings_rows.html" %}
 </tbody>
 {% else %}
-<div class="flash flash-error" role="status" aria-live="polite">{{ message }}</div>
+<div class="alert alert-error text-sm py-2" role="status" aria-live="polite">{{ message }}</div>
 {% endif %}

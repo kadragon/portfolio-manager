@@ -5,7 +5,7 @@ def test_groups_page_uses_button_semantics_for_mutations(client):
     body = response.text
 
     assert "그룹 추가" in body
-    assert '<h1 class="page-header">그룹</h1>' in body
+    assert ">그룹</h1>" in body
     assert "등록된 그룹, 목표 비중, 작업" in body
     assert 'tabindex="0"' in body
     assert (
@@ -17,7 +17,7 @@ def test_groups_page_uses_button_semantics_for_mutations(client):
     assert "수정" in body
     assert "삭제" in body
     assert "<a hx-delete" not in body
-    assert "required-marker" in body
+    assert "text-error" in body
 
 
 def test_group_stocks_page_has_required_labeled_form(client, fake_container):
@@ -27,11 +27,11 @@ def test_group_stocks_page_has_required_labeled_form(client, fake_container):
     body = response.text
 
     assert "종목 추가" in body
-    assert f'<h1 class="page-header">{fake_container.group.name} 종목</h1>' in body
+    assert f">{fake_container.group.name} 종목</h1>" in body
     assert f"{fake_container.group.name} 그룹 종목 목록과 작업" in body
     assert 'name="ticker"' in body
-    assert 'class="input-uppercase"' in body
-    assert "required-marker" in body
+    assert "uppercase" in body
+    assert "text-error" in body
 
 
 def test_group_stock_row_has_edit_button(client, fake_container):
