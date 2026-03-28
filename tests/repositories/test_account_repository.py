@@ -1,122 +1,49 @@
 """Tests for account repository."""
 
 from decimal import Decimal
-from uuid import uuid4
-from unittest.mock import Mock, MagicMock
-
-import pytest
 
 from portfolio_manager.repositories.account_repository import AccountRepository
+from portfolio_manager.repositories.holding_repository import HoldingRepository
 
 
 def test_account_repository_creates_account_with_cash_balance():
-    """Should create an account with cash balance."""
-    account_id = uuid4()
-    response = Mock()
-    response.data = [
-        {
-            "id": str(account_id),
-            "name": "Main Account",
-            "cash_balance": "100000.50",
-            "created_at": "2026-01-03T00:00:00",
-            "updated_at": "2026-01-03T00:00:00",
-        }
-    ]
+    repo = AccountRepository()
+    account = repo.create(name="Main Account", cash_balance=Decimal("100000.50"))
 
-    client = Mock()
-    client.table.return_value.insert.return_value.execute.return_value = response
-
-    repository = AccountRepository(client)
-    account = repository.create(name="Main Account", cash_balance=Decimal("100000.50"))
-
-    client.table.assert_called_once_with("accounts")
-    client.table.return_value.insert.assert_called_once_with(
-        {"name": "Main Account", "cash_balance": "100000.50"}
-    )
     assert account.name == "Main Account"
     assert account.cash_balance == Decimal("100000.50")
+    assert account.id is not None
 
 
-def test_account_repository_deletes_holdings_before_account():
-    """Should delete holdings before deleting the account."""
-    account_id = uuid4()
-    client = Mock()
-    client.table.return_value.delete.return_value.eq.return_value.execute.return_value = Mock()
-    repository = AccountRepository(client)
-    holding_repo = MagicMock()
+def test_account_repository_list_all():
+    repo = AccountRepository()
+    repo.create(name="Account 1", cash_balance=Decimal("100"))
+    repo.create(name="Account 2", cash_balance=Decimal("200"))
 
-    repository.delete_with_holdings(account_id, holding_repo)
-
-    holding_repo.delete_by_account.assert_called_once_with(account_id)
-    client.table.assert_called_once_with("accounts")
-    client.table.return_value.delete.assert_called_once()
-    client.table.return_value.delete.return_value.eq.assert_called_once_with(
-        "id", str(account_id)
-    )
-
-
-def test_account_repository_create_raises_when_no_rows_returned():
-    """Should raise ValueError when create returns empty response."""
-    response = Mock()
-    response.data = []
-    client = Mock()
-    client.table.return_value.insert.return_value.execute.return_value = response
-
-    repository = AccountRepository(client)
-
-    with pytest.raises(ValueError, match="Failed to create account"):
-        repository.create(name="Main Account", cash_balance=Decimal("100.0"))
+    accounts = repo.list_all()
+    assert len(accounts) == 2
 
 
 def test_account_repository_list_all_returns_empty_when_no_data():
-    """Should return empty list when accounts table returns no rows."""
-    response = Mock()
-    response.data = []
-    client = Mock()
-    client.table.return_value.select.return_value.execute.return_value = response
-
-    repository = AccountRepository(client)
-
-    assert repository.list_all() == []
+    repo = AccountRepository()
+    assert repo.list_all() == []
 
 
 def test_account_repository_updates_account():
-    """Should update account fields and return updated account."""
-    account_id = uuid4()
-    response = Mock()
-    response.data = [
-        {
-            "id": str(account_id),
-            "name": "Updated",
-            "cash_balance": "200.50",
-            "created_at": "2026-01-03T00:00:00",
-            "updated_at": "2026-01-03T00:00:00",
-        }
-    ]
-    client = Mock()
-    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
+    repo = AccountRepository()
+    account = repo.create(name="Original", cash_balance=Decimal("100"))
 
-    repository = AccountRepository(client)
-    account = repository.update(
-        account_id, name="Updated", cash_balance=Decimal("200.50")
-    )
+    updated = repo.update(account.id, name="Updated", cash_balance=Decimal("200.50"))
 
-    assert account.name == "Updated"
-    assert account.cash_balance == Decimal("200.50")
-    client.table.return_value.update.assert_called_once_with(
-        {"name": "Updated", "cash_balance": "200.50"}
-    )
+    assert updated.name == "Updated"
+    assert updated.cash_balance == Decimal("200.50")
 
 
-def test_account_repository_update_raises_when_no_rows_returned():
-    """Should raise ValueError when update returns no rows."""
-    account_id = uuid4()
-    response = Mock()
-    response.data = []
-    client = Mock()
-    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
+def test_account_repository_deletes_holdings_before_account():
+    repo = AccountRepository()
+    holding_repo = HoldingRepository()
+    account = repo.create(name="Test", cash_balance=Decimal("0"))
 
-    repository = AccountRepository(client)
+    repo.delete_with_holdings(account.id, holding_repo)
 
-    with pytest.raises(ValueError, match="Failed to update account"):
-        repository.update(account_id, name="Updated", cash_balance=Decimal("10"))
+    assert repo.list_all() == []

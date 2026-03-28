@@ -2,38 +2,28 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any, cast
-from uuid import UUID
+from uuid import uuid4
 
-from supabase import Client
+from peewee import IntegrityError
 
 from portfolio_manager.models.stock_price import StockPrice
+from portfolio_manager.services.database import StockPriceModel
 
 
 class StockPriceRepository:
     """Repository for cached stock prices."""
 
-    def __init__(self, client: Client):
-        """Initialize repository with Supabase client."""
-        self.client = client
-
     def get_by_ticker_and_date(
         self, ticker: str, price_date: date
     ) -> StockPrice | None:
         """Fetch cached price for a ticker and date."""
-        response = (
-            self.client.table("stock_prices")
-            .select("*")
-            .eq("ticker", ticker)
-            .eq("price_date", price_date.isoformat())
-            .execute()
+        row = StockPriceModel.get_or_none(
+            (StockPriceModel.ticker == ticker)
+            & (StockPriceModel.price_date == price_date)
         )
-        if not response.data:
-            return None
-        item = cast(dict[str, Any], response.data[0])
-        return self._to_model(item)
+        return self._to_domain(row) if row else None
 
     def save(
         self,
@@ -46,35 +36,46 @@ class StockPriceRepository:
         exchange: str | None,
     ) -> StockPrice:
         """Upsert cached price for a ticker and date."""
-        payload = {
-            "ticker": ticker,
-            "price_date": price_date.isoformat(),
-            "price": str(price),
-            "currency": currency,
-            "name": name,
-            "exchange": exchange,
-        }
-        response = (
-            self.client.table("stock_prices")
-            .upsert(payload, on_conflict="ticker,price_date")
-            .execute()
-        )
-        if not response.data:
-            raise ValueError("Failed to save stock price")
-        item = cast(dict[str, Any], response.data[0])
-        return self._to_model(item)
+        now = datetime.now(timezone.utc)
+        try:
+            row = StockPriceModel.create(
+                id=uuid4(),
+                ticker=ticker,
+                price_date=price_date,
+                price=price,
+                currency=currency,
+                name=name,
+                exchange=exchange,
+                created_at=now,
+                updated_at=now,
+            )
+        except IntegrityError:
+            StockPriceModel.update(
+                price=price,
+                currency=currency,
+                name=name,
+                exchange=exchange,
+                updated_at=now,
+            ).where(
+                (StockPriceModel.ticker == ticker)
+                & (StockPriceModel.price_date == price_date)
+            ).execute()
+            row = StockPriceModel.get(
+                (StockPriceModel.ticker == ticker)
+                & (StockPriceModel.price_date == price_date)
+            )
+        return self._to_domain(row)
 
     @staticmethod
-    def _to_model(item: dict[str, Any]) -> StockPrice:
-        exchange = item.get("exchange")
+    def _to_domain(row: StockPriceModel) -> StockPrice:
         return StockPrice(
-            id=UUID(str(item["id"])),
-            ticker=str(item["ticker"]),
-            price=Decimal(str(item["price"])),
-            currency=str(item["currency"]),
-            name=str(item["name"]),
-            exchange=str(exchange) if exchange is not None else None,
-            price_date=date.fromisoformat(str(item["price_date"])),
-            created_at=datetime.fromisoformat(str(item["created_at"])),
-            updated_at=datetime.fromisoformat(str(item["updated_at"])),
+            id=row.id,
+            ticker=row.ticker,
+            price=Decimal(str(row.price)),
+            currency=row.currency,
+            name=row.name,
+            exchange=row.exchange,
+            price_date=row.price_date,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )

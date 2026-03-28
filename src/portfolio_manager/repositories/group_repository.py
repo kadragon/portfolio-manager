@@ -1,79 +1,34 @@
 """Group repository for database operations."""
 
-from typing import Any, cast
-from uuid import UUID
-from datetime import datetime
-from supabase import Client
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 from portfolio_manager.models import Group
+from portfolio_manager.services.database import GroupModel
 
 
 class GroupRepository:
     """Repository for Group database operations."""
 
-    def __init__(self, client: Client):
-        """Initialize repository with Supabase client.
-
-        Args:
-            client: Supabase client instance.
-        """
-        self.client = client
-
     def create(self, name: str, target_percentage: float = 0.0) -> Group:
-        """Create a new group.
-
-        Args:
-            name: Name of the group.
-            target_percentage: Target percentage of the portfolio (0-100).
-
-        Returns:
-            Created Group instance.
-        """
-        response = (
-            self.client.table("groups")
-            .insert({"name": name, "target_percentage": target_percentage})
-            .execute()
+        """Create a new group."""
+        now = datetime.now(timezone.utc)
+        row = GroupModel.create(
+            id=uuid4(),
+            name=name,
+            target_percentage=target_percentage,
+            created_at=now,
+            updated_at=now,
         )
-        if not response.data or len(response.data) == 0:
-            raise ValueError("Failed to create group")
-        data = cast(dict[str, Any], response.data[0])
-
-        return Group(
-            id=UUID(str(data["id"])),
-            name=str(data["name"]),
-            target_percentage=float(data.get("target_percentage", 0.0)),
-            created_at=datetime.fromisoformat(str(data["created_at"])),
-            updated_at=datetime.fromisoformat(str(data["updated_at"])),
-        )
+        return self._to_domain(row)
 
     def list_all(self) -> list[Group]:
-        """List all groups.
-
-        Returns:
-            List of all Group instances.
-        """
-        response = self.client.table("groups").select("*").execute()
-        if not response.data:
-            return []
-
-        return [
-            Group(
-                id=UUID(str(item["id"])),
-                name=str(item["name"]),
-                target_percentage=float(item.get("target_percentage", 0.0)),
-                created_at=datetime.fromisoformat(str(item["created_at"])),
-                updated_at=datetime.fromisoformat(str(item["updated_at"])),
-            )
-            for item in cast(list[dict[str, Any]], response.data)
-        ]
+        """List all groups."""
+        return [self._to_domain(row) for row in GroupModel.select()]
 
     def delete(self, group_id: UUID) -> None:
-        """Delete a group by ID.
-
-        Args:
-            group_id: ID of the group to delete.
-        """
-        self.client.table("groups").delete().eq("id", str(group_id)).execute()
+        """Delete a group by ID."""
+        GroupModel.delete().where(GroupModel.id == group_id).execute()
 
     def update(
         self,
@@ -81,17 +36,8 @@ class GroupRepository:
         name: str | None = None,
         target_percentage: float | None = None,
     ) -> Group:
-        """Update a group by ID.
-
-        Args:
-            group_id: ID of the group to update.
-            name: Updated name.
-            target_percentage: Updated target percentage.
-
-        Returns:
-            Updated Group instance.
-        """
-        updates: dict[str, Any] = {}
+        """Update a group by ID."""
+        updates: dict = {}
         if name is not None:
             updates["name"] = name
         if target_percentage is not None:
@@ -100,20 +46,18 @@ class GroupRepository:
         if not updates:
             raise ValueError("No fields to update")
 
-        response = (
-            self.client.table("groups")
-            .update(updates)
-            .eq("id", str(group_id))
-            .execute()
-        )
-        if not response.data or len(response.data) == 0:
-            raise ValueError("Failed to update group")
-        data = cast(dict[str, Any], response.data[0])
+        updates["updated_at"] = datetime.now(timezone.utc)
+        GroupModel.update(updates).where(GroupModel.id == group_id).execute()
 
+        row = GroupModel.get_by_id(group_id)
+        return self._to_domain(row)
+
+    @staticmethod
+    def _to_domain(row: GroupModel) -> Group:
         return Group(
-            id=UUID(str(data["id"])),
-            name=str(data["name"]),
-            target_percentage=float(data.get("target_percentage", 0.0)),
-            created_at=datetime.fromisoformat(str(data["created_at"])),
-            updated_at=datetime.fromisoformat(str(data["updated_at"])),
+            id=row.id,
+            name=row.name,
+            target_percentage=row.target_percentage,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )

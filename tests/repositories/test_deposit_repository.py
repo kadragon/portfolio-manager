@@ -2,278 +2,110 @@
 
 from decimal import Decimal
 from datetime import date
-from uuid import uuid4
-from unittest.mock import Mock
 
 from portfolio_manager.models.deposit import Deposit
 from portfolio_manager.repositories.deposit_repository import DepositRepository
 
 
 def test_deposit_repository_creates_deposit():
-    """Should create a deposit."""
-
-    deposit_id = uuid4()
-
-    deposit_date = date(2026, 1, 4)
-
-    response = Mock()
-
-    response.data = [
-        {
-            "id": str(deposit_id),
-            "amount": "1000000",
-            "deposit_date": "2026-01-04",
-            "note": "Initial funding",
-            "created_at": "2026-01-04T00:00:00",
-            "updated_at": "2026-01-04T00:00:00",
-        }
-    ]
-
-    client = Mock()
-
-    client.table.return_value.insert.return_value.execute.return_value = response
-
-    repository = DepositRepository(client)
-
-    deposit = repository.create(
-        amount=Decimal("1000000"), deposit_date=deposit_date, note="Initial funding"
-    )
-
-    client.table.assert_called_once_with("deposits")
-
-    client.table.return_value.insert.assert_called_once_with(
-        {"amount": "1000000", "deposit_date": "2026-01-04", "note": "Initial funding"}
+    repo = DepositRepository()
+    deposit = repo.create(
+        amount=Decimal("1000000"),
+        deposit_date=date(2026, 1, 4),
+        note="Initial funding",
     )
 
     assert isinstance(deposit, Deposit)
-
-    assert deposit.id == deposit_id
-
     assert deposit.amount == Decimal("1000000")
-
-    assert deposit.deposit_date == deposit_date
-
+    assert deposit.deposit_date == date(2026, 1, 4)
     assert deposit.note == "Initial funding"
 
 
 def test_deposit_repository_updates_deposit():
-    """Should update a deposit."""
+    repo = DepositRepository()
+    deposit = repo.create(amount=Decimal("1000000"), deposit_date=date(2026, 1, 4))
 
-    deposit_id = uuid4()
+    updated = repo.update(deposit.id, amount=Decimal("2000000"), note="Updated funding")
 
-    response = Mock()
-
-    response.data = [
-        {
-            "id": str(deposit_id),
-            "amount": "2000000",
-            "deposit_date": "2026-01-04",
-            "note": "Updated funding",
-            "created_at": "2026-01-04T00:00:00",
-            "updated_at": "2026-01-04T00:00:00",
-        }
-    ]
-
-    client = Mock()
-
-    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
-
-    repository = DepositRepository(client)
-
-    deposit = repository.update(
-        deposit_id, amount=Decimal("2000000"), note="Updated funding"
-    )
-
-    client.table.assert_called_once_with("deposits")
-
-    client.table.return_value.update.assert_called_once_with(
-        {"amount": "2000000", "note": "Updated funding"}
-    )
-
-    assert deposit.amount == Decimal("2000000")
-
-    assert deposit.note == "Updated funding"
+    assert updated.amount == Decimal("2000000")
+    assert updated.note == "Updated funding"
 
 
 def test_deposit_repository_updates_note_to_null_when_explicit_none():
-    """Should include note=None when caller explicitly clears the note."""
-    deposit_id = uuid4()
-
-    response = Mock()
-    response.data = [
-        {
-            "id": str(deposit_id),
-            "amount": "2000000",
-            "deposit_date": "2026-01-04",
-            "note": None,
-            "created_at": "2026-01-04T00:00:00",
-            "updated_at": "2026-01-04T00:00:00",
-        }
-    ]
-
-    client = Mock()
-    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
-
-    repository = DepositRepository(client)
-
-    repository.update(deposit_id, amount=Decimal("2000000"), note=None)
-
-    client.table.return_value.update.assert_called_once_with(
-        {"amount": "2000000", "note": None}
+    repo = DepositRepository()
+    deposit = repo.create(
+        amount=Decimal("1000000"), deposit_date=date(2026, 1, 4), note="Initial"
     )
+
+    updated = repo.update(deposit.id, amount=Decimal("2000000"), note=None)
+
+    assert updated.note is None
 
 
 def test_deposit_repository_omits_note_when_not_provided():
-    """Should not include note in update payload when note is unspecified."""
-    deposit_id = uuid4()
+    repo = DepositRepository()
+    deposit = repo.create(
+        amount=Decimal("1000000"), deposit_date=date(2026, 1, 4), note="Existing"
+    )
 
-    response = Mock()
-    response.data = [
-        {
-            "id": str(deposit_id),
-            "amount": "2000000",
-            "deposit_date": "2026-01-04",
-            "note": "Existing",
-            "created_at": "2026-01-04T00:00:00",
-            "updated_at": "2026-01-04T00:00:00",
-        }
-    ]
+    updated = repo.update(deposit.id, amount=Decimal("2000000"))
 
-    client = Mock()
-    client.table.return_value.update.return_value.eq.return_value.execute.return_value = response
-
-    repository = DepositRepository(client)
-
-    repository.update(deposit_id, amount=Decimal("2000000"))
-
-    client.table.return_value.update.assert_called_once_with({"amount": "2000000"})
+    assert updated.note == "Existing"
 
 
 def test_deposit_repository_lists_all():
-    """Should list all deposits."""
+    repo = DepositRepository()
+    repo.create(amount=Decimal("1000000"), deposit_date=date(2026, 1, 4))
 
-    deposit_id = uuid4()
-
-    response = Mock()
-
-    response.data = [
-        {
-            "id": str(deposit_id),
-            "amount": "1000000",
-            "deposit_date": "2026-01-04",
-            "note": "Initial funding",
-            "created_at": "2026-01-04T00:00:00",
-            "updated_at": "2026-01-04T00:00:00",
-        }
-    ]
-
-    client = Mock()
-
-    client.table.return_value.select.return_value.order.return_value.execute.return_value = response
-
-    repository = DepositRepository(client)
-
-    deposits = repository.list_all()
-
-    client.table.assert_called_once_with("deposits")
-
-    client.table.return_value.select.assert_called_once_with("*")
+    deposits = repo.list_all()
 
     assert len(deposits) == 1
 
-    assert deposits[0].id == deposit_id
-
 
 def test_deposit_repository_gets_by_date():
-    """Should get deposit by date."""
+    repo = DepositRepository()
+    repo.create(amount=Decimal("1000000"), deposit_date=date(2026, 1, 4))
 
-    deposit_id = uuid4()
-
-    deposit_date = date(2026, 1, 4)
-
-    response = Mock()
-
-    response.data = [
-        {
-            "id": str(deposit_id),
-            "amount": "1000000",
-            "deposit_date": "2026-01-04",
-            "note": "Initial funding",
-            "created_at": "2026-01-04T00:00:00",
-            "updated_at": "2026-01-04T00:00:00",
-        }
-    ]
-
-    client = Mock()
-
-    client.table.return_value.select.return_value.eq.return_value.execute.return_value = response
-
-    repository = DepositRepository(client)
-
-    deposit = repository.get_by_date(deposit_date)
-
-    client.table.assert_called_once_with("deposits")
-
-    client.table.return_value.select.return_value.eq.assert_called_once_with(
-        "deposit_date", "2026-01-04"
-    )
+    deposit = repo.get_by_date(date(2026, 1, 4))
 
     assert deposit is not None
-    assert deposit.id == deposit_id
+    assert deposit.amount == Decimal("1000000")
+
+
+def test_deposit_repository_get_by_date_returns_none():
+    repo = DepositRepository()
+    assert repo.get_by_date(date(2099, 1, 1)) is None
 
 
 def test_deposit_repository_deletes_deposit():
-    """Should delete a deposit."""
+    repo = DepositRepository()
+    deposit = repo.create(amount=Decimal("1000000"), deposit_date=date(2026, 1, 4))
 
-    deposit_id = uuid4()
+    repo.delete(deposit.id)
 
-    client = Mock()
-
-    client.table.return_value.delete.return_value.eq.return_value.execute.return_value = Mock()
-
-    repository = DepositRepository(client)
-
-    repository.delete(deposit_id)
-
-    client.table.assert_called_once_with("deposits")
-
-    client.table.return_value.delete.assert_called_once()
-
-    client.table.return_value.delete.return_value.eq.assert_called_once_with(
-        "id", str(deposit_id)
-    )
+    assert repo.list_all() == []
 
 
 def test_deposit_repository_gets_total():
-    """Should get total deposit amount."""
+    repo = DepositRepository()
+    repo.create(amount=Decimal("1000000"), deposit_date=date(2026, 1, 4))
+    repo.create(amount=Decimal("500000"), deposit_date=date(2026, 2, 4))
 
-    response = Mock()
-
-    response.data = [
-        {
-            "id": str(uuid4()),
-            "amount": "1000000",
-            "deposit_date": "2026-01-04",
-            "note": "Initial",
-            "created_at": "2026-01-04T00:00:00",
-            "updated_at": "2026-01-04T00:00:00",
-        },
-        {
-            "id": str(uuid4()),
-            "amount": "500000",
-            "deposit_date": "2026-02-04",
-            "note": "Second",
-            "created_at": "2026-02-04T00:00:00",
-            "updated_at": "2026-02-04T00:00:00",
-        },
-    ]
-
-    client = Mock()
-
-    client.table.return_value.select.return_value.order.return_value.execute.return_value = response
-
-    repository = DepositRepository(client)
-
-    total = repository.get_total()
+    total = repo.get_total()
 
     assert total == Decimal("1500000")
+
+
+def test_deposit_repository_gets_first_deposit_date():
+    repo = DepositRepository()
+    repo.create(amount=Decimal("500000"), deposit_date=date(2026, 2, 4))
+    repo.create(amount=Decimal("1000000"), deposit_date=date(2026, 1, 4))
+
+    first = repo.get_first_deposit_date()
+
+    assert first == date(2026, 1, 4)
+
+
+def test_deposit_repository_gets_first_deposit_date_returns_none():
+    repo = DepositRepository()
+    assert repo.get_first_deposit_date() is None

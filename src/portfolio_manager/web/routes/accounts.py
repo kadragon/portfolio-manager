@@ -7,7 +7,6 @@ from uuid import UUID
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from markupsafe import escape
-from postgrest.exceptions import APIError
 
 from portfolio_manager.web.deps import get_container, get_templates
 
@@ -33,7 +32,7 @@ def _build_stock_name_map(container, stocks: list | None = None) -> dict:
             _, _, resolved_name, _ = price_service.get_stock_price(
                 stock.ticker, preferred_exchange=stock.exchange
             )
-        except (APIError, ValueError):
+        except ValueError:
             resolved_name = ""
         if resolved_name:
             stock_name_map[stock.id] = _format_stock_name(resolved_name)
@@ -285,7 +284,7 @@ def bulk_update_holdings(
     updates = list(zip(holding_id, quantity))
     try:
         container.holding_repository.bulk_update_by_account(account_id, updates)
-    except (ValueError, APIError) as exc:
+    except ValueError as exc:
         logger.exception(
             "Bulk update failed for account_id=%s with holding_count=%d",
             account_id,

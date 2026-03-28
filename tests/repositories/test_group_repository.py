@@ -1,116 +1,54 @@
 """Tests for group repository."""
 
-from datetime import datetime
-from unittest.mock import MagicMock, Mock
-from uuid import uuid4
+import pytest
 
 from portfolio_manager.repositories.group_repository import GroupRepository
 
 
 def test_create_group_returns_group_with_id():
-    """Should create a group and return it with an ID."""
-    # Arrange
-    mock_client = Mock()
-    mock_response = MagicMock()
-    mock_response.data = [
-        {
-            "id": str(uuid4()),
-            "name": "Tech Stocks",
-            "target_percentage": 10.5,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-        }
-    ]
-    mock_client.table.return_value.insert.return_value.execute.return_value = (
-        mock_response
-    )
+    repo = GroupRepository()
+    group = repo.create("Tech Stocks", target_percentage=10.5)
 
-    repository = GroupRepository(mock_client)
-
-    # Act
-    group = repository.create("Tech Stocks", target_percentage=10.5)
-
-    # Assert
     assert group is not None
     assert group.name == "Tech Stocks"
     assert group.target_percentage == 10.5
     assert group.id is not None
-    mock_client.table.assert_called_once_with("groups")
-    # Verify insert call arguments
-    args, _ = mock_client.table.return_value.insert.call_args
-    assert args[0] == {"name": "Tech Stocks", "target_percentage": 10.5}
 
 
 def test_list_all_returns_all_groups():
-    """Should return all groups from the database."""
-    # Arrange
-    mock_client = Mock()
-    mock_response = MagicMock()
-    group1_id = str(uuid4())
-    group2_id = str(uuid4())
-    now = datetime.now().isoformat()
+    repo = GroupRepository()
+    repo.create("Tech Stocks", target_percentage=20.0)
+    repo.create("Healthcare", target_percentage=30.0)
 
-    mock_response.data = [
-        {
-            "id": group1_id,
-            "name": "Tech Stocks",
-            "target_percentage": 20.0,
-            "created_at": now,
-            "updated_at": now,
-        },
-        {
-            "id": group2_id,
-            "name": "Healthcare",
-            "target_percentage": 30.0,
-            "created_at": now,
-            "updated_at": now,
-        },
-    ]
-    mock_client.table.return_value.select.return_value.execute.return_value = (
-        mock_response
-    )
+    groups = repo.list_all()
 
-    repository = GroupRepository(mock_client)
-
-    # Act
-    groups = repository.list_all()
-
-    # Assert
     assert len(groups) == 2
-    assert groups[0].name == "Tech Stocks"
-    assert groups[0].target_percentage == 20.0
-    assert groups[1].name == "Healthcare"
-    assert groups[1].target_percentage == 30.0
-    mock_client.table.assert_called_once_with("groups")
+    names = {g.name for g in groups}
+    assert names == {"Tech Stocks", "Healthcare"}
 
 
 def test_update_group_updates_fields():
-    """Should update group fields."""
-    # Arrange
-    mock_client = Mock()
-    mock_response = MagicMock()
-    group_id = str(uuid4())
-    now = datetime.now().isoformat()
+    repo = GroupRepository()
+    group = repo.create("Original", target_percentage=10.0)
 
-    mock_response.data = [
-        {
-            "id": group_id,
-            "name": "Updated Name",
-            "target_percentage": 15.0,
-            "created_at": now,
-            "updated_at": now,
-        }
-    ]
-    mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = mock_response
+    updated = repo.update(group.id, name="Updated Name", target_percentage=15.0)
 
-    repository = GroupRepository(mock_client)
+    assert updated.name == "Updated Name"
+    assert updated.target_percentage == 15.0
 
-    # Act
-    group = repository.update(uuid4(), name="Updated Name", target_percentage=15.0)
 
-    # Assert
-    assert group.name == "Updated Name"
-    assert group.target_percentage == 15.0
-    # Verify update call arguments
-    args, _ = mock_client.table.return_value.update.call_args
-    assert args[0] == {"name": "Updated Name", "target_percentage": 15.0}
+def test_update_group_raises_when_no_fields():
+    repo = GroupRepository()
+    group = repo.create("Test")
+
+    with pytest.raises(ValueError, match="No fields to update"):
+        repo.update(group.id)
+
+
+def test_delete_group():
+    repo = GroupRepository()
+    group = repo.create("To Delete")
+
+    repo.delete(group.id)
+
+    assert repo.list_all() == []
