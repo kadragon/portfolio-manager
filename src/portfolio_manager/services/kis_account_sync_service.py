@@ -36,7 +36,7 @@ class KisAccountSyncResult:
     old_cash_balance: Decimal
     holding_count: int
     created_stock_count: int
-    holding_changes: list[HoldingSyncDetail]
+    holding_changes: tuple[HoldingSyncDetail, ...]
 
 
 @dataclass
@@ -144,7 +144,7 @@ class KisAccountSyncService:
             old_cash_balance=old_cash_balance,
             holding_count=len(target_quantities_by_stock_id),
             created_stock_count=created_stock_count,
-            holding_changes=holding_changes,
+            holding_changes=tuple(holding_changes),
         )
 
     def _get_or_create_sync_group_id(self) -> UUID:

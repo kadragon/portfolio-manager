@@ -150,6 +150,9 @@ class FakeStockRepository:
         self._stocks = [stock for stock in self._stocks if stock.id != stock_id]
 
 
+_FAKE_UNSET = object()
+
+
 class FakeAccountRepository:
     def __init__(self, accounts_data: list[Account]):
         self._accounts = accounts_data
@@ -175,7 +178,7 @@ class FakeAccountRepository:
         account_id: UUID,
         name: str,
         cash_balance: Decimal,
-        kis_account_no: str | None = ...,  # type: ignore[assignment]
+        kis_account_no=_FAKE_UNSET,
     ) -> Account:
         for idx, account in enumerate(self._accounts):
             if account.id == account_id:
@@ -186,7 +189,7 @@ class FakeAccountRepository:
                     created_at=account.created_at,
                     updated_at=datetime.now(timezone.utc),
                     kis_account_no=kis_account_no
-                    if kis_account_no is not ...
+                    if kis_account_no is not _FAKE_UNSET
                     else account.kis_account_no,
                 )
                 self._accounts[idx] = updated

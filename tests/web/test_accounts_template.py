@@ -365,12 +365,24 @@ def test_account_sync_partial_renders_live_message(client, fake_container):
     assert 'aria-live="polite"' in body
 
 
-def test_account_sync_fails_fast_when_kis_account_no_missing(client, fake_container):
+def test_account_sync_fails_fast_when_kis_account_no_and_env_missing(
+    client, fake_container
+):
     fake_container.account.kis_account_no = None
+    fake_container.kis_cano = None
+    fake_container.kis_acnt_prdt_cd = None
 
     response = client.post(f"/accounts/{fake_container.account.id}/sync")
     assert response.status_code == 200
     assert "이 계좌에는 KIS 계좌번호가 설정되지 않았습니다." in response.text
+
+
+def test_account_sync_falls_back_to_env_credentials(client, fake_container):
+    fake_container.account.kis_account_no = None
+
+    response = client.post(f"/accounts/{fake_container.account.id}/sync")
+    assert response.status_code == 200
+    assert "KIS 계좌 동기화 완료" in response.text
 
 
 def test_create_account_rejects_invalid_cash_balance(client):

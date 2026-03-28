@@ -175,16 +175,18 @@ def update_account(
     account_id: UUID,
     name: str = Form(...),
     cash_balance: Decimal = Form(Decimal("0")),
-    kis_account_no: str = Form(""),
+    kis_account_no: str | None = Form(None),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
-    account = container.account_repository.update(
-        account_id=account_id,
-        name=name.strip(),
-        cash_balance=cash_balance,
-        kis_account_no=kis_account_no.strip() or None,
-    )
+    update_kwargs: dict = {
+        "account_id": account_id,
+        "name": name.strip(),
+        "cash_balance": cash_balance,
+    }
+    if kis_account_no is not None:
+        update_kwargs["kis_account_no"] = kis_account_no.strip() or None
+    account = container.account_repository.update(**update_kwargs)
     return templates.TemplateResponse(
         request=request,
         name="accounts/_row.html",
@@ -509,7 +511,11 @@ def sync_account(request: Request, account_id: UUID) -> HTMLResponse:
                 },
             )
         kis_no = account.kis_account_no
-        if not kis_no:
+        if kis_no:
+            digits = "".join(ch for ch in kis_no if ch.isdigit())
+        elif container.kis_cano and container.kis_acnt_prdt_cd:
+            digits = container.kis_cano + container.kis_acnt_prdt_cd
+        else:
             return templates.TemplateResponse(
                 request=request,
                 name="accounts/_sync_result.html",
@@ -519,7 +525,16 @@ def sync_account(request: Request, account_id: UUID) -> HTMLResponse:
                     "message": "이 계좌에는 KIS 계좌번호가 설정되지 않았습니다.",
                 },
             )
-        digits = "".join(ch for ch in kis_no if ch.isdigit())
+        if len(digits) != 10:
+            return templates.TemplateResponse(
+                request=request,
+                name="accounts/_sync_result.html",
+                context={
+                    "account_id": account_id,
+                    "success": False,
+                    "message": "KIS 계좌번호 형식이 올바르지 않습니다 (8자리-2자리).",
+                },
+            )
         cano, acnt = digits[:8], digits[8:]
         result = container.kis_account_sync_service.sync_account(
             account=account, cano=cano, acnt_prdt_cd=acnt
