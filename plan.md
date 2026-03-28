@@ -28,7 +28,7 @@
 
 ### PR #54 — Migrate data layer from Supabase to SQLite + Peewee ORM (2026-03-28)
 
-- [ ] `migrate_supabase_to_sqlite.py` — Supabase API 페이지 크기 초과 시 데이터 잘림 가능. 페이지네이션 추가 필요 (source: Codex) — scripts/migrate_supabase_to_sqlite.py:77
-- [ ] `init_db()` 기본 경로가 상대경로(`.data/portfolio.db`). CWD에 따라 다른 위치에 DB 생성될 수 있음. 절대경로 또는 환경변수 기반으로 변경 (source: Claude) — services/database.py:153
-- [ ] `updated_at` 수동 관리 패턴에 누락 위험. `BaseModel.save()` 오버라이드로 자동 갱신 검토 (source: Gemini)
-- [ ] `OrderExecutionModel`에 `updated_at` 필드 없음 (다른 모델과 비일관). append-only라 현재는 불필요하나 향후 검토 (source: Claude, Gemini)
+- [x] `migrate_supabase_to_sqlite.py` — 일회성 스크립트 삭제 (Supabase 의존 제거 완료)
+- [x] `init_db()` — `_default_db_path()`로 절대경로 해석 + `PORTFOLIO_DB_PATH` 환경변수 지원
+- [x] `updated_at` — `BaseModel.save()` 오버라이드로 자동 갱신
+- [x] `OrderExecutionModel` — append-only 모델이므로 `updated_at` 불필요. 리스크 수용
