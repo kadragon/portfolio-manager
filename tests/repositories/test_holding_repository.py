@@ -134,7 +134,7 @@ def test_bulk_update_by_account_raises_on_duplicate_ids(account_id, stock_id):
         account_id=account_id, stock_id=stock_id, quantity=Decimal("5")
     )
 
-    with pytest.raises(ValueError, match="Duplicate holding IDs"):
+    with pytest.raises(ValueError, match="duplicate holding_ids"):
         repo.bulk_update_by_account(
             account_id,
             [(holding.id, Decimal("1")), (holding.id, Decimal("2"))],
@@ -147,7 +147,7 @@ def test_bulk_update_by_account_raises_on_non_positive_quantity(account_id, stoc
         account_id=account_id, stock_id=stock_id, quantity=Decimal("5")
     )
 
-    with pytest.raises(ValueError, match="positive"):
+    with pytest.raises(ValueError, match="quantity must be greater than zero"):
         repo.bulk_update_by_account(
             account_id,
             [(holding.id, Decimal("0"))],
@@ -164,7 +164,7 @@ def test_bulk_update_by_account_raises_when_holding_not_in_account(
 
     other_account = AccountRepository().create("Other", Decimal("0"))
 
-    with pytest.raises(ValueError, match="do not belong"):
+    with pytest.raises(ValueError, match="all holdings must belong to account"):
         repo.bulk_update_by_account(
             other_account.id,
             [(holding.id, Decimal("1"))],

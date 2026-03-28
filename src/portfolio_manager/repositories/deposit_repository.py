@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import Optional
 from uuid import UUID, uuid4
 
+from peewee import fn
+
 from portfolio_manager.models.deposit import Deposit
 from portfolio_manager.services.database import DepositModel
 
@@ -77,8 +79,8 @@ class DepositRepository:
 
     def get_total(self) -> Decimal:
         """Get total deposit amount."""
-        deposits = self.list_all()
-        return sum((d.amount for d in deposits), Decimal("0"))
+        result = DepositModel.select(fn.SUM(DepositModel.amount)).scalar()
+        return Decimal(str(result)) if result else Decimal("0")
 
     def get_first_deposit_date(self) -> date | None:
         """Get the earliest deposit date."""

@@ -6,6 +6,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
+from peewee import IntegrityError
+
 from portfolio_manager.models.stock_price import StockPrice
 from portfolio_manager.services.database import StockPriceModel
 
@@ -35,20 +37,7 @@ class StockPriceRepository:
     ) -> StockPrice:
         """Upsert cached price for a ticker and date."""
         now = datetime.now(timezone.utc)
-        existing = StockPriceModel.get_or_none(
-            (StockPriceModel.ticker == ticker)
-            & (StockPriceModel.price_date == price_date)
-        )
-        if existing:
-            StockPriceModel.update(
-                price=price,
-                currency=currency,
-                name=name,
-                exchange=exchange,
-                updated_at=now,
-            ).where(StockPriceModel.id == existing.id).execute()
-            row = StockPriceModel.get_by_id(existing.id)
-        else:
+        try:
             row = StockPriceModel.create(
                 id=uuid4(),
                 ticker=ticker,
@@ -59,6 +48,21 @@ class StockPriceRepository:
                 exchange=exchange,
                 created_at=now,
                 updated_at=now,
+            )
+        except IntegrityError:
+            StockPriceModel.update(
+                price=price,
+                currency=currency,
+                name=name,
+                exchange=exchange,
+                updated_at=now,
+            ).where(
+                (StockPriceModel.ticker == ticker)
+                & (StockPriceModel.price_date == price_date)
+            ).execute()
+            row = StockPriceModel.get(
+                (StockPriceModel.ticker == ticker)
+                & (StockPriceModel.price_date == price_date)
             )
         return self._to_domain(row)
 

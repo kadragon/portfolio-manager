@@ -58,11 +58,11 @@ class HoldingRepository:
 
         holding_ids = [hid for hid, _ in updates]
         if len(set(holding_ids)) != len(holding_ids):
-            raise ValueError("Duplicate holding IDs in update list")
+            raise ValueError("duplicate holding_ids are not allowed")
 
         for _, qty in updates:
             if qty <= 0:
-                raise ValueError("All quantities must be positive")
+                raise ValueError("quantity must be greater than zero")
 
         # Verify all holdings belong to the account
         existing = {
@@ -73,7 +73,7 @@ class HoldingRepository:
             )
         }
         if len(existing) != len(holding_ids):
-            raise ValueError("Some holdings do not belong to the specified account")
+            raise ValueError("all holdings must belong to account")
 
         now = datetime.now(timezone.utc)
         results = []
