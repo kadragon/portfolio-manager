@@ -61,6 +61,7 @@ class AccountModel(BaseModel):
     id = UUIDField(primary_key=True, default=uuid4)
     name = TextField()
     cash_balance = DecimalField(decimal_places=10, auto_round=False, default=Decimal(0))
+    kis_account_no = TextField(null=True)
     created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
     updated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
 
@@ -161,7 +162,18 @@ def init_db(db_path: str = ".data/portfolio.db") -> SqliteDatabase:
         },
     )
     db.create_tables(ALL_MODELS)
+    _run_migrations(db)
     return db
+
+
+def _run_migrations(database: SqliteDatabase) -> None:
+    """Apply schema migrations for columns added after initial release."""
+    from playhouse.migrate import SqliteMigrator, migrate
+
+    migrator = SqliteMigrator(database)
+    columns = {col.name for col in database.get_columns("accounts")}
+    if "kis_account_no" not in columns:
+        migrate(migrator.add_column("accounts", "kis_account_no", TextField(null=True)))
 
 
 def close_db() -> None:

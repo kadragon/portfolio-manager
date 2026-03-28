@@ -15,3 +15,4 @@ class Account:
     cash_balance: Decimal
     created_at: datetime
     updated_at: datetime
+    kis_account_no: str | None = None

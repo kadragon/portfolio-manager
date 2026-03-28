@@ -12,6 +12,7 @@
         수정
       </button>
       <a href="/accounts/{{ account.id }}/holdings" class="btn btn-ghost btn-xs">보유 내역</a>
+      {% if account.kis_account_no %}
       <button type="button"
               class="btn btn-ghost btn-xs"
               hx-post="/accounts/{{ account.id }}/sync"
@@ -20,6 +21,7 @@
               data-request-message="KIS 계좌를 동기화하는 중…">
         KIS 동기화
       </button>
+      {% endif %}
       <button type="button"
               class="btn btn-error btn-xs"
               hx-delete="/accounts/{{ account.id }}"

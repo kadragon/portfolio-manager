@@ -175,6 +175,7 @@ def update_account(
     account_id: UUID,
     name: str = Form(...),
     cash_balance: Decimal = Form(Decimal("0")),
+    kis_account_no: str = Form(""),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
@@ -182,6 +183,7 @@ def update_account(
         account_id=account_id,
         name=name.strip(),
         cash_balance=cash_balance,
+        kis_account_no=kis_account_no.strip() or None,
     )
     return templates.TemplateResponse(
         request=request,
@@ -506,29 +508,36 @@ def sync_account(request: Request, account_id: UUID) -> HTMLResponse:
                     "message": "계좌를 찾을 수 없습니다.",
                 },
             )
-        cano = container.kis_cano
-        acnt = container.kis_acnt_prdt_cd
-        if not cano or not acnt:
+        kis_no = account.kis_account_no
+        if not kis_no:
             return templates.TemplateResponse(
                 request=request,
                 name="accounts/_sync_result.html",
                 context={
                     "account_id": account_id,
                     "success": False,
-                    "message": "KIS 계좌 정보(번호/상품코드)가 설정되지 않았습니다.",
+                    "message": "이 계좌에는 KIS 계좌번호가 설정되지 않았습니다.",
                 },
             )
-        container.kis_account_sync_service.sync_account(
+        digits = "".join(ch for ch in kis_no if ch.isdigit())
+        cano, acnt = digits[:8], digits[8:]
+        result = container.kis_account_sync_service.sync_account(
             account=account, cano=cano, acnt_prdt_cd=acnt
         )
-        message = "KIS 계좌 동기화 완료"
         success = True
+        message = "KIS 계좌 동기화 완료"
     except Exception as e:
+        result = None
         message = f"동기화 실패: {e}"
         success = False
 
     return templates.TemplateResponse(
         request=request,
         name="accounts/_sync_result.html",
-        context={"account_id": account_id, "success": success, "message": message},
+        context={
+            "account_id": account_id,
+            "success": success,
+            "message": message,
+            "result": result,
+        },
     )
