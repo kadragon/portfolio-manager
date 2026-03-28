@@ -14,7 +14,6 @@
 - Data stored in `.data/portfolio.db` (SQLite, managed via Peewee ORM).
 - Peewee models defined in `src/portfolio_manager/services/database.py`; domain dataclasses remain in `src/portfolio_manager/models/`.
 - Schema auto-created on first run via `init_db()`. No external DB dependency.
-- One-time Supabase→SQLite migration script: `scripts/migrate_supabase_to_sqlite.py` (requires supabase package installed).
 
 ## Strategic Insights
 - Rich-only CLI replaces Textual screens; menu navigation and prompts drive group/stock flows.

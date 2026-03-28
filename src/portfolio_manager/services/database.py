@@ -2,6 +2,7 @@
 
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from decimal import Decimal
 from uuid import uuid4
 
@@ -23,6 +24,11 @@ db = SqliteDatabase(None)
 
 class BaseModel(Model):
     """Base model with shared database reference."""
+
+    def save(self, *args, **kwargs):
+        if hasattr(self, "updated_at"):
+            self.updated_at = datetime.now(timezone.utc)
+        return super().save(*args, **kwargs)
 
     class Meta:
         database = db
@@ -151,8 +157,19 @@ ALL_MODELS = [
 ]
 
 
-def init_db(db_path: str = ".data/portfolio.db") -> SqliteDatabase:
+def _default_db_path() -> str:
+    """Return the default database path as an absolute path."""
+    env_path = os.environ.get("PORTFOLIO_DB_PATH")
+    if env_path:
+        return str(Path(env_path).resolve())
+    project_root = Path(__file__).resolve().parents[3]
+    return str(project_root / ".data" / "portfolio.db")
+
+
+def init_db(db_path: str | None = None) -> SqliteDatabase:
     """Initialize the SQLite database and create tables if needed."""
+    if db_path is None:
+        db_path = _default_db_path()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     db.init(
         db_path,
