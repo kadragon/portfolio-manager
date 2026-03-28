@@ -10,36 +10,11 @@
 - Overseas current price endpoint: `/uapi/overseas-price/v1/quotations/price` with TR ID `HHDFS00000300`.
 - Web UI entry point: `portfolio-web` (starts FastAPI via uvicorn on `http://127.0.0.1:8000` with reload).
 
-## Supabase Integration
-- Supabase credentials stored in `.env`: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (required; bypasses RLS). The anon key (`SUPABASE_KEY`) is no longer supported due to RLS policies.
-- Auto-resume for paused projects: Set `SUPABASE_ACCESS_TOKEN` (Personal Access Token from https://supabase.com/dashboard/account/tokens) to automatically restore paused Supabase projects on connection failure.
-- Database schema:
-  - `groups` table: stores stock groups (id, name, target_percentage, created_at, updated_at)
-  - `stocks` table: stores stock tickers (id, ticker, group_id, created_at, updated_at)
-  - Relationship: groups 1:N stocks
-- `accounts` table: stores brokerage accounts (id, name, cash_balance, created_at, updated_at)
-- `holdings` table: stores account holdings (id, account_id, stock_id, quantity, created_at, updated_at)
-- Relationship: accounts 1:N holdings, stocks 1:N holdings
-- Migration files:
-  - `supabase/migrations/20260103000000_create_groups_and_stocks.sql`
-  - `supabase/migrations/20260103010000_create_accounts_and_holdings.sql`
-  - `supabase/migrations/20260104000000_add_target_percentage_to_groups.sql`
-  - `supabase/migrations/20260104010000_create_deposits.sql`
-  - `supabase/migrations/20260104020000_alter_deposits_global.sql`
-- Repositories implemented:
-  - `GroupRepository`: create(), list_all(), update(), delete()
-  - `StockRepository`: create(), list_by_group()
-  - `AccountRepository`: create(), list_all(), delete_with_holdings()
-  - `HoldingRepository`: create(), list_by_account(), delete_by_account(), get_aggregated_holdings_by_stock()
-  - `DepositRepository`: create(), update(), list_all(), get_by_date(), delete(), get_total(), get_first_deposit_date()
-- Services implemented:
-  - `PortfolioService`: get_holdings_by_group() - aggregates holdings across accounts by stock and groups them by group
-  - `PortfolioService`: get_portfolio_summary() - aggregates holdings with real-time price, valuation, return rates (including annualized)
-  - `PriceService`: get_stock_price(ticker) - fetches current stock price from price client
-  - `KisUnifiedPriceClient`: get_price(ticker) - routes to domestic/overseas KIS API based on ticker format
-- Supabase client factory: `src/portfolio_manager/services/supabase_client.py`
-- Data models: `src/portfolio_manager/models/group.py` (target_percentage 포함), `src/portfolio_manager/models/stock.py`, `src/portfolio_manager/models/account.py`, `src/portfolio_manager/models/holding.py`
-- Test coverage: `tests/test_group_repository.py`, `tests/test_stock_repository.py`, `tests/test_account_repository.py`, `tests/test_account_delete_cascade.py`, `tests/test_holding_repository.py`, `tests/test_holding_quantity_decimal.py`, `tests/test_holding_aggregation.py`, `tests/test_portfolio_service.py`, `tests/test_rich_dashboard.py`
+## Database (SQLite + Peewee)
+- Data stored in `.data/portfolio.db` (SQLite, managed via Peewee ORM).
+- Peewee models defined in `src/portfolio_manager/services/database.py`; domain dataclasses remain in `src/portfolio_manager/models/`.
+- Schema auto-created on first run via `init_db()`. No external DB dependency.
+- One-time Supabase→SQLite migration script: `scripts/migrate_supabase_to_sqlite.py` (requires supabase package installed).
 
 ## Strategic Insights
 - Rich-only CLI replaces Textual screens; menu navigation and prompts drive group/stock flows.
@@ -93,7 +68,6 @@
 - Added `stock_prices` table and repositories to cache daily price snapshots per ticker/date.
 - PriceService now reuses cached prices for the day and caches non-zero quotes from live fetches.
 - Historical close lookups now use the same daily cache and skip cache writes on errors or zero prices.
-- Supabase 자동 resume: `get_supabase_client()`가 연결 실패 시 `SUPABASE_ACCESS_TOKEN`이 설정되어 있으면 Management API로 paused 프로젝트를 자동 복구하고 재연결을 시도한다.
 
 ## 2026-01-29
 
@@ -159,7 +133,7 @@ If change-rate data is needed, callers must explicitly enable it.
 PortfolioService now loads all stocks once and groups them in memory to avoid per-group queries.
 
 ### Reason
-Fetching stocks per group caused N+1 Supabase calls on each dashboard render.
+Fetching stocks per group caused N+1 DB calls on each dashboard render.
 
 ### Impact
 Provide `StockRepository.list_all()` and use it for portfolio aggregation.
@@ -167,13 +141,13 @@ Provide `StockRepository.list_all()` and use it for portfolio aggregation.
 ## 2026-02-05 (Holding Aggregation)
 
 ### Decision/Learning
-Holding aggregation now relies on Supabase RPC `aggregate_holdings_by_stock`.
+Holding aggregation fetches all holdings and aggregates in Python using Decimal for precision.
 
 ### Reason
-Server-side aggregation avoids loading the full holdings table on each dashboard render.
+SQLite doesn't have server-side aggregation RPC; Python-side aggregation is simple and precise.
 
 ### Impact
-Migration adds `aggregate_holdings_by_stock` RPC; it must return `stock_id` and `quantity`.
+`HoldingRepository.get_aggregated_holdings_by_stock()` returns `dict[UUID, Decimal]`.
 
 ## 2026-02-05 (Preferred Exchange Fallback)
 

@@ -1,19 +1,16 @@
 """Order execution repository."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
-from uuid import UUID
+from uuid import uuid4
 
 from portfolio_manager.models.order_execution import OrderExecutionRecord
+from portfolio_manager.services.database import OrderExecutionModel
 
 
 class OrderExecutionRepository:
     """Repository for managing order execution records."""
-
-    def __init__(self, supabase_client):
-        """Initialize the repository."""
-        self.client = supabase_client
 
     def create(
         self,
@@ -27,50 +24,45 @@ class OrderExecutionRepository:
         raw_response: Optional[dict] = None,
     ) -> OrderExecutionRecord:
         """Create an order execution record."""
-        data = {
-            "ticker": ticker,
-            "side": side,
-            "quantity": quantity,
-            "currency": currency,
-            "exchange": exchange,
-            "status": status,
-            "message": message,
-            "raw_response": json.dumps(raw_response)
-            if raw_response is not None
-            else None,
-        }
-
-        response = self.client.table("order_executions").insert(data).execute()
-        item = response.data[0]
-
-        return self._to_domain(item)
+        now = datetime.now(timezone.utc)
+        row = OrderExecutionModel.create(
+            id=uuid4(),
+            ticker=ticker,
+            side=side,
+            quantity=quantity,
+            currency=currency,
+            exchange=exchange,
+            status=status,
+            message=message,
+            raw_response=json.dumps(raw_response) if raw_response is not None else None,
+            created_at=now,
+        )
+        return self._to_domain(row)
 
     def list_recent(self, limit: int = 20) -> list[OrderExecutionRecord]:
         """List recent order executions ordered by created_at descending."""
-        response = (
-            self.client.table("order_executions")
-            .select("*")
-            .order("created_at", desc=True)
+        return [
+            self._to_domain(row)
+            for row in OrderExecutionModel.select()
+            .order_by(OrderExecutionModel.created_at.desc())
             .limit(limit)
-            .execute()
-        )
+        ]
 
-        return [self._to_domain(item) for item in response.data]
-
-    def _to_domain(self, item: dict) -> OrderExecutionRecord:
-        raw = item.get("raw_response")
+    @staticmethod
+    def _to_domain(row: OrderExecutionModel) -> OrderExecutionRecord:
+        raw = row.raw_response
         if isinstance(raw, str):
             raw = json.loads(raw)
 
         return OrderExecutionRecord(
-            id=UUID(item["id"]),
-            ticker=item["ticker"],
-            side=item["side"],
-            quantity=item["quantity"],
-            currency=item["currency"],
-            exchange=item.get("exchange"),
-            status=item["status"],
-            message=item["message"],
+            id=row.id,
+            ticker=row.ticker,
+            side=row.side,
+            quantity=row.quantity,
+            currency=row.currency,
+            exchange=row.exchange,
+            status=row.status,
+            message=row.message,
             raw_response=raw,
-            created_at=datetime.fromisoformat(item["created_at"]),
+            created_at=row.created_at,
         )

@@ -54,7 +54,7 @@ from portfolio_manager.services.exchange.exchange_rate_service import (
     ExchangeRateService,
 )
 from portfolio_manager.services.kis_account_sync_service import KisAccountSyncService
-from portfolio_manager.services.supabase_client import get_supabase_client
+from portfolio_manager.services.database import init_db, close_db
 
 logger = logging.getLogger(__name__)
 
@@ -67,15 +67,15 @@ class ServiceContainer:
         self.http_client: httpx.Client | None = None
         self.exim_client: httpx.Client | None = None
 
-        # Supabase Repositories
-        self.supabase_client = get_supabase_client()
-        self.group_repository = GroupRepository(self.supabase_client)
-        self.stock_repository = StockRepository(self.supabase_client)
-        self.stock_price_repository = StockPriceRepository(self.supabase_client)
-        self.account_repository = AccountRepository(self.supabase_client)
-        self.holding_repository = HoldingRepository(self.supabase_client)
-        self.deposit_repository = DepositRepository(self.supabase_client)
-        self.execution_repository = OrderExecutionRepository(self.supabase_client)
+        # SQLite + Peewee
+        init_db()
+        self.group_repository = GroupRepository()
+        self.stock_repository = StockRepository()
+        self.stock_price_repository = StockPriceRepository()
+        self.account_repository = AccountRepository()
+        self.holding_repository = HoldingRepository()
+        self.deposit_repository = DepositRepository()
+        self.execution_repository = OrderExecutionRepository()
 
         # Services (initialized on demand or setup)
         self.price_service: PriceService | None = None
@@ -232,6 +232,7 @@ class ServiceContainer:
 
     def close(self) -> None:
         """Close resources."""
+        close_db()
         if self.http_client:
             self.http_client.close()
         if self.exim_client:

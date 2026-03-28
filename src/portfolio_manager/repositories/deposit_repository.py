@@ -1,11 +1,12 @@
 """Deposit repository."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from portfolio_manager.models.deposit import Deposit
+from portfolio_manager.services.database import DepositModel
 
 
 class _UnsetNote:
@@ -18,10 +19,6 @@ _UNSET_NOTE = _UnsetNote()
 class DepositRepository:
     """Repository for managing deposits."""
 
-    def __init__(self, supabase_client):
-        """Initialize the repository."""
-        self.client = supabase_client
-
     def create(
         self,
         amount: Decimal,
@@ -29,16 +26,16 @@ class DepositRepository:
         note: Optional[str] = None,
     ) -> Deposit:
         """Create a new deposit."""
-        data = {
-            "amount": str(amount),
-            "deposit_date": deposit_date.isoformat(),
-            "note": note,
-        }
-
-        response = self.client.table("deposits").insert(data).execute()
-        item = response.data[0]
-
-        return self._to_domain(item)
+        now = datetime.now(timezone.utc)
+        row = DepositModel.create(
+            id=uuid4(),
+            amount=amount,
+            deposit_date=deposit_date,
+            note=note,
+            created_at=now,
+            updated_at=now,
+        )
+        return self._to_domain(row)
 
     def update(
         self,
@@ -48,51 +45,35 @@ class DepositRepository:
         note: Optional[str] | _UnsetNote = _UNSET_NOTE,
     ) -> Deposit:
         """Update an existing deposit."""
-        data = {}
+        updates: dict = {}
         if amount is not None:
-            data["amount"] = str(amount)
+            updates["amount"] = amount
         if deposit_date is not None:
-            data["deposit_date"] = deposit_date.isoformat()
+            updates["deposit_date"] = deposit_date
         if not isinstance(note, _UnsetNote):
-            data["note"] = note
+            updates["note"] = note
 
-        response = (
-            self.client.table("deposits")
-            .update(data)
-            .eq("id", str(deposit_id))
-            .execute()
-        )
-        item = response.data[0]
-        return self._to_domain(item)
+        updates["updated_at"] = datetime.now(timezone.utc)
+        DepositModel.update(updates).where(DepositModel.id == deposit_id).execute()
+
+        row = DepositModel.get_by_id(deposit_id)
+        return self._to_domain(row)
 
     def list_all(self) -> list[Deposit]:
         """List all deposits."""
-        response = (
-            self.client.table("deposits")
-            .select("*")
-            .order("deposit_date", desc=True)
-            .execute()
-        )
-
-        return [self._to_domain(item) for item in response.data]
+        return [
+            self._to_domain(row)
+            for row in DepositModel.select().order_by(DepositModel.deposit_date.desc())
+        ]
 
     def get_by_date(self, deposit_date: date) -> Deposit | None:
         """Get a deposit by date."""
-        response = (
-            self.client.table("deposits")
-            .select("*")
-            .eq("deposit_date", deposit_date.isoformat())
-            .execute()
-        )
-
-        if not response.data:
-            return None
-
-        return self._to_domain(response.data[0])
+        row = DepositModel.get_or_none(DepositModel.deposit_date == deposit_date)
+        return self._to_domain(row) if row else None
 
     def delete(self, deposit_id: UUID) -> None:
         """Delete a deposit."""
-        self.client.table("deposits").delete().eq("id", str(deposit_id)).execute()
+        DepositModel.delete().where(DepositModel.id == deposit_id).execute()
 
     def get_total(self) -> Decimal:
         """Get total deposit amount."""
@@ -101,25 +82,25 @@ class DepositRepository:
 
     def get_first_deposit_date(self) -> date | None:
         """Get the earliest deposit date."""
-        response = (
-            self.client.table("deposits")
-            .select("deposit_date")
-            .order("deposit_date", desc=False)
+        row = (
+            DepositModel.select(DepositModel.deposit_date)
+            .order_by(DepositModel.deposit_date.asc())
             .limit(1)
-            .execute()
+            .first()
         )
 
-        if not response.data:
+        if not row:
             return None
 
-        return datetime.strptime(response.data[0]["deposit_date"], "%Y-%m-%d").date()
+        return row.deposit_date
 
-    def _to_domain(self, item: dict) -> Deposit:
+    @staticmethod
+    def _to_domain(row: DepositModel) -> Deposit:
         return Deposit(
-            id=UUID(item["id"]),
-            amount=Decimal(item["amount"]),
-            deposit_date=datetime.strptime(item["deposit_date"], "%Y-%m-%d").date(),
-            note=item.get("note"),
-            created_at=datetime.fromisoformat(item["created_at"]),
-            updated_at=datetime.fromisoformat(item["updated_at"]),
+            id=row.id,
+            amount=Decimal(str(row.amount)),
+            deposit_date=row.deposit_date,
+            note=row.note,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )

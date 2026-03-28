@@ -14,12 +14,9 @@ from portfolio_manager.core.container import ServiceContainer
 
 @pytest.fixture
 def container() -> Iterator[ServiceContainer]:
-    """Create a container with repositories mocked out."""
+    """Create a container with DB and repositories mocked out."""
     with (
-        patch(
-            "portfolio_manager.core.container.get_supabase_client",
-            return_value=MagicMock(),
-        ),
+        patch("portfolio_manager.core.container.init_db"),
         patch(
             "portfolio_manager.core.container.GroupRepository", return_value=MagicMock()
         ),
@@ -52,7 +49,6 @@ def container() -> Iterator[ServiceContainer]:
 
 def test_constructor_wires_repositories_and_defaults() -> None:
     """Container should wire repository instances and initialize defaults."""
-    supabase_client = MagicMock()
     group_repo = MagicMock()
     stock_repo = MagicMock()
     stock_price_repo = MagicMock()
@@ -62,10 +58,7 @@ def test_constructor_wires_repositories_and_defaults() -> None:
     execution_repo = MagicMock()
 
     with (
-        patch(
-            "portfolio_manager.core.container.get_supabase_client",
-            return_value=supabase_client,
-        ),
+        patch("portfolio_manager.core.container.init_db"),
         patch(
             "portfolio_manager.core.container.GroupRepository", return_value=group_repo
         ),
@@ -95,7 +88,6 @@ def test_constructor_wires_repositories_and_defaults() -> None:
     ):
         created = ServiceContainer()
 
-    assert created.supabase_client is supabase_client
     assert created.group_repository is group_repo
     assert created.stock_repository is stock_repo
     assert created.stock_price_repository is stock_price_repo
@@ -436,13 +428,15 @@ def test_get_portfolio_service_passes_dependencies(
     )
 
 
-def test_close_closes_http_clients(container: ServiceContainer) -> None:
-    """close should close both managed HTTP clients when present."""
+def test_close_closes_http_clients_and_db(container: ServiceContainer) -> None:
+    """close should close both managed HTTP clients and database."""
     container.http_client = MagicMock()
     container.exim_client = MagicMock()
 
-    container.close()
+    with patch("portfolio_manager.core.container.close_db") as mock_close_db:
+        container.close()
 
+    mock_close_db.assert_called_once()
     container.http_client.close.assert_called_once_with()
     container.exim_client.close.assert_called_once_with()
 

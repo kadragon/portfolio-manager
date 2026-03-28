@@ -1,152 +1,111 @@
 """Holding repository for database operations."""
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, cast
-from uuid import UUID
-
-from postgrest.exceptions import APIError
-from supabase import Client
+from uuid import UUID, uuid4
 
 from portfolio_manager.models import Holding
+from portfolio_manager.services.database import HoldingModel, db
 
 
 class HoldingRepository:
     """Repository for Holding database operations."""
 
-    def __init__(self, client: Client):
-        """Initialize repository with Supabase client."""
-        self.client = client
-
     def create(self, account_id: UUID, stock_id: UUID, quantity: Decimal) -> Holding:
         """Create a new holding."""
-        response = (
-            self.client.table("holdings")
-            .insert(
-                {
-                    "account_id": str(account_id),
-                    "stock_id": str(stock_id),
-                    "quantity": str(quantity),
-                }
-            )
-            .execute()
+        now = datetime.now(timezone.utc)
+        row = HoldingModel.create(
+            id=uuid4(),
+            account=account_id,
+            stock=stock_id,
+            quantity=quantity,
+            created_at=now,
+            updated_at=now,
         )
-        if not response.data or len(response.data) == 0:
-            raise ValueError("Failed to create holding")
-        data = cast(dict[str, Any], response.data[0])
-        return Holding(
-            id=UUID(str(data["id"])),
-            account_id=UUID(str(data["account_id"])),
-            stock_id=UUID(str(data["stock_id"])),
-            quantity=Decimal(str(data["quantity"])),
-            created_at=datetime.fromisoformat(str(data["created_at"])),
-            updated_at=datetime.fromisoformat(str(data["updated_at"])),
-        )
+        return self._to_domain(row)
 
     def list_by_account(self, account_id: UUID) -> list[Holding]:
         """List holdings for a specific account."""
-        response = (
-            self.client.table("holdings")
-            .select("*")
-            .eq("account_id", str(account_id))
-            .execute()
-        )
-        if not response.data:
-            return []
         return [
-            Holding(
-                id=UUID(str(item["id"])),
-                account_id=UUID(str(item["account_id"])),
-                stock_id=UUID(str(item["stock_id"])),
-                quantity=Decimal(str(item["quantity"])),
-                created_at=datetime.fromisoformat(str(item["created_at"])),
-                updated_at=datetime.fromisoformat(str(item["updated_at"])),
-            )
-            for item in cast(list[dict[str, Any]], response.data)
+            self._to_domain(row)
+            for row in HoldingModel.select().where(HoldingModel.account == account_id)
         ]
 
     def delete_by_account(self, account_id: UUID) -> None:
         """Delete holdings for a specific account."""
-        self.client.table("holdings").delete().eq(
-            "account_id", str(account_id)
-        ).execute()
+        HoldingModel.delete().where(HoldingModel.account == account_id).execute()
 
     def delete(self, holding_id: UUID) -> None:
         """Delete a holding by ID."""
-        self.client.table("holdings").delete().eq("id", str(holding_id)).execute()
+        HoldingModel.delete().where(HoldingModel.id == holding_id).execute()
 
     def update(self, holding_id: UUID, quantity: Decimal) -> Holding:
         """Update a holding quantity by ID."""
-        response = (
-            self.client.table("holdings")
-            .update({"quantity": str(quantity)})
-            .eq("id", str(holding_id))
-            .execute()
-        )
-        if not response.data:
-            raise ValueError("Failed to update holding")
-        data = cast(dict[str, Any], response.data[0])
-        return Holding(
-            id=UUID(str(data["id"])),
-            account_id=UUID(str(data["account_id"])),
-            stock_id=UUID(str(data["stock_id"])),
-            quantity=Decimal(str(data["quantity"])),
-            created_at=datetime.fromisoformat(str(data["created_at"])),
-            updated_at=datetime.fromisoformat(str(data["updated_at"])),
-        )
+        now = datetime.now(timezone.utc)
+        HoldingModel.update(quantity=quantity, updated_at=now).where(
+            HoldingModel.id == holding_id
+        ).execute()
+        row = HoldingModel.get_by_id(holding_id)
+        return self._to_domain(row)
 
     def bulk_update_by_account(
         self, account_id: UUID, updates: list[tuple[UUID, Decimal]]
     ) -> list[Holding]:
-        """Update multiple holdings for one account atomically via RPC."""
+        """Update multiple holdings for one account atomically."""
         if not updates:
             return []
 
-        response = self.client.rpc(
-            "bulk_update_account_holdings",
-            {
-                "p_account_id": str(account_id),
-                "p_holding_ids": [str(holding_id) for holding_id, _ in updates],
-                "p_quantities": [str(quantity) for _, quantity in updates],
-            },
-        ).execute()
-        if not response.data:
-            raise ValueError("Bulk update returned no data")
+        holding_ids = [hid for hid, _ in updates]
+        if len(set(holding_ids)) != len(holding_ids):
+            raise ValueError("Duplicate holding IDs in update list")
 
-        return [
-            Holding(
-                id=UUID(str(item["id"])),
-                account_id=UUID(str(item["account_id"])),
-                stock_id=UUID(str(item["stock_id"])),
-                quantity=Decimal(str(item["quantity"])),
-                created_at=datetime.fromisoformat(str(item["created_at"])),
-                updated_at=datetime.fromisoformat(str(item["updated_at"])),
+        for _, qty in updates:
+            if qty <= 0:
+                raise ValueError("All quantities must be positive")
+
+        # Verify all holdings belong to the account
+        existing = {
+            row.id: row
+            for row in HoldingModel.select().where(
+                (HoldingModel.account == account_id)
+                & (HoldingModel.id.in_(holding_ids))
             )
-            for item in cast(list[dict[str, Any]], response.data)
-        ]
+        }
+        if len(existing) != len(holding_ids):
+            raise ValueError("Some holdings do not belong to the specified account")
+
+        now = datetime.now(timezone.utc)
+        results = []
+        with db.atomic():
+            for holding_id, quantity in updates:
+                HoldingModel.update(quantity=quantity, updated_at=now).where(
+                    HoldingModel.id == holding_id
+                ).execute()
+
+            for holding_id, _ in updates:
+                row = HoldingModel.get_by_id(holding_id)
+                results.append(self._to_domain(row))
+
+        return results
 
     def get_aggregated_holdings_by_stock(self) -> dict[UUID, Decimal]:
         """Get aggregated holdings by stock across all accounts."""
-        try:
-            response = self.client.rpc("aggregate_holdings_by_stock").execute()
-        except APIError as error:
-            is_rpc_missing_error = (
-                error.code == "PGRST202"
-                and "aggregate_holdings_by_stock" in (error.message or "")
-            )
-            if not is_rpc_missing_error:
-                raise
-            response = (
-                self.client.table("holdings").select("stock_id,quantity").execute()
-            )
-        if not response.data:
-            return {}
+        rows = HoldingModel.select(HoldingModel.stock, HoldingModel.quantity)
 
         aggregated: dict[UUID, Decimal] = defaultdict(Decimal)
-        for item in cast(list[dict[str, Any]], response.data):
-            stock_id = UUID(str(item["stock_id"]))
-            quantity = Decimal(str(item["quantity"]))
-            aggregated[stock_id] += quantity
+        for row in rows:
+            aggregated[row.stock_id] += Decimal(str(row.quantity))
 
         return dict(aggregated)
+
+    @staticmethod
+    def _to_domain(row: HoldingModel) -> Holding:
+        return Holding(
+            id=row.id,
+            account_id=row.account_id,
+            stock_id=row.stock_id,
+            quantity=Decimal(str(row.quantity)),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )

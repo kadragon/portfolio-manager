@@ -1,76 +1,53 @@
 """Account repository for database operations."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, cast
-from uuid import UUID
-
-from supabase import Client
+from uuid import UUID, uuid4
 
 from portfolio_manager.models import Account
+from portfolio_manager.services.database import AccountModel
 
 
 class AccountRepository:
     """Repository for Account database operations."""
 
-    def __init__(self, client: Client):
-        """Initialize repository with Supabase client."""
-        self.client = client
-
     def create(self, name: str, cash_balance: Decimal) -> Account:
         """Create a new account."""
-        response = (
-            self.client.table("accounts")
-            .insert({"name": name, "cash_balance": str(cash_balance)})
-            .execute()
+        now = datetime.now(timezone.utc)
+        row = AccountModel.create(
+            id=uuid4(),
+            name=name,
+            cash_balance=cash_balance,
+            created_at=now,
+            updated_at=now,
         )
-        if not response.data or len(response.data) == 0:
-            raise ValueError("Failed to create account")
-        data = cast(dict[str, Any], response.data[0])
-        return Account(
-            id=UUID(str(data["id"])),
-            name=str(data["name"]),
-            cash_balance=Decimal(str(data["cash_balance"])),
-            created_at=datetime.fromisoformat(str(data["created_at"])),
-            updated_at=datetime.fromisoformat(str(data["updated_at"])),
-        )
+        return self._to_domain(row)
 
     def list_all(self) -> list[Account]:
         """List all accounts."""
-        response = self.client.table("accounts").select("*").execute()
-        if not response.data:
-            return []
-        return [
-            Account(
-                id=UUID(str(item["id"])),
-                name=str(item["name"]),
-                cash_balance=Decimal(str(item["cash_balance"])),
-                created_at=datetime.fromisoformat(str(item["created_at"])),
-                updated_at=datetime.fromisoformat(str(item["updated_at"])),
-            )
-            for item in cast(list[dict[str, Any]], response.data)
-        ]
+        return [self._to_domain(row) for row in AccountModel.select()]
 
     def delete_with_holdings(self, account_id: UUID, holding_repository) -> None:
         """Delete an account and its holdings."""
         holding_repository.delete_by_account(account_id)
-        self.client.table("accounts").delete().eq("id", str(account_id)).execute()
+        AccountModel.delete().where(AccountModel.id == account_id).execute()
 
     def update(self, account_id: UUID, name: str, cash_balance: Decimal) -> Account:
         """Update an account name and cash balance."""
-        response = (
-            self.client.table("accounts")
-            .update({"name": name, "cash_balance": str(cash_balance)})
-            .eq("id", str(account_id))
-            .execute()
-        )
-        if not response.data:
-            raise ValueError("Failed to update account")
-        data = cast(dict[str, Any], response.data[0])
+        now = datetime.now(timezone.utc)
+        AccountModel.update(name=name, cash_balance=cash_balance, updated_at=now).where(
+            AccountModel.id == account_id
+        ).execute()
+
+        row = AccountModel.get_by_id(account_id)
+        return self._to_domain(row)
+
+    @staticmethod
+    def _to_domain(row: AccountModel) -> Account:
         return Account(
-            id=UUID(str(data["id"])),
-            name=str(data["name"]),
-            cash_balance=Decimal(str(data["cash_balance"])),
-            created_at=datetime.fromisoformat(str(data["created_at"])),
-            updated_at=datetime.fromisoformat(str(data["updated_at"])),
+            id=row.id,
+            name=row.name,
+            cash_balance=Decimal(str(row.cash_balance)),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )
