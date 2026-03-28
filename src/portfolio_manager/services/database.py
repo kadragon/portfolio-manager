@@ -26,7 +26,7 @@ class BaseModel(Model):
     """Base model with shared database reference."""
 
     def save(self, *args, **kwargs):
-        if hasattr(self, "updated_at"):
+        if hasattr(self, "updated_at") and not kwargs.get("force_insert", False):
             self.updated_at = datetime.now(timezone.utc)
         return super().save(*args, **kwargs)
 
@@ -162,8 +162,15 @@ def _default_db_path() -> str:
     env_path = os.environ.get("PORTFOLIO_DB_PATH")
     if env_path:
         return str(Path(env_path).resolve())
+    # database.py → services → portfolio_manager → src → project root
     project_root = Path(__file__).resolve().parents[3]
-    return str(project_root / ".data" / "portfolio.db")
+    db_path = project_root / ".data" / "portfolio.db"
+    if not project_root.joinpath("pyproject.toml").exists():
+        raise RuntimeError(
+            f"Cannot locate project root (resolved to {project_root}). "
+            "Set the PORTFOLIO_DB_PATH environment variable."
+        )
+    return str(db_path)
 
 
 def init_db(db_path: str | None = None) -> SqliteDatabase:
