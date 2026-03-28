@@ -1,31 +1,34 @@
 <tr id="account-{{ account.id }}">
   <td>
-    <form id="edit-account-{{ account.id }}"
-          hx-put="/accounts/{{ account.id }}"
-          hx-target="closest tr"
-          hx-swap="outerHTML"
-          data-request-message="계좌 정보를 저장하는 중…">
-      <label class="sr-only" for="account-name-{{ account.id }}">계좌 이름</label>
-      <input id="account-name-{{ account.id }}" type="text" name="name" value="{{ account.name }}" required autocomplete="off" class="input input-bordered input-sm">
+    <label class="sr-only" for="account-name-{{ account.id }}">계좌 이름</label>
+    <input form="edit-account-{{ account.id }}" id="account-name-{{ account.id }}" type="text" name="name" value="{{ account.name }}" required autocomplete="off" class="input input-bordered input-sm">
   </td>
   <td>
-      <label class="sr-only" for="account-cash-{{ account.id }}">예수금</label>
-      <input id="account-cash-{{ account.id }}" type="number" name="cash_balance" value="{{ account.cash_balance }}"
-             min="0" step="1" required autocomplete="off" class="input input-bordered input-sm">
+    <label class="sr-only" for="account-cash-{{ account.id }}">예수금</label>
+    <input form="edit-account-{{ account.id }}" id="account-cash-{{ account.id }}" type="number" name="cash_balance" value="{{ account.cash_balance }}"
+           min="0" step="1" required autocomplete="off" class="input input-bordered input-sm">
+    <label class="sr-only" for="account-kis-{{ account.id }}">KIS 계좌번호</label>
+    <input form="edit-account-{{ account.id }}" id="account-kis-{{ account.id }}" type="text" name="kis_account_no" value="{{ account.kis_account_no or '' }}"
+           placeholder="KIS 계좌번호 (예: 12345678-01)" autocomplete="off" class="input input-bordered input-sm mt-1">
   </td>
   <td>
-      <div class="flex flex-wrap gap-1.5">
+    <div class="flex flex-wrap gap-1.5">
+      <form id="edit-account-{{ account.id }}"
+            hx-put="/accounts/{{ account.id }}"
+            hx-target="#account-{{ account.id }}"
+            hx-swap="outerHTML"
+            data-request-message="계좌 정보를 저장하는 중…">
         <button type="submit" class="btn btn-primary btn-sm">저장</button>
-        <button type="button"
-                class="btn btn-ghost btn-xs"
-                hx-get="/accounts/{{ account.id }}"
-                hx-target="closest tr"
-                hx-swap="outerHTML"
-                data-request-message="수정 취소 중…">
-          취소
-        </button>
-      </div>
-    </form>
+      </form>
+      <button type="button"
+              class="btn btn-ghost btn-xs"
+              hx-get="/accounts/{{ account.id }}"
+              hx-target="#account-{{ account.id }}"
+              hx-swap="outerHTML"
+              data-request-message="수정 취소 중…">
+        취소
+      </button>
+    </div>
   </td>
 </tr>
 <tr id="sync-result-{{ account.id }}"></tr>

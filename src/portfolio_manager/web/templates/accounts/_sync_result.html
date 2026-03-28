@@ -1,5 +1,36 @@
 <tr id="sync-result-{{ account_id }}">
   <td colspan="3">
-    <div class="alert alert-{{ 'success' if success else 'error' }} text-sm py-2" role="status" aria-live="polite" aria-atomic="true">{{ message }}</div>
+    <div class="alert alert-{{ 'success' if success else 'error' }} text-sm py-2" role="status" aria-live="polite" aria-atomic="true">
+      <div class="w-full">
+        <p class="font-semibold">{{ message }}</p>
+        {% if result %}
+        <div class="mt-1 text-xs opacity-80 space-y-0.5">
+          {% if result.old_cash_balance != result.cash_balance %}
+          <p>예수금: {{ result.old_cash_balance | format_krw }} → {{ result.cash_balance | format_krw }}</p>
+          {% else %}
+          <p>예수금: {{ result.cash_balance | format_krw }} (변동 없음)</p>
+          {% endif %}
+          <p>보유 종목: {{ result.holding_count }}건{% if result.created_stock_count %} (신규 종목 {{ result.created_stock_count }}건 생성){% endif %}</p>
+          {% if result.holding_changes %}
+          <ul class="list-none mt-1 space-y-0.5">
+            {% for change in result.holding_changes %}
+            <li>
+              {% if change.action == "created" %}
+              + {{ change.ticker }}: {{ change.new_quantity }}주 추가
+              {% elif change.action == "updated" %}
+              ~ {{ change.ticker }}: {{ change.old_quantity }} → {{ change.new_quantity }}주
+              {% elif change.action == "deleted" %}
+              - {{ change.ticker }}: {{ change.old_quantity }}주 삭제
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p>보유 내역 변동 없음</p>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
   </td>
 </tr>

@@ -2,10 +2,13 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 from portfolio_manager.models import Account
 from portfolio_manager.services.database import AccountModel
+
+_UNSET: Any = object()
 
 
 class AccountRepository:
@@ -32,12 +35,19 @@ class AccountRepository:
         holding_repository.delete_by_account(account_id)
         AccountModel.delete().where(AccountModel.id == account_id).execute()
 
-    def update(self, account_id: UUID, name: str, cash_balance: Decimal) -> Account:
+    def update(
+        self,
+        account_id: UUID,
+        name: str,
+        cash_balance: Decimal,
+        kis_account_no: str | None = _UNSET,
+    ) -> Account:
         """Update an account name and cash balance."""
         now = datetime.now(timezone.utc)
-        AccountModel.update(name=name, cash_balance=cash_balance, updated_at=now).where(
-            AccountModel.id == account_id
-        ).execute()
+        fields: dict = {"name": name, "cash_balance": cash_balance, "updated_at": now}
+        if kis_account_no is not _UNSET:
+            fields["kis_account_no"] = kis_account_no
+        AccountModel.update(**fields).where(AccountModel.id == account_id).execute()
 
         row = AccountModel.get_by_id(account_id)
         return self._to_domain(row)
@@ -50,4 +60,5 @@ class AccountRepository:
             cash_balance=Decimal(str(row.cash_balance)),
             created_at=row.created_at,
             updated_at=row.updated_at,
+            kis_account_no=row.kis_account_no,
         )
