@@ -32,3 +32,15 @@
 - [x] `init_db()` — `_default_db_path()`로 절대경로 해석 + `PORTFOLIO_DB_PATH` 환경변수 지원
 - [x] `updated_at` — `BaseModel.save()` 오버라이드로 자동 갱신
 - [x] `OrderExecutionModel` — append-only 모델이므로 `updated_at` 불필요. 리스크 수용
+
+## Security Fixes — portfolio-manager
+
+> Fix all open GitHub security alerts for this repository.
+
+### Dependabot Alerts
+
+- [ ] Pygments ReDoS vulnerability (LOW, GHSA-5239-wwwm-4pmq) — no patched version available yet; current version 2.19.2. Monitor for a fix release and upgrade when available
+
+### Code Scanning Alerts
+
+- [x] Fix actions/missing-workflow-permissions: Workflow does not contain permissions (WARNING) — .github/workflows/ci.yml:11-36. Add explicit `permissions:` block (e.g., `contents: read`) to the workflow or job
