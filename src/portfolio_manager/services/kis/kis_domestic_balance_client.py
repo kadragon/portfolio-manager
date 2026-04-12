@@ -7,6 +7,7 @@ from collections import defaultdict
 import httpx
 
 from portfolio_manager.services.kis.kis_base_client import KisBaseClient
+from portfolio_manager.services.kis.kis_api_error import KisApiBusinessError
 from portfolio_manager.services.kis.kis_token_manager import TokenManager
 
 
@@ -57,6 +58,7 @@ class KisDomesticBalanceClient(KisBaseClient):
                 tr_cont=tr_cont,
             )
             data = response.json()
+            self._raise_for_business_error(data)
             output1 = data.get("output1") or []
             output2 = data.get("output2") or []
 
@@ -87,6 +89,17 @@ class KisDomesticBalanceClient(KisBaseClient):
             for ticker, quantity in sorted(holding_quantities.items())
         ]
         return KisAccountSnapshot(cash_balance=cash_balance, holdings=holdings)
+
+    @staticmethod
+    def _raise_for_business_error(data: dict[str, object]) -> None:
+        rt_cd = str(data.get("rt_cd", "")).strip()
+        if rt_cd in {"", "0"}:
+            return
+
+        raise KisApiBusinessError(
+            code=str(data.get("msg_cd", "")).strip(),
+            message=str(data.get("msg1", "")).strip(),
+        )
 
     def _request_balance(
         self,

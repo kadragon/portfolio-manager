@@ -41,12 +41,15 @@ class AccountRepository:
         name: str,
         cash_balance: Decimal,
         kis_account_no: str | None = _UNSET,
+        kis_api_key_id: int | None = _UNSET,
     ) -> Account:
         """Update an account name and cash balance."""
         now = datetime.now(timezone.utc)
         fields: dict = {"name": name, "cash_balance": cash_balance, "updated_at": now}
         if kis_account_no is not _UNSET:
             fields["kis_account_no"] = kis_account_no
+        if kis_api_key_id is not _UNSET:
+            fields["kis_api_key_id"] = kis_api_key_id
         AccountModel.update(**fields).where(AccountModel.id == account_id).execute()
 
         row = AccountModel.get_by_id(account_id)
@@ -61,4 +64,5 @@ class AccountRepository:
             created_at=row.created_at,
             updated_at=row.updated_at,
             kis_account_no=row.kis_account_no,
+            kis_api_key_id=row.kis_api_key_id,
         )

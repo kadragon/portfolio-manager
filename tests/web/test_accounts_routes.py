@@ -1,6 +1,8 @@
 from decimal import Decimal
 from uuid import uuid4
 
+from portfolio_manager.services.kis.kis_api_error import KisApiBusinessError
+
 
 class _FailingSyncService:
     def sync_account(self, **_: object) -> None:
@@ -27,6 +29,103 @@ def test_update_account_updates_name_and_cash_balance(client, fake_container):
     updated = fake_container.account_repository.list_all()[0]
     assert updated.name == "업데이트 계좌"
     assert updated.cash_balance == Decimal("12345.67")
+
+
+def test_update_account_validates_new_kis_account_no(client, fake_container):
+    response = client.put(
+        f"/accounts/{fake_container.account.id}",
+        data={
+            "name": "업데이트 계좌",
+            "cash_balance": "12345.67",
+            "kis_account_no": "46592856-01",
+        },
+    )
+
+    assert response.status_code == 200
+    updated = fake_container.account_repository.list_all()[0]
+    assert updated.kis_account_no == "46592856-01"
+    assert fake_container.kis_account_sync_service.validated_accounts == [
+        ("46592856", "01")
+    ]
+
+
+def test_update_account_rejects_invalid_kis_account_format(client, fake_container):
+    before = fake_container.account_repository.list_all()[0]
+
+    response = client.put(
+        f"/accounts/{fake_container.account.id}",
+        data={
+            "name": "업데이트 계좌",
+            "cash_balance": "12345.67",
+            "kis_account_no": "123",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "KIS 계좌번호 형식이 올바르지 않습니다" in response.text
+    after = fake_container.account_repository.list_all()[0]
+    assert after.kis_account_no == before.kis_account_no
+    assert fake_container.kis_account_sync_service.validated_accounts == []
+
+
+def test_update_account_rejects_kis_business_error(client, fake_container):
+    fake_container.kis_account_sync_service.validate_exception = KisApiBusinessError(
+        code="OPSQ2000",
+        message="ERROR : INPUT INVALID_CHECK_ACNO",
+    )
+
+    response = client.put(
+        f"/accounts/{fake_container.account.id}",
+        data={
+            "name": "업데이트 계좌",
+            "cash_balance": "12345.67",
+            "kis_account_no": "46592856-01",
+        },
+    )
+
+    assert response.status_code == 422
+    assert (
+        "KIS 계좌 검증 실패: OPSQ2000 - ERROR : INPUT INVALID_CHECK_ACNO"
+        in response.text
+    )
+    updated = fake_container.account_repository.list_all()[0]
+    assert updated.kis_account_no == "12345678-01"
+
+
+def test_update_account_skips_validation_for_same_kis_account_digits(
+    client, fake_container
+):
+    response = client.put(
+        f"/accounts/{fake_container.account.id}",
+        data={
+            "name": "업데이트 계좌",
+            "cash_balance": "12345.67",
+            "kis_account_no": "1234567801",
+        },
+    )
+
+    assert response.status_code == 200
+    updated = fake_container.account_repository.list_all()[0]
+    assert updated.kis_account_no == "1234567801"
+    assert fake_container.kis_account_sync_service.validated_accounts == []
+
+
+def test_update_account_rejects_kis_account_change_without_sync_service(
+    client, fake_container
+):
+    fake_container.kis_account_sync_service = None
+
+    response = client.put(
+        f"/accounts/{fake_container.account.id}",
+        data={
+            "name": "업데이트 계좌",
+            "cash_balance": "12345.67",
+            "kis_account_no": "46592856-01",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "KIS 계좌 검증 서비스가 설정되지 않았습니다." in response.text
 
 
 def test_delete_account_removes_account_and_holdings(client, fake_container):
@@ -151,3 +250,15 @@ def test_sync_account_returns_failure_message_on_exception(client, fake_containe
 
     assert response.status_code == 200
     assert "동기화 실패: sync boom" in response.text
+
+
+def test_sync_account_returns_kis_business_error_message(client, fake_container):
+    fake_container.kis_account_sync_service.sync_exception = KisApiBusinessError(
+        code="OPSQ2000",
+        message="ERROR : INPUT INVALID_CHECK_ACNO",
+    )
+
+    response = client.post(f"/accounts/{fake_container.account.id}/sync")
+
+    assert response.status_code == 200
+    assert "동기화 실패: OPSQ2000 - ERROR : INPUT INVALID_CHECK_ACNO" in response.text

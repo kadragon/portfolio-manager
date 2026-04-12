@@ -56,9 +56,11 @@ class KisAccountSyncService:
         account: Account,
         cano: str,
         acnt_prdt_cd: str,
+        kis_balance_client: KisDomesticBalanceClient | None = None,
     ) -> KisAccountSyncResult:
         """Sync cash balance and holdings for one account."""
-        snapshot = self.kis_balance_client.fetch_account_snapshot(cano, acnt_prdt_cd)
+        balance_client = kis_balance_client or self.kis_balance_client
+        snapshot = balance_client.fetch_account_snapshot(cano, acnt_prdt_cd)
         stocks_by_ticker = {
             stock.ticker: stock for stock in self.stock_repository.list_all()
         }
@@ -146,6 +148,17 @@ class KisAccountSyncService:
             created_stock_count=created_stock_count,
             holding_changes=tuple(holding_changes),
         )
+
+    def validate_account(
+        self,
+        *,
+        cano: str,
+        acnt_prdt_cd: str,
+        kis_balance_client: KisDomesticBalanceClient | None = None,
+    ) -> None:
+        """Validate KIS account credentials by fetching its snapshot."""
+        balance_client = kis_balance_client or self.kis_balance_client
+        balance_client.fetch_account_snapshot(cano, acnt_prdt_cd)
 
     def _get_or_create_sync_group_id(self) -> UUID:
         groups = self.group_repository.list_all()
