@@ -228,13 +228,17 @@ def update_account(
 
     # Parse kis_api_key_id
     kis_api_key_id_int: int | None = None
-    if next_kis_account_no is not None and kis_api_key_id:
-        try:
-            kis_api_key_id_int = int(kis_api_key_id)
-        except ValueError:
-            pass
-        if kis_api_key_id_int not in (1, 2):
-            kis_api_key_id_int = None
+    if next_kis_account_no is not None:
+        if kis_api_key_id:
+            try:
+                kis_api_key_id_int = int(kis_api_key_id)
+            except ValueError:
+                pass
+            if kis_api_key_id_int not in (1, 2):
+                kis_api_key_id_int = None
+        else:
+            # Selector not submitted — preserve existing key set assignment
+            kis_api_key_id_int = account.kis_api_key_id
 
     draft_account = replace(
         account,
@@ -657,6 +661,20 @@ def sync_account(request: Request, account_id: UUID) -> HTMLResponse:
                 },
             )
         client_set = container.get_kis_client_set(account.kis_api_key_id)
+        if (
+            account.kis_api_key_id
+            and account.kis_api_key_id != 1
+            and client_set is None
+        ):
+            return templates.TemplateResponse(
+                request=request,
+                name="accounts/_sync_result.html",
+                context={
+                    "account_id": account_id,
+                    "success": False,
+                    "message": f"KIS API 키 세트 {account.kis_api_key_id}이(가) 현재 사용 불가능합니다. 서버 로그를 확인하세요.",
+                },
+            )
         result = container.kis_account_sync_service.sync_account(
             account=account,
             cano=cano,

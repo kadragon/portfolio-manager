@@ -10,9 +10,12 @@ import pathlib
 
 ROOT = pathlib.Path(__file__).parent.parent.parent / "src" / "portfolio_manager"
 
-# Peewee model class-level query methods (called as ClassName.method())
+# Peewee model class-level query methods anchored to known ORM model class names.
+# Anchoring prevents false positives on stdlib/framework classes (e.g. Response.delete).
 _ORM_CLASS_QUERY_PATTERN = re.compile(
-    r"\b[A-Z][A-Za-z]+\.(select|get|get_by_id|get_or_none|get_or_create|create|"
+    r"\b(BaseModel|GroupModel|StockModel|AccountModel|HoldingModel|"
+    r"DepositModel|StockPriceModel|OrderExecutionModel)"
+    r"\.(select|get|get_by_id|get_or_none|get_or_create|create|"
     r"delete|drop_table|create_table|bulk_create|bulk_insert|insert_many)\("
 )
 

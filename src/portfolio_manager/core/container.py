@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
+from datetime import datetime, timedelta
+
 import httpx
 
 from portfolio_manager.repositories.account_repository import AccountRepository
@@ -159,6 +161,18 @@ class ServiceContainer:
         effective_id = key_id or 1
         return self.kis_client_sets.get(effective_id)
 
+    def _has_valid_cached_token(self, path: Path) -> bool:
+        """Return True if a non-expired cached token exists at *path*."""
+        try:
+            store = FileTokenStore(path)
+            cached = store.load()
+            return (
+                cached is not None
+                and cached.expires_at > datetime.now() + timedelta(minutes=1)
+            )
+        except Exception:
+            return False
+
     def _setup_kis_client(self) -> None:
         app_key = os.getenv("KIS_APP_KEY")
         app_secret = os.getenv("KIS_APP_SECRET")
@@ -175,6 +189,9 @@ class ServiceContainer:
 
         if app_key and app_secret:
             try:
+                _key1_had_cache = self._has_valid_cached_token(
+                    Path(".data/kis_token_1.json")
+                )
                 client_set_1, manager, token = self._build_kis_client_set(
                     1, app_key, app_secret, self.http_client, cust_type, env
                 )
@@ -244,13 +261,28 @@ class ServiceContainer:
                 app_key_2 = os.getenv("KIS_APP_KEY_2")
                 app_secret_2 = os.getenv("KIS_APP_SECRET_2")
                 if app_key_2 and app_secret_2:
-                    try:
-                        client_set_2, _, _ = self._build_kis_client_set(
-                            2, app_key_2, app_secret_2, self.http_client, cust_type, env
+                    _key2_has_cache = self._has_valid_cached_token(
+                        Path(".data/kis_token_2.json")
+                    )
+                    if not _key1_had_cache and not _key2_has_cache:
+                        logger.warning(
+                            "KIS key set 2: skipping cold-start initialization to avoid "
+                            "1-req/min rate-limit conflict with key set 1. "
+                            "Restart after ~60s to activate key set 2."
                         )
-                        self.kis_client_sets[2] = client_set_2
-                    except Exception as e:
-                        logger.warning("Could not initialize KIS key set 2: %s", e)
+                    else:
+                        try:
+                            client_set_2, _, _ = self._build_kis_client_set(
+                                2,
+                                app_key_2,
+                                app_secret_2,
+                                self.http_client,
+                                cust_type,
+                                env,
+                            )
+                            self.kis_client_sets[2] = client_set_2
+                        except Exception as e:
+                            logger.warning("Could not initialize KIS key set 2: %s", e)
 
             except Exception as e:
                 logger.warning("Could not initialize price service: %s", e)
