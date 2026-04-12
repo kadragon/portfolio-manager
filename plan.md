@@ -8,20 +8,27 @@
 
 ### Phase 1: 스켈레톤
 
+✅ Done — app factory, deps, base template, static serving
 
 ### Phase 2: Groups CRUD
 
+✅ Done — groups + stocks list/create/edit/delete routes + templates
 
 ### Phase 3: Accounts + Holdings CRUD
 
+✅ Done — accounts list, holdings table, KIS sync, bulk edit
 
 ### Phase 4: Deposits CRUD
 
+✅ Done — deposits list/create/delete routes + templates
 
 ### Phase 5: Rebalance
 
+✅ Done — plan view, group/region diagnostics, KIS order execution
 
 ### Phase 6: 마무리
+
+✅ Done — Dockerfile CMD, all phases verified (313 tests passing, 91.85% coverage)
 
 
 ## Security Fixes — portfolio-manager
