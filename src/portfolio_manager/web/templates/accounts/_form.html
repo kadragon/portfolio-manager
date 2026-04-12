@@ -10,6 +10,17 @@
     <label class="sr-only" for="account-kis-{{ account.id }}">KIS 계좌번호</label>
     <input form="edit-account-{{ account.id }}" id="account-kis-{{ account.id }}" type="text" name="kis_account_no" value="{{ account.kis_account_no or '' }}"
            placeholder="KIS 계좌번호 (예: 12345678-01)" autocomplete="off" class="input input-bordered input-sm mt-1">
+    {% if available_kis_key_ids | length > 1 %}
+    <label class="sr-only" for="account-kis-api-{{ account.id }}">API 키 세트</label>
+    <select form="edit-account-{{ account.id }}" id="account-kis-api-{{ account.id }}" name="kis_api_key_id" class="select select-bordered select-sm mt-1">
+      {% for kid in available_kis_key_ids %}
+      <option value="{{ kid }}" {% if (account.kis_api_key_id or 1) == kid %}selected{% endif %}>API 키 {{ kid }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+    {% if error_message %}
+    <p class="mt-1 text-error text-xs">{{ error_message }}</p>
+    {% endif %}
   </td>
   <td>
     <div class="flex flex-wrap gap-1.5">

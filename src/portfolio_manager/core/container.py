@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+
+from datetime import datetime, timedelta
 
 import httpx
 
@@ -59,6 +62,15 @@ from portfolio_manager.services.database import init_db, close_db
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class KisClientSet:
+    """A set of KIS API clients sharing the same app_key/app_secret."""
+
+    balance_client: KisDomesticBalanceClient
+    domestic_order_client: KisDomesticOrderClient
+    overseas_order_client: KisOverseasOrderClient
+
+
 class ServiceContainer:
     """Container for services and repositories."""
 
@@ -84,11 +96,82 @@ class ServiceContainer:
         self.order_client: object | None = None
         self.kis_cano: str | None = None
         self.kis_acnt_prdt_cd: str | None = None
+        self.kis_client_sets: dict[int, KisClientSet] = {}
 
     def setup(self) -> None:
         """Setup external services (KIS, Exchange)."""
         self._setup_kis_client()
         self._setup_exchange_service()
+
+    def _build_kis_client_set(
+        self,
+        key_id: int,
+        app_key: str,
+        app_secret: str,
+        http_client: httpx.Client,
+        cust_type: str,
+        env: str,
+    ) -> tuple[KisClientSet, TokenManager, str]:
+        """Build a KIS client set for a given API key pair.
+
+        Returns (client_set, token_manager, access_token) so the caller
+        can reuse the manager/token for price clients on key set 1.
+        """
+        auth = KisAuthClient(client=http_client, app_key=app_key, app_secret=app_secret)
+        store = FileTokenStore(Path(f".data/kis_token_{key_id}.json"))
+        manager = TokenManager(store=store, auth_client=auth)
+        token = manager.get_token()
+
+        balance_client = KisDomesticBalanceClient(
+            client=http_client,
+            app_key=app_key,
+            app_secret=app_secret,
+            access_token=token,
+            cust_type=cust_type,
+            env=env,
+            token_manager=manager,
+        )
+        domestic_order_client = KisDomesticOrderClient(
+            client=http_client,
+            app_key=app_key,
+            app_secret=app_secret,
+            access_token=token,
+            cust_type=cust_type,
+            env=env,
+            token_manager=manager,
+        )
+        overseas_order_client = KisOverseasOrderClient(
+            client=http_client,
+            app_key=app_key,
+            app_secret=app_secret,
+            access_token=token,
+            cust_type=cust_type,
+            env=env,
+            token_manager=manager,
+        )
+        client_set = KisClientSet(
+            balance_client=balance_client,
+            domestic_order_client=domestic_order_client,
+            overseas_order_client=overseas_order_client,
+        )
+        return client_set, manager, token
+
+    def get_kis_client_set(self, key_id: int | None) -> KisClientSet | None:
+        """Get a KIS client set by key ID (None defaults to 1)."""
+        effective_id = key_id or 1
+        return self.kis_client_sets.get(effective_id)
+
+    def _has_valid_cached_token(self, path: Path) -> bool:
+        """Return True if a non-expired cached token exists at *path*."""
+        try:
+            store = FileTokenStore(path)
+            cached = store.load()
+            return (
+                cached is not None
+                and cached.expires_at > datetime.now() + timedelta(minutes=1)
+            )
+        except Exception:
+            return False
 
     def _setup_kis_client(self) -> None:
         app_key = os.getenv("KIS_APP_KEY")
@@ -106,13 +189,15 @@ class ServiceContainer:
 
         if app_key and app_secret:
             try:
-                auth = KisAuthClient(
-                    client=self.http_client, app_key=app_key, app_secret=app_secret
+                _key1_had_cache = self._has_valid_cached_token(
+                    Path(".data/kis_token_1.json")
                 )
-                store = FileTokenStore(Path(".data/kis_token.json"))
-                manager = TokenManager(store=store, auth_client=auth)
-                token = manager.get_token()
+                client_set_1, manager, token = self._build_kis_client_set(
+                    1, app_key, app_secret, self.http_client, cust_type, env
+                )
+                self.kis_client_sets[1] = client_set_1
 
+                # Price clients use key set 1 only
                 domestic_client = KisDomesticPriceClient(
                     client=self.http_client,
                     app_key=app_key,
@@ -154,50 +239,51 @@ class ServiceContainer:
 
                 cano, acnt_prdt_cd = self._load_kis_account_credentials()
                 if cano and acnt_prdt_cd:
-                    balance_client = KisDomesticBalanceClient(
-                        client=self.http_client,
-                        app_key=app_key,
-                        app_secret=app_secret,
-                        access_token=token,
-                        cust_type=cust_type,
-                        env=env,
-                        token_manager=manager,
-                    )
                     self.kis_account_sync_service = KisAccountSyncService(
                         account_repository=self.account_repository,
                         holding_repository=self.holding_repository,
                         stock_repository=self.stock_repository,
                         group_repository=self.group_repository,
-                        kis_balance_client=balance_client,
+                        kis_balance_client=client_set_1.balance_client,
                     )
                     self.kis_cano = cano
                     self.kis_acnt_prdt_cd = acnt_prdt_cd
 
-                    domestic_order_client = KisDomesticOrderClient(
-                        client=self.http_client,
-                        app_key=app_key,
-                        app_secret=app_secret,
-                        access_token=token,
-                        cust_type=cust_type,
-                        env=env,
-                        token_manager=manager,
-                    )
-                    overseas_order_client = KisOverseasOrderClient(
-                        client=self.http_client,
-                        app_key=app_key,
-                        app_secret=app_secret,
-                        access_token=token,
-                        cust_type=cust_type,
-                        env=env,
-                        token_manager=manager,
-                    )
                     self.order_client = KisUnifiedOrderClient(
-                        domestic_client=domestic_order_client,
-                        overseas_client=overseas_order_client,
+                        domestic_client=client_set_1.domestic_order_client,
+                        overseas_client=client_set_1.overseas_order_client,
                         cano=cano,
                         acnt_prdt_cd=acnt_prdt_cd,
                         price_service=self.price_service,
                     )
+
+                # Key set 2 (optional)
+                app_key_2 = os.getenv("KIS_APP_KEY_2")
+                app_secret_2 = os.getenv("KIS_APP_SECRET_2")
+                if app_key_2 and app_secret_2:
+                    _key2_has_cache = self._has_valid_cached_token(
+                        Path(".data/kis_token_2.json")
+                    )
+                    if not _key1_had_cache and not _key2_has_cache:
+                        logger.warning(
+                            "KIS key set 2: skipping cold-start initialization to avoid "
+                            "1-req/min rate-limit conflict with key set 1. "
+                            "Restart after ~60s to activate key set 2."
+                        )
+                    else:
+                        try:
+                            client_set_2, _, _ = self._build_kis_client_set(
+                                2,
+                                app_key_2,
+                                app_secret_2,
+                                self.http_client,
+                                cust_type,
+                                env,
+                            )
+                            self.kis_client_sets[2] = client_set_2
+                        except Exception as e:
+                            logger.warning("Could not initialize KIS key set 2: %s", e)
+
             except Exception as e:
                 logger.warning("Could not initialize price service: %s", e)
 

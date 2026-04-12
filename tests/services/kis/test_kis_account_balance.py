@@ -4,7 +4,9 @@ from decimal import Decimal
 from unittest.mock import Mock
 
 import httpx
+import pytest
 
+from portfolio_manager.services.kis.kis_api_error import KisApiBusinessError
 from portfolio_manager.services.kis.kis_domestic_balance_client import (
     KisDomesticBalanceClient,
 )
@@ -164,3 +166,34 @@ def test_fetch_account_snapshot_retries_when_token_expired():
     assert request_headers[0]["authorization"] == "Bearer old-token"
     assert request_headers[1]["authorization"] == "Bearer new-token"
     token_manager.get_token.assert_called_once()
+
+
+def test_fetch_account_snapshot_raises_for_kis_business_error():
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={
+                "rt_cd": "2",
+                "msg_cd": "OPSQ2000",
+                "msg1": "ERROR : INPUT INVALID_CHECK_ACNO",
+            },
+        )
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://openapi.koreainvestment.com:9443",
+    )
+    kis_client = KisDomesticBalanceClient(
+        client=client,
+        app_key="app-key",
+        app_secret="app-secret",
+        access_token="access-token",
+        cust_type="P",
+        env="real",
+    )
+
+    with pytest.raises(KisApiBusinessError) as exc_info:
+        kis_client.fetch_account_snapshot("12345678", "01")
+
+    assert exc_info.value.code == "OPSQ2000"
+    assert exc_info.value.message == "ERROR : INPUT INVALID_CHECK_ACNO"

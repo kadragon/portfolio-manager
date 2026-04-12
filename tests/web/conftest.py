@@ -179,6 +179,7 @@ class FakeAccountRepository:
         name: str,
         cash_balance: Decimal,
         kis_account_no=_FAKE_UNSET,
+        kis_api_key_id=_FAKE_UNSET,
     ) -> Account:
         for idx, account in enumerate(self._accounts):
             if account.id == account_id:
@@ -191,6 +192,9 @@ class FakeAccountRepository:
                     kis_account_no=kis_account_no
                     if kis_account_no is not _FAKE_UNSET
                     else account.kis_account_no,
+                    kis_api_key_id=kis_api_key_id
+                    if kis_api_key_id is not _FAKE_UNSET
+                    else account.kis_api_key_id,
                 )
                 self._accounts[idx] = updated
                 return updated
@@ -369,8 +373,22 @@ class FakePortfolioService:
 
 
 class FakeKisAccountSyncService:
+    def __init__(self) -> None:
+        self.sync_exception: Exception | None = None
+        self.validate_exception: Exception | None = None
+        self.validated_accounts: list[tuple[str, str]] = []
+
     def sync_account(self, **_: object) -> None:
+        if self.sync_exception is not None:
+            raise self.sync_exception
         return None
+
+    def validate_account(
+        self, *, cano: str, acnt_prdt_cd: str, kis_balance_client=None
+    ) -> None:
+        self.validated_accounts.append((cano, acnt_prdt_cd))
+        if self.validate_exception is not None:
+            raise self.validate_exception
 
 
 class FakeContainer:
@@ -460,6 +478,11 @@ class FakeContainer:
         self.kis_account_sync_service = FakeKisAccountSyncService()
         self.kis_cano = "12345678"
         self.kis_acnt_prdt_cd = "01"
+        self.kis_client_sets: dict[int, object] = {}
+
+    def get_kis_client_set(self, key_id: int | None) -> object | None:
+        effective_id = key_id or 1
+        return self.kis_client_sets.get(effective_id)
 
     def get_portfolio_service(self) -> FakePortfolioService:
         return self.portfolio_service

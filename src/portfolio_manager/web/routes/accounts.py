@@ -1,6 +1,7 @@
 """Accounts + Holdings CRUD routes."""
 
 import logging
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
@@ -8,6 +9,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from markupsafe import escape
 
+from portfolio_manager.services.kis.kis_api_error import KisApiBusinessError
 from portfolio_manager.web.deps import get_container, get_templates
 
 router = APIRouter(prefix="/accounts")
@@ -71,6 +73,38 @@ def _normalize_bulk_update_error(exc: Exception) -> str:
         "holding_ids and quantities are required": "holding_id와 quantity가 모두 필요합니다.",
     }
     return known_map.get(message, message)
+
+
+def _normalize_kis_account_no(kis_account_no: str) -> tuple[str, str, str]:
+    digits = "".join(ch for ch in kis_account_no if ch.isdigit())
+    if len(digits) != 10:
+        raise ValueError("KIS 계좌번호 형식이 올바르지 않습니다 (8자리-2자리).")
+    return digits[:8], digits[8:], digits
+
+
+def _format_kis_error(prefix: str, exc: KisApiBusinessError) -> str:
+    return f"{prefix}: {exc.code} - {exc.message}"
+
+
+def _render_account_form(
+    request: Request,
+    templates,
+    account,
+    *,
+    error_message: str | None = None,
+    status_code: int = 200,
+    available_kis_key_ids: list[int] | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="accounts/_form.html",
+        context={
+            "account": account,
+            "error_message": error_message,
+            "available_kis_key_ids": available_kis_key_ids or [],
+        },
+        status_code=status_code,
+    )
 
 
 @router.get("", response_class=HTMLResponse)
@@ -162,10 +196,11 @@ def edit_account_form(request: Request, account_id: UUID) -> HTMLResponse:
     account = next((a for a in accounts if a.id == account_id), None)
     if account is None:
         return Response(status_code=404)  # type: ignore[return-value]
-    return templates.TemplateResponse(
-        request=request,
-        name="accounts/_form.html",
-        context={"account": account},
+    return _render_account_form(
+        request,
+        templates,
+        account,
+        available_kis_key_ids=sorted(container.kis_client_sets.keys()),
     )
 
 
@@ -176,16 +211,105 @@ def update_account(
     name: str = Form(...),
     cash_balance: Decimal = Form(Decimal("0")),
     kis_account_no: str | None = Form(None),
+    kis_api_key_id: str | None = Form(None),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
+    available_kis_key_ids = sorted(container.kis_client_sets.keys())
+    accounts = container.account_repository.list_all()
+    account = next((a for a in accounts if a.id == account_id), None)
+    if account is None:
+        return Response(status_code=404)  # type: ignore[return-value]
+
+    next_name = name.strip()
+    next_kis_account_no = kis_account_no.strip() if kis_account_no is not None else None
+    if next_kis_account_no == "":
+        next_kis_account_no = None
+
+    # Parse kis_api_key_id
+    kis_api_key_id_int: int | None = None
+    if next_kis_account_no is not None:
+        if kis_api_key_id:
+            try:
+                kis_api_key_id_int = int(kis_api_key_id)
+            except ValueError:
+                pass
+            if kis_api_key_id_int not in (1, 2):
+                kis_api_key_id_int = None
+        else:
+            # Selector not submitted — preserve existing key set assignment
+            kis_api_key_id_int = account.kis_api_key_id
+
+    draft_account = replace(
+        account,
+        name=next_name,
+        cash_balance=cash_balance,
+        kis_account_no=next_kis_account_no,
+        kis_api_key_id=kis_api_key_id_int,
+    )
+
+    def _form_error(msg: str, status: int = 422) -> HTMLResponse:
+        return _render_account_form(
+            request,
+            templates,
+            draft_account,
+            error_message=msg,
+            status_code=status,
+            available_kis_key_ids=available_kis_key_ids,
+        )
+
     update_kwargs: dict = {
         "account_id": account_id,
-        "name": name.strip(),
+        "name": next_name,
         "cash_balance": cash_balance,
     }
+
+    if next_kis_account_no is not None:
+        try:
+            cano, acnt_prdt_cd, next_digits = _normalize_kis_account_no(
+                next_kis_account_no
+            )
+        except ValueError as exc:
+            return _form_error(str(exc))
+
+        # Validate that the requested key set is available
+        if kis_api_key_id_int and not container.get_kis_client_set(kis_api_key_id_int):
+            return _form_error(
+                f"API 키 세트 {kis_api_key_id_int}이(가) 설정되지 않았습니다."
+            )
+
+        current_digits = ""
+        if account.kis_account_no:
+            try:
+                _, _, current_digits = _normalize_kis_account_no(account.kis_account_no)
+            except ValueError:
+                current_digits = ""
+
+        key_changed = (kis_api_key_id_int or 1) != (account.kis_api_key_id or 1)
+        if next_digits != current_digits or key_changed:
+            if container.kis_account_sync_service is None:
+                return _form_error(
+                    "KIS 계좌 검증 서비스가 설정되지 않았습니다. "
+                    "(.env에 KIS_CANO/KIS_ACNT_PRDT_CD 확인)"
+                )
+            client_set = container.get_kis_client_set(kis_api_key_id_int)
+            try:
+                container.kis_account_sync_service.validate_account(
+                    cano=cano,
+                    acnt_prdt_cd=acnt_prdt_cd,
+                    kis_balance_client=client_set.balance_client
+                    if client_set
+                    else None,
+                )
+            except KisApiBusinessError as exc:
+                return _form_error(_format_kis_error("KIS 계좌 검증 실패", exc))
+            except Exception as exc:
+                return _form_error(f"KIS 계좌 검증 실패: {exc}")
+
     if kis_account_no is not None:
-        update_kwargs["kis_account_no"] = kis_account_no.strip() or None
+        update_kwargs["kis_account_no"] = next_kis_account_no
+        update_kwargs["kis_api_key_id"] = kis_api_key_id_int
+
     account = container.account_repository.update(**update_kwargs)
     return templates.TemplateResponse(
         request=request,
@@ -512,9 +636,20 @@ def sync_account(request: Request, account_id: UUID) -> HTMLResponse:
             )
         kis_no = account.kis_account_no
         if kis_no:
-            digits = "".join(ch for ch in kis_no if ch.isdigit())
+            try:
+                cano, acnt, _ = _normalize_kis_account_no(kis_no)
+            except ValueError as exc:
+                return templates.TemplateResponse(
+                    request=request,
+                    name="accounts/_sync_result.html",
+                    context={
+                        "account_id": account_id,
+                        "success": False,
+                        "message": str(exc),
+                    },
+                )
         elif container.kis_cano and container.kis_acnt_prdt_cd:
-            digits = container.kis_cano + container.kis_acnt_prdt_cd
+            cano, acnt = container.kis_cano, container.kis_acnt_prdt_cd
         else:
             return templates.TemplateResponse(
                 request=request,
@@ -525,22 +660,33 @@ def sync_account(request: Request, account_id: UUID) -> HTMLResponse:
                     "message": "이 계좌에는 KIS 계좌번호가 설정되지 않았습니다.",
                 },
             )
-        if len(digits) != 10:
+        client_set = container.get_kis_client_set(account.kis_api_key_id)
+        if (
+            account.kis_api_key_id
+            and account.kis_api_key_id != 1
+            and client_set is None
+        ):
             return templates.TemplateResponse(
                 request=request,
                 name="accounts/_sync_result.html",
                 context={
                     "account_id": account_id,
                     "success": False,
-                    "message": "KIS 계좌번호 형식이 올바르지 않습니다 (8자리-2자리).",
+                    "message": f"KIS API 키 세트 {account.kis_api_key_id}이(가) 현재 사용 불가능합니다. 서버 로그를 확인하세요.",
                 },
             )
-        cano, acnt = digits[:8], digits[8:]
         result = container.kis_account_sync_service.sync_account(
-            account=account, cano=cano, acnt_prdt_cd=acnt
+            account=account,
+            cano=cano,
+            acnt_prdt_cd=acnt,
+            kis_balance_client=client_set.balance_client if client_set else None,
         )
         success = True
         message = "KIS 계좌 동기화 완료"
+    except KisApiBusinessError as exc:
+        result = None
+        message = _format_kis_error("동기화 실패", exc)
+        success = False
     except Exception as e:
         result = None
         message = f"동기화 실패: {e}"

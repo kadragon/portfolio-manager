@@ -385,6 +385,24 @@ def test_account_sync_falls_back_to_env_credentials(client, fake_container):
     assert "KIS 계좌 동기화 완료" in response.text
 
 
+def test_account_edit_form_renders_kis_validation_error(client, fake_container):
+    fake_container.kis_account_sync_service = None
+
+    response = client.put(
+        f"/accounts/{fake_container.account.id}",
+        data={
+            "name": "메인 계좌",
+            "cash_balance": "300000",
+            "kis_account_no": "46592856-01",
+        },
+    )
+
+    assert response.status_code == 422
+    body = response.text
+    assert 'id="account-kis-' in body
+    assert "KIS 계좌 검증 서비스가 설정되지 않았습니다." in body
+
+
 def test_create_account_rejects_invalid_cash_balance(client):
     response = client.post(
         "/accounts",

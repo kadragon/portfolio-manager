@@ -68,6 +68,7 @@ class AccountModel(BaseModel):
     name = TextField()
     cash_balance = DecimalField(decimal_places=10, auto_round=False, default=Decimal(0))
     kis_account_no = TextField(null=True)
+    kis_api_key_id = IntegerField(null=True)
     created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
     updated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
 
@@ -198,6 +199,10 @@ def _run_migrations(database: SqliteDatabase) -> None:
     columns = {col.name for col in database.get_columns("accounts")}
     if "kis_account_no" not in columns:
         migrate(migrator.add_column("accounts", "kis_account_no", TextField(null=True)))
+    if "kis_api_key_id" not in columns:
+        migrate(
+            migrator.add_column("accounts", "kis_api_key_id", IntegerField(null=True))
+        )
 
 
 def close_db() -> None:

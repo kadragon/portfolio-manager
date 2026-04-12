@@ -16,3 +16,4 @@ class Account:
     created_at: datetime
     updated_at: datetime
     kis_account_no: str | None = None
+    kis_api_key_id: int | None = None
