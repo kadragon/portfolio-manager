@@ -103,7 +103,7 @@ class FakeStockRepository:
                 return stock
         return None
 
-    def create(self, ticker: str, group_id: UUID) -> Stock:
+    def create(self, ticker: str, group_id: UUID, *, name: str = "") -> Stock:
         now = datetime.now(timezone.utc)
         stock = Stock(
             id=uuid4(),
@@ -112,6 +112,7 @@ class FakeStockRepository:
             created_at=now,
             updated_at=now,
             exchange=None,
+            name=name,
         )
         self._stocks.insert(0, stock)
         return stock

@@ -50,10 +50,15 @@ class StockPriceRepository:
                 updated_at=now,
             )
         except IntegrityError:
+            existing = StockPriceModel.get(
+                (StockPriceModel.ticker == ticker)
+                & (StockPriceModel.price_date == price_date)
+            )
+            preserved_name = name if name else existing.name
             StockPriceModel.update(
                 price=price,
                 currency=currency,
-                name=name,
+                name=preserved_name,
                 exchange=exchange,
                 updated_at=now,
             ).where(

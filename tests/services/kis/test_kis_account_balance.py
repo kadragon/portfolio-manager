@@ -168,6 +168,92 @@ def test_fetch_account_snapshot_retries_when_token_expired():
     token_manager.get_token.assert_called_once()
 
 
+def test_fetch_account_snapshot_populates_name_from_prdt_name():
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={
+                "output1": [
+                    {"pdno": "005930", "hldg_qty": "5", "prdt_name": "삼성전자"},
+                    {
+                        "pdno": "069500",
+                        "hldg_qty": "2",
+                        "prdt_name": "KODEX 200증권상장지수투자신탁(주식)",
+                    },
+                ],
+                "output2": [{"dnca_tot_amt": "500000"}],
+            },
+        )
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://openapi.koreainvestment.com:9443",
+    )
+    kis_client = KisDomesticBalanceClient(
+        client=client,
+        app_key="app-key",
+        app_secret="app-secret",
+        access_token="access-token",
+        cust_type="P",
+        env="real",
+    )
+
+    snapshot = kis_client.fetch_account_snapshot("12345678", "01")
+
+    assert len(snapshot.holdings) == 2
+    samsung = next(h for h in snapshot.holdings if h.ticker == "005930")
+    kodex = next(h for h in snapshot.holdings if h.ticker == "069500")
+    assert samsung.name == "삼성전자"
+    assert kodex.name == "KODEX 200증권상장지수투자신탁(주식)"
+
+
+def test_fetch_account_snapshot_name_uses_first_page_for_multi_page():
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return httpx.Response(
+                status_code=200,
+                headers={"tr_cont": "M"},
+                json={
+                    "output1": [
+                        {"pdno": "005930", "hldg_qty": "3", "prdt_name": "삼성전자"}
+                    ],
+                    "output2": [],
+                    "ctx_area_fk100": "NEXT_FK",
+                    "ctx_area_nk100": "NEXT_NK",
+                },
+            )
+        return httpx.Response(
+            status_code=200,
+            json={
+                "output1": [{"pdno": "005930", "hldg_qty": "7", "prdt_name": "WRONG"}],
+                "output2": [{"dnca_tot_amt": "100000"}],
+            },
+        )
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://openapi.koreainvestment.com:9443",
+    )
+    kis_client = KisDomesticBalanceClient(
+        client=client,
+        app_key="app-key",
+        app_secret="app-secret",
+        access_token="access-token",
+        cust_type="P",
+        env="real",
+    )
+
+    snapshot = kis_client.fetch_account_snapshot("12345678", "01")
+
+    assert len(snapshot.holdings) == 1
+    assert snapshot.holdings[0].quantity == Decimal("10")
+    assert snapshot.holdings[0].name == "삼성전자"
+
+
 def test_fetch_account_snapshot_raises_for_kis_business_error():
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(

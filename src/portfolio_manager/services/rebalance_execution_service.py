@@ -21,6 +21,7 @@ class OrderIntent:
     quantity: int
     currency: str
     exchange: str | None = None  # overseas exchange code (NASD/NYSE/AMEX)
+    stock_name: str = ""
 
 
 @dataclass
@@ -151,6 +152,7 @@ class RebalanceExecutionService:
                 if is_domestic_ticker(rec.ticker)
                 else "USD",
                 exchange=exchange,
+                stock_name=rec.stock_name or "",
             )
             if qty == 0:
                 skipped.append(intent)

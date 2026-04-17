@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from portfolio_manager.models import Group, Stock
 from portfolio_manager.repositories.account_repository import AccountRepository
+from portfolio_manager.services.stock_name_utils import format_stock_name
 from portfolio_manager.repositories.deposit_repository import DepositRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
@@ -119,9 +120,6 @@ class PortfolioService:
         if self.price_service is None:
             raise ValueError("Price service is required for portfolio summary")
 
-        def format_stock_name(name: str) -> str:
-            return name.replace("증권상장지수투자신탁(주식)", "").strip()
-
         groups = self.group_repository.list_all()
         stocks_by_group = self._get_stocks_by_group_id()
         aggregated_holdings = self.holding_repository.get_aggregated_holdings_by_stock()
@@ -167,6 +165,8 @@ class PortfolioService:
                         )
                     if exchange and exchange != stock.exchange:
                         self.stock_repository.update_exchange(stock.id, exchange)
+                    if not stock.name and name:
+                        self.stock_repository.update_name(stock.id, name)
                     holding_with_price = StockHoldingWithPrice(
                         stock=stock,
                         quantity=quantity,

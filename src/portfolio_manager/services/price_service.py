@@ -86,7 +86,10 @@ class PriceService:
                 name=quote.name,
                 exchange=normalized_exchange,
             )
-        result = (price, quote.currency, quote.name, normalized_exchange)
+        cached_name = quote.name
+        if not cached_name and cache_key in self._price_cache:
+            cached_name = self._price_cache[cache_key][2]
+        result = (price, quote.currency, cached_name, normalized_exchange)
         # Only cache valid prices (price > 0)
         if price > 0:
             self._price_cache[cache_key] = result
