@@ -10,14 +10,11 @@ from fastapi.responses import HTMLResponse, Response
 from markupsafe import escape
 
 from portfolio_manager.services.kis.kis_api_error import KisApiBusinessError
+from portfolio_manager.services.stock_name_utils import format_stock_name
 from portfolio_manager.web.deps import get_container, get_templates
 
 router = APIRouter(prefix="/accounts")
 logger = logging.getLogger(__name__)
-
-
-def _format_stock_name(name: str) -> str:
-    return name.replace("증권상장지수투자신탁(주식)", "").strip()
 
 
 def _build_stock_name_map(container, stocks: list | None = None) -> dict:
@@ -37,15 +34,7 @@ def _build_stock_name_map(container, stocks: list | None = None) -> dict:
         except ValueError:
             resolved_name = ""
         if resolved_name:
-            formatted = _format_stock_name(resolved_name)
-            stock_name_map[stock.id] = formatted
-            if not stock.name:
-                try:
-                    container.stock_repository.update_name(stock.id, formatted)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "Failed to back-fill stock name for %s: %s", stock.id, exc
-                    )
+            stock_name_map[stock.id] = format_stock_name(resolved_name)
     return stock_name_map
 
 

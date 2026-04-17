@@ -1,6 +1,7 @@
 <tr id="holding-{{ holding.id }}">
   {% set ticker = stock_map[holding.stock_id].ticker if holding.stock_id in stock_map else holding.stock_id %}
-  {% set stock_name = stock_name_map[holding.stock_id] if holding.stock_id in stock_name_map else ticker %}
+  {% set _stock_obj = stock_map[holding.stock_id] if holding.stock_id in stock_map else None %}
+  {% set stock_name = stock_name_map[holding.stock_id] if holding.stock_id in stock_name_map else (_stock_obj.name if _stock_obj and _stock_obj.name else ticker) %}
   <td>
     <code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ ticker }}</code>
     <input type="hidden" name="holding_id" value="{{ holding.id }}">

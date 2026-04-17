@@ -191,6 +191,181 @@ def test_sync_account_clears_holdings_when_kis_has_no_positions():
     assert result.created_stock_count == 0
 
 
+def test_sync_account_back_fills_name_on_existing_stock_with_no_name():
+    now = datetime.now()
+    account = Account(
+        id=uuid4(),
+        name="한국투자증권",
+        cash_balance=Decimal("0"),
+        created_at=now,
+        updated_at=now,
+    )
+    group = Group(
+        id=uuid4(),
+        name="국내",
+        target_percentage=0,
+        created_at=now,
+        updated_at=now,
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="005930",
+        group_id=group.id,
+        created_at=now,
+        updated_at=now,
+    )
+    holding = _make_holding(account, stock, "5")
+    updated_stock = Stock(
+        id=stock.id,
+        ticker=stock.ticker,
+        group_id=stock.group_id,
+        name="삼성전자",
+        created_at=now,
+        updated_at=now,
+    )
+
+    balance_client = Mock()
+    balance_client.fetch_account_snapshot.return_value = KisAccountSnapshot(
+        cash_balance=Decimal("100000"),
+        holdings=[
+            KisHoldingPosition(ticker="005930", quantity=Decimal("5"), name="삼성전자")
+        ],
+    )
+    account_repository = Mock()
+    holding_repository = Mock()
+    holding_repository.list_by_account.return_value = [holding]
+    stock_repository = Mock()
+    stock_repository.list_all.return_value = [stock]
+    stock_repository.update_name.return_value = updated_stock
+    group_repository = Mock()
+
+    service = KisAccountSyncService(
+        account_repository=account_repository,
+        holding_repository=holding_repository,
+        stock_repository=stock_repository,
+        group_repository=group_repository,
+        kis_balance_client=balance_client,
+    )
+
+    service.sync_account(account=account, cano="12345678", acnt_prdt_cd="01")
+
+    stock_repository.update_name.assert_called_once_with(stock.id, "삼성전자")
+
+
+def test_sync_account_does_not_overwrite_existing_stock_name():
+    now = datetime.now()
+    account = Account(
+        id=uuid4(),
+        name="한국투자증권",
+        cash_balance=Decimal("0"),
+        created_at=now,
+        updated_at=now,
+    )
+    group = Group(
+        id=uuid4(),
+        name="국내",
+        target_percentage=0,
+        created_at=now,
+        updated_at=now,
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="005930",
+        group_id=group.id,
+        name="삼성전자(수동입력)",
+        created_at=now,
+        updated_at=now,
+    )
+    holding = _make_holding(account, stock, "5")
+
+    balance_client = Mock()
+    balance_client.fetch_account_snapshot.return_value = KisAccountSnapshot(
+        cash_balance=Decimal("100000"),
+        holdings=[
+            KisHoldingPosition(ticker="005930", quantity=Decimal("5"), name="삼성전자")
+        ],
+    )
+    account_repository = Mock()
+    holding_repository = Mock()
+    holding_repository.list_by_account.return_value = [holding]
+    stock_repository = Mock()
+    stock_repository.list_all.return_value = [stock]
+    group_repository = Mock()
+
+    service = KisAccountSyncService(
+        account_repository=account_repository,
+        holding_repository=holding_repository,
+        stock_repository=stock_repository,
+        group_repository=group_repository,
+        kis_balance_client=balance_client,
+    )
+
+    service.sync_account(account=account, cano="12345678", acnt_prdt_cd="01")
+
+    stock_repository.update_name.assert_not_called()
+
+
+def test_sync_account_passes_formatted_name_on_stock_create():
+    now = datetime.now()
+    account = Account(
+        id=uuid4(),
+        name="한국투자증권",
+        cash_balance=Decimal("0"),
+        created_at=now,
+        updated_at=now,
+    )
+    sync_group = Group(
+        id=uuid4(),
+        name="KIS 자동동기화",
+        target_percentage=0,
+        created_at=now,
+        updated_at=now,
+    )
+    created_stock = Stock(
+        id=uuid4(),
+        ticker="069500",
+        group_id=sync_group.id,
+        name="KODEX 200",
+        created_at=now,
+        updated_at=now,
+    )
+
+    balance_client = Mock()
+    balance_client.fetch_account_snapshot.return_value = KisAccountSnapshot(
+        cash_balance=Decimal("0"),
+        holdings=[
+            KisHoldingPosition(
+                ticker="069500",
+                quantity=Decimal("1"),
+                name="KODEX 200증권상장지수투자신탁(주식)",
+            )
+        ],
+    )
+    account_repository = Mock()
+    holding_repository = Mock()
+    holding_repository.list_by_account.return_value = []
+    stock_repository = Mock()
+    stock_repository.list_all.return_value = []
+    stock_repository.create.return_value = created_stock
+    group_repository = Mock()
+    group_repository.list_all.return_value = []
+    group_repository.create.return_value = sync_group
+
+    service = KisAccountSyncService(
+        account_repository=account_repository,
+        holding_repository=holding_repository,
+        stock_repository=stock_repository,
+        group_repository=group_repository,
+        kis_balance_client=balance_client,
+    )
+
+    service.sync_account(account=account, cano="12345678", acnt_prdt_cd="01")
+
+    stock_repository.create.assert_called_once_with(
+        "069500", sync_group.id, name="KODEX 200"
+    )
+
+
 def test_sync_account_does_not_wipe_holdings_before_creates():
     now = datetime.now()
     account = Account(
