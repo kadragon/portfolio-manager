@@ -1,0 +1,107 @@
+{% if unavailable %}
+<div class="alert alert-warning text-sm py-2" role="alert">{{ message }}</div>
+{% elif error %}
+<div class="alert alert-error text-sm py-2" role="alert">{{ error }}</div>
+{% endif %}
+
+{% if narrative %}
+<div class="flex gap-2 mb-3">
+  <button type="button" class="btn btn-xs {% if current_period == 'daily' %}btn-primary{% else %}btn-ghost{% endif %}"
+          hx-get="/insights/narrative?period=daily"
+          hx-target="#insights-panel"
+          hx-indicator="#insights-indicator">일간</button>
+  <button type="button" class="btn btn-xs {% if current_period == 'weekly' %}btn-primary{% else %}btn-ghost{% endif %}"
+          hx-get="/insights/narrative?period=weekly"
+          hx-target="#insights-panel"
+          hx-indicator="#insights-indicator">주간</button>
+</div>
+
+<article class="card bg-base-200 shadow-md mb-4">
+  <div class="card-body p-4">
+    <h2 class="text-sm font-semibold text-base-content mb-2">
+      {% if narrative.snapshot.period == 'daily' %}일간 요약{% else %}주간 요약{% endif %}
+      <span class="text-xs text-base-content/50 font-normal">(기준: {{ narrative.snapshot.rate_label }})</span>
+    </h2>
+    {% if narrative.narrative %}
+    <p class="text-sm leading-relaxed whitespace-pre-line">{{ narrative.narrative }}</p>
+    {% else %}
+    <p class="text-sm text-base-content/60">AI 서술을 생성하지 못했습니다. 수치는 아래 표를 확인하세요.</p>
+    {% endif %}
+  </div>
+</article>
+
+<section class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <article class="card bg-base-200">
+    <div class="card-body p-4">
+      <h3 class="text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-2">총자산</h3>
+      <dl class="text-sm space-y-1">
+        <div class="flex justify-between"><dt>총 평가금액</dt><dd class="font-mono">{{ narrative.snapshot.total_assets | format_krw }}</dd></div>
+        <div class="flex justify-between"><dt>주식 가치</dt><dd class="font-mono">{{ narrative.snapshot.total_stock_value | format_krw }}</dd></div>
+        <div class="flex justify-between"><dt>현금 잔고</dt><dd class="font-mono">{{ narrative.snapshot.total_cash_balance | format_krw }}</dd></div>
+        {% if narrative.snapshot.return_rate is not none %}
+        <div class="flex justify-between"><dt>누적 수익률</dt><dd class="font-mono">{{ narrative.snapshot.return_rate | format_signed_percent }}</dd></div>
+        {% endif %}
+      </dl>
+    </div>
+  </article>
+
+  <article class="card bg-base-200">
+    <div class="card-body p-4">
+      <h3 class="text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-2">기여도 상위/하위</h3>
+      {% if narrative.snapshot.top_contributors %}
+      <p class="text-xs text-base-content/60 mb-1">상승 기여</p>
+      <ul class="text-sm mb-2">
+        {% for c in narrative.snapshot.top_contributors %}
+        <li class="flex justify-between">
+          <span>{{ c.name }} <span class="text-xs text-base-content/50">({{ c.ticker }})</span></span>
+          <span class="font-mono">{{ c.change_rate | format_signed_percent }} / {{ c.contribution_krw | format_krw }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if narrative.snapshot.bottom_contributors %}
+      <p class="text-xs text-base-content/60 mb-1">하락 기여</p>
+      <ul class="text-sm">
+        {% for c in narrative.snapshot.bottom_contributors %}
+        <li class="flex justify-between">
+          <span>{{ c.name }} <span class="text-xs text-base-content/50">({{ c.ticker }})</span></span>
+          <span class="font-mono">{{ c.change_rate | format_signed_percent }} / {{ c.contribution_krw | format_krw }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if not narrative.snapshot.top_contributors and not narrative.snapshot.bottom_contributors %}
+      <p class="text-xs text-base-content/60">표시할 기여 종목이 없습니다.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<article class="card bg-base-200 mt-4">
+  <div class="card-body p-4">
+    <h3 class="text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-2">그룹 비중</h3>
+    <div class="overflow-x-auto">
+      <table class="table table-zebra table-sm">
+        <thead>
+          <tr>
+            <th class="text-xs uppercase tracking-wider">그룹</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">현재</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">목표</th>
+            <th class="text-right font-mono text-xs uppercase tracking-wider">편차</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for w in narrative.snapshot.group_weights %}
+          <tr>
+            <td>{{ w.name }}</td>
+            <td class="text-right font-mono">{{ w.current_percentage | format_percent }}</td>
+            <td class="text-right font-mono">{{ w.target_percentage | format_percent }}</td>
+            <td class="text-right font-mono">{{ w.diff_percentage | format_signed_percent }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</article>
+{% endif %}

@@ -24,6 +24,7 @@ from portfolio_manager.web.routes import (
     dashboard,
     deposits,
     groups,
+    insights,
     rebalance,
 )
 
@@ -480,6 +481,7 @@ class FakeContainer:
         self.kis_cano = "12345678"
         self.kis_acnt_prdt_cd = "01"
         self.kis_client_sets: dict[int, object] = {}
+        self.portfolio_insight_service: object | None = None
 
     def get_kis_client_set(self, key_id: int | None) -> object | None:
         effective_id = key_id or 1
@@ -487,6 +489,9 @@ class FakeContainer:
 
     def get_portfolio_service(self) -> FakePortfolioService:
         return self.portfolio_service
+
+    def get_portfolio_insight_service(self) -> object | None:
+        return self.portfolio_insight_service
 
 
 @pytest.fixture
@@ -516,6 +521,7 @@ def app(fake_container: FakeContainer) -> FastAPI:
     app_instance.include_router(accounts.router)
     app_instance.include_router(deposits.router)
     app_instance.include_router(rebalance.router)
+    app_instance.include_router(insights.router)
 
     return app_instance
 

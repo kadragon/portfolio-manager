@@ -57,6 +57,13 @@
             리밸런싱
           </a>
         </li>
+        <li>
+          <a href="/insights"
+             class="{% if active_page == 'insights' %}bg-primary text-primary-content{% endif %} rounded-md px-3 py-1.5 text-xs font-semibold"
+             {% if active_page == 'insights' %}aria-current="page"{% endif %}>
+            AI 인사이트
+          </a>
+        </li>
       </ul>
     </nav>
   </header>

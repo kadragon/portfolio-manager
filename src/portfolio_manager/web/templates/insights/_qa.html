@@ -1,0 +1,29 @@
+{% if unavailable %}
+<div class="alert alert-warning text-sm py-2" role="alert">{{ message }}</div>
+{% elif error and not result %}
+<div class="alert alert-error text-sm py-2" role="alert">{{ error }}</div>
+{% endif %}
+
+{% if result %}
+<article class="card bg-base-200 shadow-md">
+  <div class="card-body p-4">
+    <h3 class="text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1">질문</h3>
+    <p class="text-sm mb-3 whitespace-pre-line">{{ result.question }}</p>
+
+    <h3 class="text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1">답변</h3>
+    {% if result.answer %}
+    <p class="text-sm leading-relaxed whitespace-pre-line">{{ result.answer }}</p>
+    {% else %}
+    <p class="text-sm text-base-content/60">답변을 생성하지 못했습니다.</p>
+    {% endif %}
+
+    {% if result.error %}
+    <p class="text-xs text-warning mt-2">{{ result.error }}</p>
+    {% endif %}
+
+    {% if result.tool_calls_used %}
+    <p class="text-xs text-base-content/50 mt-2">사용한 도구: {{ result.tool_calls_used | join(', ') }}</p>
+    {% endif %}
+  </div>
+</article>
+{% endif %}

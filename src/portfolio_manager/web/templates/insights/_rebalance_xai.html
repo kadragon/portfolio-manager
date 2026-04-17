@@ -1,0 +1,58 @@
+{% if unavailable %}
+<div class="alert alert-warning text-sm py-2" role="alert">{{ message }}</div>
+{% elif error %}
+<div class="alert alert-warning text-sm py-2" role="alert">AI 설명을 생성하지 못해 Python 기본 근거로 표시합니다. ({{ error }})</div>
+{% endif %}
+
+{% if explanation %}
+{% if explanation.summary %}
+<article class="card bg-base-200 shadow-md mb-4">
+  <div class="card-body p-4">
+    <h2 class="text-sm font-semibold text-base-content mb-2">요약</h2>
+    <p class="text-sm leading-relaxed whitespace-pre-line">{{ explanation.summary }}</p>
+  </div>
+</article>
+{% endif %}
+
+{% set all_items = explanation.plan.sell_recommendations + explanation.plan.buy_recommendations %}
+{% if all_items %}
+<div class="overflow-x-auto">
+  <table class="table table-zebra table-sm">
+    <caption>리밸런싱 추천과 근거 (수치는 Python 계산값)</caption>
+    <thead>
+      <tr>
+        <th class="text-xs uppercase tracking-wider">우선</th>
+        <th class="text-xs uppercase tracking-wider">액션</th>
+        <th class="text-xs uppercase tracking-wider">계좌 / 그룹</th>
+        <th class="text-xs uppercase tracking-wider">종목</th>
+        <th class="text-right font-mono text-xs uppercase tracking-wider">금액 (KRW)</th>
+        <th class="text-xs uppercase tracking-wider">근거</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rec in all_items %}
+      <tr>
+        <td class="font-mono">{{ rec.priority }}</td>
+        <td>
+          {% if rec.action.value == 'buy' %}
+          <span class="badge badge-success badge-sm">매수</span>
+          {% else %}
+          <span class="badge badge-error badge-sm">매도</span>
+          {% endif %}
+        </td>
+        <td>{{ rec.account_name or '-' }} / {{ rec.rebalance_group_name or '-' }}</td>
+        <td>{{ rec.stock_name or rec.ticker }} <span class="text-xs text-base-content/50">({{ rec.ticker }})</span></td>
+        <td class="text-right font-mono">{{ rec.amount_krw | format_krw }}</td>
+        <td class="text-sm">
+          {% set rationale = explanation.rationales.get(rec.priority) %}
+          {{ rationale or rec.reason or '-' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-sm text-base-content/70">{{ explanation.summary }}</p>
+{% endif %}
+{% endif %}
