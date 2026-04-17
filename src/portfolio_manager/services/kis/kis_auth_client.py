@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 import httpx
 
+from portfolio_manager.core.time import KST, now_kst
 from portfolio_manager.services.auth_client import AuthClient
 from portfolio_manager.services.kis.kis_token_store import TokenData
 
@@ -28,7 +29,8 @@ class KisAuthClient(AuthClient):
         data = response.json()
         if "expires_in" in data:
             expires_in = int(data["expires_in"])
-            expires_at = datetime.now() + timedelta(seconds=expires_in)
+            expires_at = now_kst() + timedelta(seconds=expires_in)
         else:
-            expires_at = datetime.fromisoformat(data["access_token_token_expired"])
+            parsed = datetime.fromisoformat(data["access_token_token_expired"])
+            expires_at = parsed if parsed.tzinfo else parsed.replace(tzinfo=KST)
         return TokenData(token=data["access_token"], expires_at=expires_at)

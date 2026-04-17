@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 
 from peewee import IntegrityError
 
+from portfolio_manager.core.time import now_kst
 from portfolio_manager.models.stock_price import StockPrice
 from portfolio_manager.services.database import StockPriceModel
 
@@ -36,7 +37,7 @@ class StockPriceRepository:
         exchange: str | None,
     ) -> StockPrice:
         """Upsert cached price for a ticker and date."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         try:
             row = StockPriceModel.create(
                 id=uuid4(),

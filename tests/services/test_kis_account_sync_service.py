@@ -1,7 +1,9 @@
 """Tests for KIS account synchronization service."""
 
+import json
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from uuid import uuid4
 from unittest.mock import Mock
 
@@ -541,3 +543,109 @@ def test_sync_account_does_not_wipe_holdings_before_creates():
     holding_repository.delete_by_account.assert_not_called()
     holding_repository.delete.assert_not_called()
     account_repository.update.assert_not_called()
+
+
+def _make_service(balance_client, log_path=None):
+    return KisAccountSyncService(
+        account_repository=Mock(),
+        holding_repository=Mock(),
+        stock_repository=Mock(),
+        group_repository=Mock(),
+        kis_balance_client=balance_client,
+        sync_log_path=log_path,
+    )
+
+
+def test_sync_writes_success_event_to_log(tmp_path: Path):
+    now = datetime.now()
+    account = Account(
+        id=uuid4(),
+        name="TOSS",
+        cash_balance=Decimal("0"),
+        created_at=now,
+        updated_at=now,
+    )
+    log_path = tmp_path / "kis_sync.log"
+
+    balance_client = Mock()
+    balance_client.fetch_account_snapshot.return_value = KisAccountSnapshot(
+        cash_balance=Decimal("1000"),
+        holdings=[],
+    )
+
+    service = _make_service(balance_client, log_path=log_path)
+    service.holding_repository.list_by_account.return_value = []
+    service.stock_repository.list_all.return_value = []
+
+    service.sync_account(account=account, cano="12345678", acnt_prdt_cd="01")
+
+    assert log_path.exists()
+    lines = log_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1
+    event = json.loads(lines[0])
+    assert event["event"] == "sync_success"
+    assert event["account_id"] == str(account.id)
+    assert event["cano"] == "12345678"
+    assert event["holding_count"] == 0
+    assert "timestamp" in event
+
+
+def test_sync_writes_guard_event_when_snapshot_empty(tmp_path: Path):
+    now = datetime.now()
+    account = Account(
+        id=uuid4(),
+        name="TOSS",
+        cash_balance=Decimal("0"),
+        created_at=now,
+        updated_at=now,
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="005930",
+        group_id=uuid4(),
+        created_at=now,
+        updated_at=now,
+    )
+    existing = _make_holding(account, stock, "3")
+    log_path = tmp_path / "kis_sync.log"
+
+    balance_client = Mock()
+    balance_client.fetch_account_snapshot.return_value = KisAccountSnapshot(
+        cash_balance=Decimal("0"),
+        holdings=[],
+    )
+
+    service = _make_service(balance_client, log_path=log_path)
+    service.holding_repository.list_by_account.return_value = [existing]
+
+    with pytest.raises(KisEmptySnapshotError):
+        service.sync_account(account=account, cano="12345678", acnt_prdt_cd="01")
+
+    event = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert event["event"] == "sync_guard_empty_snapshot"
+    assert event["existing_holding_count"] == 1
+
+
+def test_sync_writes_snapshot_error_event(tmp_path: Path):
+    now = datetime.now()
+    account = Account(
+        id=uuid4(),
+        name="TOSS",
+        cash_balance=Decimal("0"),
+        created_at=now,
+        updated_at=now,
+    )
+    log_path = tmp_path / "kis_sync.log"
+
+    balance_client = Mock()
+    balance_client.fetch_account_snapshot.side_effect = RuntimeError("boom")
+
+    service = _make_service(balance_client, log_path=log_path)
+
+    with pytest.raises(RuntimeError):
+        service.sync_account(account=account, cano="12345678", acnt_prdt_cd="01")
+
+    event = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert event["event"] == "sync_snapshot_error"
+    assert event["error_type"] == "RuntimeError"
+    assert event["error"] == "boom"

@@ -8,9 +8,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import httpx
+
+from portfolio_manager.core.time import now_kst
 
 from portfolio_manager.repositories.account_repository import AccountRepository
 from portfolio_manager.repositories.deposit_repository import DepositRepository
@@ -211,9 +213,8 @@ class ServiceContainer:
         try:
             store = FileTokenStore(path)
             cached = store.load()
-            return (
-                cached is not None
-                and cached.expires_at > datetime.now() + timedelta(minutes=1)
+            return cached is not None and cached.expires_at > now_kst() + timedelta(
+                minutes=1
             )
         except Exception:
             return False
@@ -290,6 +291,7 @@ class ServiceContainer:
                         stock_repository=self.stock_repository,
                         group_repository=self.group_repository,
                         kis_balance_client=client_set_1.balance_client,
+                        sync_log_path=Path(".data/kis_sync.log"),
                     )
                     self.kis_cano = cano
                     self.kis_acnt_prdt_cd = acnt_prdt_cd

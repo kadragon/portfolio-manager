@@ -1,11 +1,13 @@
 """Deposit repository."""
 
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID, uuid4
 
 from peewee import fn
+
+from portfolio_manager.core.time import now_kst
 
 from portfolio_manager.models.deposit import Deposit
 from portfolio_manager.services.database import DepositModel
@@ -28,7 +30,7 @@ class DepositRepository:
         note: Optional[str] = None,
     ) -> Deposit:
         """Create a new deposit."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         row = DepositModel.create(
             id=uuid4(),
             amount=amount,
@@ -55,7 +57,7 @@ class DepositRepository:
         if not isinstance(note, _UnsetNote):
             updates["note"] = note
 
-        updates["updated_at"] = datetime.now(timezone.utc)
+        updates["updated_at"] = now_kst()
         DepositModel.update(updates).where(DepositModel.id == deposit_id).execute()
 
         row = DepositModel.get_by_id(deposit_id)

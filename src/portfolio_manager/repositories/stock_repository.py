@@ -1,8 +1,8 @@
 """Stock repository for database operations."""
 
-from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+from portfolio_manager.core.time import now_kst
 from portfolio_manager.models import Stock
 from portfolio_manager.services.database import StockModel
 
@@ -12,7 +12,7 @@ class StockRepository:
 
     def create(self, ticker: str, group_id: UUID, name: str = "") -> Stock:
         """Create a new stock."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         row = StockModel.create(
             id=uuid4(),
             ticker=ticker,
@@ -40,7 +40,7 @@ class StockRepository:
 
     def update(self, stock_id: UUID, ticker: str) -> Stock:
         """Update a stock ticker by ID."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         StockModel.update(ticker=ticker, updated_at=now).where(
             StockModel.id == stock_id
         ).execute()
@@ -59,7 +59,7 @@ class StockRepository:
 
     def update_group(self, stock_id: UUID, group_id: UUID) -> Stock:
         """Update a stock's group by ID."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         StockModel.update(group=group_id, updated_at=now).where(
             StockModel.id == stock_id
         ).execute()
@@ -68,7 +68,7 @@ class StockRepository:
 
     def update_exchange(self, stock_id: UUID, exchange: str) -> Stock:
         """Update a stock's preferred exchange by ID."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         StockModel.update(exchange=exchange, updated_at=now).where(
             StockModel.id == stock_id
         ).execute()
@@ -77,7 +77,7 @@ class StockRepository:
 
     def update_name(self, stock_id: UUID, name: str) -> Stock:
         """Update a stock's display name by ID."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         StockModel.update(name=name, updated_at=now).where(
             StockModel.id == stock_id
         ).execute()

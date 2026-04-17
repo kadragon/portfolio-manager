@@ -1,8 +1,8 @@
 """Group repository for database operations."""
 
-from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+from portfolio_manager.core.time import now_kst
 from portfolio_manager.models import Group
 from portfolio_manager.services.database import GroupModel
 
@@ -12,7 +12,7 @@ class GroupRepository:
 
     def create(self, name: str, target_percentage: float = 0.0) -> Group:
         """Create a new group."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         row = GroupModel.create(
             id=uuid4(),
             name=name,
@@ -46,7 +46,7 @@ class GroupRepository:
         if not updates:
             raise ValueError("No fields to update")
 
-        updates["updated_at"] = datetime.now(timezone.utc)
+        updates["updated_at"] = now_kst()
         GroupModel.update(updates).where(GroupModel.id == group_id).execute()
 
         row = GroupModel.get_by_id(group_id)

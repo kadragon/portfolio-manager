@@ -1,10 +1,10 @@
 """Account repository for database operations."""
 
-from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from portfolio_manager.core.time import now_kst
 from portfolio_manager.models import Account
 from portfolio_manager.services.database import AccountModel
 
@@ -16,7 +16,7 @@ class AccountRepository:
 
     def create(self, name: str, cash_balance: Decimal) -> Account:
         """Create a new account."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         row = AccountModel.create(
             id=uuid4(),
             name=name,
@@ -44,7 +44,7 @@ class AccountRepository:
         kis_api_key_id: int | None = _UNSET,
     ) -> Account:
         """Update an account name and cash balance."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         fields: dict = {"name": name, "cash_balance": cash_balance, "updated_at": now}
         if kis_account_no is not _UNSET:
             fields["kis_account_no"] = kis_account_no
