@@ -93,9 +93,14 @@ uv run pre-commit install
 | `KIS_DOMESTIC_INFO_TR_ID` | No | TR ID for domestic stock info | `CTPF1002R` |
 | `USD_KRW_RATE` | No† | Fixed USD/KRW rate (overrides EXIM) | `1350.00` |
 | `EXIM_AUTH_KEY` | No† | EXIM API key for live exchange rates | |
+| `OLLAMA_HOST` | No | Ollama server URL (default `http://localhost:11434`) | `http://localhost:11434` |
+| `OLLAMA_MODEL` | No‡ | Ollama model tag for AI insights. Unset → `/insights` page disabled | `0xIbra/supergemma4-26b-uncensored-gguf-v2:Q4_K_M` |
+| `OLLAMA_TIMEOUT_SEC` | No | Per-request timeout in seconds (default `60`) | `120` |
+| `OLLAMA_NUM_CTX` | No | Override context window size | `8192` |
 
 \* App runs without KIS credentials — price fetching and account sync are disabled.  
-† At least one of `USD_KRW_RATE` or `EXIM_AUTH_KEY` is needed for overseas stock valuation.
+† At least one of `USD_KRW_RATE` or `EXIM_AUTH_KEY` is needed for overseas stock valuation.  
+‡ `OLLAMA_MODEL` unset ⇒ `/insights` page renders a "service unavailable" banner. A running `ollama serve` is required when the variable is set; app startup does not block on the Ollama server.
 
 KIS token files are cached in `.data/kis_token_{key_id}.json`. Mount `.data/` in Docker to persist tokens across restarts (avoids rate-limit violations on restart).
 
@@ -130,6 +135,12 @@ KIS token files are cached in `.data/kis_token_{key_id}.json`. Mount `.data/` in
 **Symptom:** `PermissionError: [Errno 13] Permission denied: '.data/kis_token_1.json'`  
 **Cause:** Container created files as root, host user can't write.  
 **Fix:** `sudo chown -R "$(id -u):$(id -g)" .data && LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose up -d --build web`
+
+### `/insights` shows "AI 인사이트 서비스가 설정되지 않았습니다"
+
+**Symptom:** The AI 인사이트 tab banners a setup warning.  
+**Cause:** `OLLAMA_MODEL` is unset, price service failed to start (no KIS key), or the Ollama server is unreachable.  
+**Fix:** Start `ollama serve`, pull the desired model (`ollama pull <tag>`), set `OLLAMA_MODEL` in `.env`, and restart. Network failures while the page is open surface as warning banners under each tab — the page stays functional with Python-computed numbers.
 
 ### In-memory DB not reset between tests
 
