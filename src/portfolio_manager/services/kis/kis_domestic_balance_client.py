@@ -17,6 +17,7 @@ class KisHoldingPosition:
 
     ticker: str
     quantity: Decimal
+    name: str = ""
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class KisDomesticBalanceClient(KisBaseClient):
         tr_cont = ""
         cash_balance = Decimal("0")
         holding_quantities: dict[str, Decimal] = defaultdict(Decimal)
+        holding_names: dict[str, str] = {}
 
         while True:
             response = self._request_balance(
@@ -72,6 +74,10 @@ class KisDomesticBalanceClient(KisBaseClient):
                 quantity = self._parse_decimal(item.get("hldg_qty", "0"))
                 if ticker and quantity > 0:
                     holding_quantities[ticker] += quantity
+                    if ticker not in holding_names:
+                        prdt_name = str(item.get("prdt_name", "")).strip()
+                        if prdt_name:
+                            holding_names[ticker] = prdt_name
 
             if output2:
                 cash_balance = self._parse_cash_balance(output2[0])
@@ -85,7 +91,11 @@ class KisDomesticBalanceClient(KisBaseClient):
             tr_cont = "N"
 
         holdings = [
-            KisHoldingPosition(ticker=ticker, quantity=quantity)
+            KisHoldingPosition(
+                ticker=ticker,
+                quantity=quantity,
+                name=holding_names.get(ticker, ""),
+            )
             for ticker, quantity in sorted(holding_quantities.items())
         ]
         return KisAccountSnapshot(cash_balance=cash_balance, holdings=holdings)

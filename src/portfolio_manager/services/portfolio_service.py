@@ -167,6 +167,8 @@ class PortfolioService:
                         )
                     if exchange and exchange != stock.exchange:
                         self.stock_repository.update_exchange(stock.id, exchange)
+                    if not stock.name and name:
+                        self.stock_repository.update_name(stock.id, name)
                     holding_with_price = StockHoldingWithPrice(
                         stock=stock,
                         quantity=quantity,

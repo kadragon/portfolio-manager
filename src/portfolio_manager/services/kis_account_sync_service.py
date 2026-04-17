@@ -77,10 +77,15 @@ class KisAccountSyncService:
             if stock is None:
                 if sync_group_id is None:
                     sync_group_id = self._get_or_create_sync_group_id()
-                stock = self.stock_repository.create(position.ticker, sync_group_id)
+                stock = self.stock_repository.create(
+                    position.ticker, sync_group_id, name=position.name
+                )
                 stocks_by_ticker[stock.ticker] = stock
                 stock_id_to_ticker[stock.id] = stock.ticker
                 created_stock_count += 1
+            elif not stock.name and position.name:
+                stock = self.stock_repository.update_name(stock.id, position.name)
+                stocks_by_ticker[stock.ticker] = stock
             target_quantities_by_stock_id[stock.id] += position.quantity
 
         existing_holdings = self.holding_repository.list_by_account(account.id)
