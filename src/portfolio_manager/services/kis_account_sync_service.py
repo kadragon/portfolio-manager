@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
+from typing import Callable
 from uuid import UUID
 
+from portfolio_manager.core.time import now_kst
 from portfolio_manager.models import Account, Holding
 from portfolio_manager.repositories.account_repository import AccountRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
@@ -16,6 +22,17 @@ from portfolio_manager.services.kis.kis_domestic_balance_client import (
     KisDomesticBalanceClient,
 )
 from portfolio_manager.services.stock_name_utils import format_stock_name
+
+
+class KisEmptySnapshotError(RuntimeError):
+    """Raised when a KIS snapshot returns no holdings while the account has some.
+
+    Guards against silently wiping existing holdings because of an unsupported
+    account type, misrouted balance client (e.g. domestic client fetching an
+    overseas-only account), or transient API issues. Pass
+    ``allow_empty_snapshot=True`` to opt into clearing holdings when the user
+    has genuinely liquidated the account.
+    """
 
 
 @dataclass(frozen=True)
@@ -40,6 +57,9 @@ class KisAccountSyncResult:
     holding_changes: tuple[HoldingSyncDetail, ...]
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class KisAccountSyncService:
     """Synchronize an internal account with KIS balance data."""
@@ -50,6 +70,8 @@ class KisAccountSyncService:
     group_repository: GroupRepository
     kis_balance_client: KisDomesticBalanceClient
     default_group_name: str = "KIS 자동동기화"
+    sync_log_path: Path | None = None
+    _now: Callable[[], datetime] = field(default=now_kst, repr=False)
 
     def sync_account(
         self,
@@ -58,10 +80,42 @@ class KisAccountSyncService:
         cano: str,
         acnt_prdt_cd: str,
         kis_balance_client: KisDomesticBalanceClient | None = None,
+        allow_empty_snapshot: bool = False,
     ) -> KisAccountSyncResult:
         """Sync cash balance and holdings for one account."""
         balance_client = kis_balance_client or self.kis_balance_client
-        snapshot = balance_client.fetch_account_snapshot(cano, acnt_prdt_cd)
+        base_event = {
+            "account_id": str(account.id),
+            "cano": cano,
+            "acnt_prdt_cd": acnt_prdt_cd,
+        }
+        try:
+            snapshot = balance_client.fetch_account_snapshot(cano, acnt_prdt_cd)
+        except Exception as exc:
+            self._log_event(
+                {
+                    **base_event,
+                    "event": "sync_snapshot_error",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+            )
+            raise
+
+        existing_holdings = self.holding_repository.list_by_account(account.id)
+        if not snapshot.holdings and existing_holdings and not allow_empty_snapshot:
+            self._log_event(
+                {
+                    **base_event,
+                    "event": "sync_guard_empty_snapshot",
+                    "existing_holding_count": len(existing_holdings),
+                }
+            )
+            raise KisEmptySnapshotError(
+                "KIS 스냅샷이 비어 있어 기존 보유 내역을 보호합니다. "
+                "실제로 전량 매도된 경우 allow_empty_snapshot=True로 재실행하세요."
+            )
+
         stocks_by_ticker = {
             stock.ticker: stock for stock in self.stock_repository.list_all()
         }
@@ -93,7 +147,6 @@ class KisAccountSyncService:
                 stocks_by_ticker[stock.ticker] = stock
             target_quantities_by_stock_id[stock.id] += position.quantity
 
-        existing_holdings = self.holding_repository.list_by_account(account.id)
         existing_by_stock_id: dict[UUID, list[Holding]] = defaultdict(list)
         for holding in existing_holdings:
             existing_by_stock_id[holding.stock_id].append(holding)
@@ -150,6 +203,35 @@ class KisAccountSyncService:
             account.id, name=account.name, cash_balance=snapshot.cash_balance
         )
 
+        self._log_event(
+            {
+                **base_event,
+                "event": "sync_success",
+                "old_cash_balance": str(old_cash_balance),
+                "cash_balance": str(snapshot.cash_balance),
+                "holding_count": len(target_quantities_by_stock_id),
+                "created_stock_count": created_stock_count,
+                "allow_empty_snapshot": allow_empty_snapshot,
+                "holding_changes": [
+                    {
+                        "ticker": change.ticker,
+                        "action": change.action,
+                        "old_quantity": (
+                            str(change.old_quantity)
+                            if change.old_quantity is not None
+                            else None
+                        ),
+                        "new_quantity": (
+                            str(change.new_quantity)
+                            if change.new_quantity is not None
+                            else None
+                        ),
+                    }
+                    for change in holding_changes
+                ],
+            }
+        )
+
         return KisAccountSyncResult(
             account_id=account.id,
             cash_balance=snapshot.cash_balance,
@@ -158,6 +240,18 @@ class KisAccountSyncService:
             created_stock_count=created_stock_count,
             holding_changes=tuple(holding_changes),
         )
+
+    def _log_event(self, event: dict) -> None:
+        """Append a JSONL event. Never raises — logging must not break sync."""
+        payload = {"timestamp": self._now().isoformat(), **event}
+        if self.sync_log_path is None:
+            return
+        try:
+            self.sync_log_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.sync_log_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            logger.warning("Failed to write KIS sync log: %s", exc)
 
     def validate_account(
         self,

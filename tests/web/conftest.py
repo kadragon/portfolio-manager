@@ -24,6 +24,7 @@ from portfolio_manager.web.routes import (
     dashboard,
     deposits,
     groups,
+    insights,
     rebalance,
 )
 
@@ -376,12 +377,19 @@ class FakePortfolioService:
 class FakeKisAccountSyncService:
     def __init__(self) -> None:
         self.sync_exception: Exception | None = None
+        self.sync_exception_unless_confirm: Exception | None = None
         self.validate_exception: Exception | None = None
         self.validated_accounts: list[tuple[str, str]] = []
+        self.sync_calls: list[dict] = []
 
-    def sync_account(self, **_: object) -> None:
+    def sync_account(self, **kwargs: object) -> None:
+        self.sync_calls.append(kwargs)
         if self.sync_exception is not None:
             raise self.sync_exception
+        if self.sync_exception_unless_confirm is not None and not kwargs.get(
+            "allow_empty_snapshot"
+        ):
+            raise self.sync_exception_unless_confirm
         return None
 
     def validate_account(
@@ -480,6 +488,7 @@ class FakeContainer:
         self.kis_cano = "12345678"
         self.kis_acnt_prdt_cd = "01"
         self.kis_client_sets: dict[int, object] = {}
+        self.portfolio_insight_service: object | None = None
 
     def get_kis_client_set(self, key_id: int | None) -> object | None:
         effective_id = key_id or 1
@@ -487,6 +496,9 @@ class FakeContainer:
 
     def get_portfolio_service(self) -> FakePortfolioService:
         return self.portfolio_service
+
+    def get_portfolio_insight_service(self) -> object | None:
+        return self.portfolio_insight_service
 
 
 @pytest.fixture
@@ -516,6 +528,7 @@ def app(fake_container: FakeContainer) -> FastAPI:
     app_instance.include_router(accounts.router)
     app_instance.include_router(deposits.router)
     app_instance.include_router(rebalance.router)
+    app_instance.include_router(insights.router)
 
     return app_instance
 

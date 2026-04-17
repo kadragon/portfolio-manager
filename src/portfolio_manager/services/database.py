@@ -1,10 +1,11 @@
 """SQLite database module using Peewee ORM."""
 
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from decimal import Decimal
 from uuid import uuid4
+
+from portfolio_manager.core.time import now_kst
 
 from peewee import (
     DateField,
@@ -27,7 +28,7 @@ class BaseModel(Model):
 
     def save(self, *args, **kwargs):
         if hasattr(self, "updated_at") and not kwargs.get("force_insert", False):
-            self.updated_at = datetime.now(timezone.utc)
+            self.updated_at = now_kst()
         return super().save(*args, **kwargs)
 
     class Meta:
@@ -38,8 +39,8 @@ class GroupModel(BaseModel):
     id = UUIDField(primary_key=True, default=uuid4)
     name = TextField()
     target_percentage = FloatField(default=0.0)
-    created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
-    updated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
+    created_at = DateTimeField(default=now_kst)
+    updated_at = DateTimeField(default=now_kst)
 
     class Meta:
         table_name = "groups"
@@ -53,8 +54,8 @@ class StockModel(BaseModel):
         GroupModel, column_name="group_id", backref="stocks", on_delete="CASCADE"
     )
     exchange = TextField(null=True)
-    created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
-    updated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
+    created_at = DateTimeField(default=now_kst)
+    updated_at = DateTimeField(default=now_kst)
 
     class Meta:
         table_name = "stocks"
@@ -70,8 +71,8 @@ class AccountModel(BaseModel):
     cash_balance = DecimalField(decimal_places=10, auto_round=False, default=Decimal(0))
     kis_account_no = TextField(null=True)
     kis_api_key_id = IntegerField(null=True)
-    created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
-    updated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
+    created_at = DateTimeField(default=now_kst)
+    updated_at = DateTimeField(default=now_kst)
 
     class Meta:
         table_name = "accounts"
@@ -89,8 +90,8 @@ class HoldingModel(BaseModel):
         StockModel, column_name="stock_id", backref="holdings", on_delete="CASCADE"
     )
     quantity = DecimalField(decimal_places=10, auto_round=False, default=Decimal(0))
-    created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
-    updated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
+    created_at = DateTimeField(default=now_kst)
+    updated_at = DateTimeField(default=now_kst)
 
     class Meta:
         table_name = "holdings"
@@ -105,8 +106,8 @@ class DepositModel(BaseModel):
     amount = DecimalField(decimal_places=10, auto_round=False)
     deposit_date = DateField(unique=True)
     note = TextField(null=True)
-    created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
-    updated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
+    created_at = DateTimeField(default=now_kst)
+    updated_at = DateTimeField(default=now_kst)
 
     class Meta:
         table_name = "deposits"
@@ -120,8 +121,8 @@ class StockPriceModel(BaseModel):
     name = TextField(default="")
     exchange = TextField(null=True)
     price_date = DateField()
-    created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
-    updated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
+    created_at = DateTimeField(default=now_kst)
+    updated_at = DateTimeField(default=now_kst)
 
     class Meta:
         table_name = "stock_prices"
@@ -141,7 +142,7 @@ class OrderExecutionModel(BaseModel):
     status = TextField()
     message = TextField(default="")
     raw_response = TextField(null=True)
-    created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
+    created_at = DateTimeField(default=now_kst)
 
     class Meta:
         table_name = "order_executions"

@@ -3,6 +3,7 @@ from datetime import datetime
 
 import httpx
 
+from portfolio_manager.core.time import KST, now_kst
 from portfolio_manager.services.kis.kis_auth_client import KisAuthClient
 
 
@@ -37,7 +38,7 @@ def test_access_token_request_posts_client_credentials():
     assert captured["body"]["appsecret"] == "app-secret"
 
     assert token.token == "test-token"
-    assert token.expires_at > datetime.now()
+    assert token.expires_at > now_kst()
 
 
 def test_access_token_parses_expired_at_string():
@@ -59,4 +60,4 @@ def test_access_token_parses_expired_at_string():
     token = auth.request_access_token()
 
     assert token.token == "test-token"
-    assert token.expires_at == datetime(2026, 1, 3, 12, 34, 56)
+    assert token.expires_at == datetime(2026, 1, 3, 12, 34, 56, tzinfo=KST)

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 
+from portfolio_manager.core.time import now_kst
 from portfolio_manager.services.auth_client import AuthClient
 from portfolio_manager.services.kis.kis_token_store import TokenStore
 
@@ -15,7 +16,7 @@ class TokenManager:
 
     def get_token(self) -> str:
         cached = self.store.load()
-        now = datetime.now()
+        now = now_kst()
         if cached and cached.expires_at > now + self.refresh_skew:
             return cached.token
 

@@ -1,10 +1,10 @@
 """Order execution repository."""
 
 import json
-from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
+from portfolio_manager.core.time import now_kst
 from portfolio_manager.models.order_execution import OrderExecutionRecord
 from portfolio_manager.services.database import OrderExecutionModel
 
@@ -24,7 +24,7 @@ class OrderExecutionRepository:
         raw_response: Optional[dict] = None,
     ) -> OrderExecutionRecord:
         """Create an order execution record."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         row = OrderExecutionModel.create(
             id=uuid4(),
             ticker=ticker,

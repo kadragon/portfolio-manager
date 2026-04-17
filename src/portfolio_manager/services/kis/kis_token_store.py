@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 import json
 
+from portfolio_manager.core.time import KST
+
 
 @dataclass(frozen=True)
 class TokenData:
@@ -50,7 +52,10 @@ class FileTokenStore(TokenStore):
         if not self._path.exists():
             return None
         payload = json.loads(self._path.read_text(encoding="utf-8"))
+        expires_at = datetime.fromisoformat(payload["expires_at"])
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=KST)
         return TokenData(
             token=payload["token"],
-            expires_at=datetime.fromisoformat(payload["expires_at"]),
+            expires_at=expires_at,
         )

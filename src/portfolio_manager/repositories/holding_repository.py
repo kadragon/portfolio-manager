@@ -1,9 +1,10 @@
 """Holding repository for database operations."""
 
 from collections import defaultdict
-from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
+
+from portfolio_manager.core.time import now_kst
 
 from portfolio_manager.models import Holding
 from portfolio_manager.services.database import HoldingModel, db
@@ -14,7 +15,7 @@ class HoldingRepository:
 
     def create(self, account_id: UUID, stock_id: UUID, quantity: Decimal) -> Holding:
         """Create a new holding."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         row = HoldingModel.create(
             id=uuid4(),
             account=account_id,
@@ -42,7 +43,7 @@ class HoldingRepository:
 
     def update(self, holding_id: UUID, quantity: Decimal) -> Holding:
         """Update a holding quantity by ID."""
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         HoldingModel.update(quantity=quantity, updated_at=now).where(
             HoldingModel.id == holding_id
         ).execute()
@@ -75,7 +76,7 @@ class HoldingRepository:
         if len(existing) != len(holding_ids):
             raise ValueError("all holdings must belong to account")
 
-        now = datetime.now(timezone.utc)
+        now = now_kst()
         results = []
         with db.atomic():
             for holding_id, quantity in updates:

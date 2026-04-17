@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, Response
 from markupsafe import escape
 
 from portfolio_manager.services.kis.kis_api_error import KisApiBusinessError
+from portfolio_manager.services.kis_account_sync_service import KisEmptySnapshotError
 from portfolio_manager.services.stock_name_utils import format_stock_name
 from portfolio_manager.web.deps import get_container, get_templates
 
@@ -603,7 +604,11 @@ def delete_holding(request: Request, account_id: UUID, holding_id: UUID) -> Resp
 
 
 @router.post("/{account_id}/sync", response_class=HTMLResponse)
-def sync_account(request: Request, account_id: UUID) -> HTMLResponse:
+def sync_account(
+    request: Request,
+    account_id: UUID,
+    confirm_empty: bool = Form(default=False),
+) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
 
@@ -677,17 +682,26 @@ def sync_account(request: Request, account_id: UUID) -> HTMLResponse:
             cano=cano,
             acnt_prdt_cd=acnt,
             kis_balance_client=client_set.balance_client if client_set else None,
+            allow_empty_snapshot=confirm_empty,
         )
         success = True
         message = "KIS 계좌 동기화 완료"
+        show_confirm_empty_button = False
+    except KisEmptySnapshotError as exc:
+        result = None
+        message = f"동기화 중단: {exc}"
+        success = False
+        show_confirm_empty_button = not confirm_empty
     except KisApiBusinessError as exc:
         result = None
         message = _format_kis_error("동기화 실패", exc)
         success = False
+        show_confirm_empty_button = False
     except Exception as e:
         result = None
         message = f"동기화 실패: {e}"
         success = False
+        show_confirm_empty_button = False
 
     return templates.TemplateResponse(
         request=request,
@@ -697,5 +711,6 @@ def sync_account(request: Request, account_id: UUID) -> HTMLResponse:
             "success": success,
             "message": message,
             "result": result,
+            "show_confirm_empty_button": show_confirm_empty_button,
         },
     )

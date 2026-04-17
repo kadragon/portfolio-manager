@@ -8,9 +8,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import httpx
+
+from portfolio_manager.core.time import now_kst
 
 from portfolio_manager.repositories.account_repository import AccountRepository
 from portfolio_manager.repositories.deposit_repository import DepositRepository
@@ -58,6 +60,10 @@ from portfolio_manager.services.exchange.exchange_rate_service import (
 )
 from portfolio_manager.services.kis_account_sync_service import KisAccountSyncService
 from portfolio_manager.services.database import init_db, close_db
+from portfolio_manager.services.llm.ollama_client import OllamaClient
+from portfolio_manager.services.portfolio_insight_service import (
+    PortfolioInsightService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +84,7 @@ class ServiceContainer:
         """Initialize container."""
         self.http_client: httpx.Client | None = None
         self.exim_client: httpx.Client | None = None
+        self.ollama_http_client: httpx.Client | None = None
 
         # SQLite + Peewee
         init_db()
@@ -97,11 +104,51 @@ class ServiceContainer:
         self.kis_cano: str | None = None
         self.kis_acnt_prdt_cd: str | None = None
         self.kis_client_sets: dict[int, KisClientSet] = {}
+        self.ollama_client: OllamaClient | None = None
 
     def setup(self) -> None:
-        """Setup external services (KIS, Exchange)."""
+        """Setup external services (KIS, Exchange, Ollama)."""
         self._setup_kis_client()
         self._setup_exchange_service()
+        self._setup_ollama_client()
+
+    def _setup_ollama_client(self) -> None:
+        host = os.getenv("OLLAMA_HOST", "http://localhost:11434").strip()
+        model = os.getenv("OLLAMA_MODEL", "").strip()
+        if not model:
+            return
+        try:
+            timeout_sec = float(os.getenv("OLLAMA_TIMEOUT_SEC", "60"))
+        except ValueError:
+            timeout_sec = 60.0
+        num_ctx_raw = os.getenv("OLLAMA_NUM_CTX")
+        num_ctx: int | None = None
+        if num_ctx_raw:
+            try:
+                num_ctx = int(num_ctx_raw)
+            except ValueError:
+                num_ctx = None
+        self.ollama_http_client = httpx.Client(base_url=host)
+        self.ollama_client = OllamaClient(
+            client=self.ollama_http_client,
+            model=model,
+            timeout_sec=timeout_sec,
+            num_ctx=num_ctx,
+        )
+
+    def get_portfolio_insight_service(self) -> PortfolioInsightService | None:
+        """Return a PortfolioInsightService if LLM + price service are configured."""
+        if self.ollama_client is None or self.price_service is None:
+            return None
+        return PortfolioInsightService(
+            portfolio_service=self.get_portfolio_service(),
+            account_repository=self.account_repository,
+            holding_repository=self.holding_repository,
+            group_repository=self.group_repository,
+            stock_repository=self.stock_repository,
+            deposit_repository=self.deposit_repository,
+            ollama_client=self.ollama_client,
+        )
 
     def _build_kis_client_set(
         self,
@@ -166,9 +213,8 @@ class ServiceContainer:
         try:
             store = FileTokenStore(path)
             cached = store.load()
-            return (
-                cached is not None
-                and cached.expires_at > datetime.now() + timedelta(minutes=1)
+            return cached is not None and cached.expires_at > now_kst() + timedelta(
+                minutes=1
             )
         except Exception:
             return False
@@ -245,6 +291,7 @@ class ServiceContainer:
                         stock_repository=self.stock_repository,
                         group_repository=self.group_repository,
                         kis_balance_client=client_set_1.balance_client,
+                        sync_log_path=Path(".data/kis_sync.log"),
                     )
                     self.kis_cano = cano
                     self.kis_acnt_prdt_cd = acnt_prdt_cd
@@ -323,6 +370,8 @@ class ServiceContainer:
             self.http_client.close()
         if self.exim_client:
             self.exim_client.close()
+        if self.ollama_http_client:
+            self.ollama_http_client.close()
 
     @staticmethod
     def _load_kis_account_credentials() -> tuple[str | None, str | None]:
