@@ -377,12 +377,19 @@ class FakePortfolioService:
 class FakeKisAccountSyncService:
     def __init__(self) -> None:
         self.sync_exception: Exception | None = None
+        self.sync_exception_unless_confirm: Exception | None = None
         self.validate_exception: Exception | None = None
         self.validated_accounts: list[tuple[str, str]] = []
+        self.sync_calls: list[dict] = []
 
-    def sync_account(self, **_: object) -> None:
+    def sync_account(self, **kwargs: object) -> None:
+        self.sync_calls.append(kwargs)
         if self.sync_exception is not None:
             raise self.sync_exception
+        if self.sync_exception_unless_confirm is not None and not kwargs.get(
+            "allow_empty_snapshot"
+        ):
+            raise self.sync_exception_unless_confirm
         return None
 
     def validate_account(

@@ -44,7 +44,7 @@
         <td>{{ rec.stock_name or rec.ticker }} <span class="text-xs text-base-content/50">({{ rec.ticker }})</span></td>
         <td class="text-right font-mono">{{ rec.amount_krw | format_krw }}</td>
         <td class="text-sm">
-          {% set rationale = explanation.rationales.get(rec.priority) %}
+          {% set rationale = explanation.rationales.get(rec.action.value ~ '-' ~ rec.priority) %}
           {{ rationale or rec.reason or '-' }}
         </td>
       </tr>

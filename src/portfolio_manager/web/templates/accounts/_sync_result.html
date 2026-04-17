@@ -3,6 +3,13 @@
     <div class="alert alert-{{ 'success' if success else 'error' }} text-sm py-2" role="status" aria-live="polite" aria-atomic="true">
       <div class="w-full">
         <p class="font-semibold">{{ message }}</p>
+        {% if not success and show_confirm_empty_button %}
+        <button type="button" class="btn btn-xs btn-warning mt-2"
+                hx-post="/accounts/{{ account_id }}/sync"
+                hx-vals='{"confirm_empty": "true"}'
+                hx-target="#sync-result-{{ account_id }}"
+                hx-swap="outerHTML">전량 매도 확정 — 재동기화</button>
+        {% endif %}
         {% if result %}
         <div class="mt-1 text-xs opacity-80 space-y-0.5">
           {% if result.old_cash_balance != result.cash_balance %}

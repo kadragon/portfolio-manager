@@ -39,23 +39,6 @@ def view_insights(request: Request) -> HTMLResponse:
                 "active_page": "insights",
                 "unavailable": True,
                 "message": "AI 인사이트 서비스가 설정되지 않았습니다. OLLAMA_MODEL 환경 변수와 가격 서비스를 확인하세요.",
-                "narrative": None,
-            },
-        )
-
-    try:
-        narrative = service.generate_narrative(period="daily")
-        error = narrative.error
-    except Exception as exc:  # noqa: BLE001
-        return templates.TemplateResponse(
-            request=request,
-            name="insights/view.html",
-            context={
-                "active_page": "insights",
-                "unavailable": False,
-                "message": None,
-                "error": str(exc),
-                "narrative": None,
             },
         )
 
@@ -66,8 +49,7 @@ def view_insights(request: Request) -> HTMLResponse:
             "active_page": "insights",
             "unavailable": False,
             "message": None,
-            "error": error,
-            "narrative": narrative,
+            "error": None,
             "current_period": "daily",
         },
     )

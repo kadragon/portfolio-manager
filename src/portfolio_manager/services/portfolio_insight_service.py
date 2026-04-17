@@ -94,7 +94,7 @@ class NarrativeResult:
 class RebalanceExplanation:
     plan: RebalancePlan
     summary: str
-    rationales: dict[int, str]
+    rationales: dict[str, str]
     error: str | None = None
 
 
@@ -279,8 +279,8 @@ class PortfolioInsightService:
         # Ensure every recommendation has at least the Python-computed reason
         # as fallback when the LLM skips one.
         fallback = _fallback_rationales(items)
-        for priority, reason in fallback.items():
-            rationales.setdefault(priority, reason)
+        for rec_id, reason in fallback.items():
+            rationales.setdefault(rec_id, reason)
 
         return RebalanceExplanation(
             plan=plan,
@@ -388,8 +388,13 @@ class PortfolioInsightService:
     def _answer_via_json_fallback(
         self, question: str, context_json: str, tools_used: list[str]
     ) -> QaResult:
+        system_content = (
+            QA_JSON_FALLBACK_SYSTEM_PROMPT
+            + "\n\n사용 가능한 도구:\n"
+            + _format_tool_schemas_for_prompt(QA_TOOL_SCHEMAS)
+        )
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": QA_JSON_FALLBACK_SYSTEM_PROMPT},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": qa_user_prompt(question, context_json)},
         ]
         try:
@@ -465,7 +470,7 @@ class PortfolioInsightService:
                 limit = int(arguments.get("limit") or 10)
                 return self._tool_deposit_history(limit=limit)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("QA tool %s failed: %s", name, exc)
+            logger.exception("QA tool %s failed", name)
             return {"error": f"도구 실행 실패: {exc}"}
         return {"error": f"알 수 없는 도구: {name}"}
 
@@ -617,6 +622,12 @@ def _rebalance_plan_to_payload(plan: RebalancePlan) -> dict[str, Any]:
         ],
         "recommendations": [
             {
+                "rec_id": (
+                    rec.action.value
+                    if isinstance(rec.action, RebalanceAction)
+                    else str(rec.action)
+                )
+                + f"-{rec.priority}",
                 "priority": rec.priority,
                 "action": rec.action.value
                 if isinstance(rec.action, RebalanceAction)
@@ -634,27 +645,26 @@ def _rebalance_plan_to_payload(plan: RebalancePlan) -> dict[str, Any]:
     }
 
 
-def _parse_rebalance_response(content: str) -> tuple[str, dict[int, str]] | None:
+def _parse_rebalance_response(content: str) -> tuple[str, dict[str, str]] | None:
     data = _safe_json_loads(content)
     if not isinstance(data, dict):
         return None
     summary_text = str(data.get("summary") or "").strip()
     items = data.get("items")
-    rationales: dict[int, str] = {}
+    rationales: dict[str, str] = {}
     if isinstance(items, list):
         for entry in items:
             if not isinstance(entry, dict):
                 continue
-            priority_raw = entry.get("priority")
-            if priority_raw is None:
+            rec_id_raw = entry.get("rec_id")
+            if not rec_id_raw:
                 continue
-            try:
-                priority = int(priority_raw)  # type: ignore[arg-type]
-            except (TypeError, ValueError):
+            rec_id = str(rec_id_raw).strip()
+            if not rec_id:
                 continue
             rationale = str(entry.get("rationale") or "").strip()
             if rationale:
-                rationales[priority] = rationale
+                rationales[rec_id] = rationale
     if not summary_text and not rationales:
         return None
     return summary_text, rationales
@@ -662,8 +672,33 @@ def _parse_rebalance_response(content: str) -> tuple[str, dict[int, str]] | None
 
 def _fallback_rationales(
     items: list[RebalanceRecommendation],
-) -> dict[int, str]:
-    return {rec.priority: rec.reason or "" for rec in items if rec.reason}
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for rec in items:
+        if not rec.reason:
+            continue
+        action_value = (
+            rec.action.value
+            if isinstance(rec.action, RebalanceAction)
+            else str(rec.action)
+        )
+        result[f"{action_value}-{rec.priority}"] = rec.reason
+    return result
+
+
+def _format_tool_schemas_for_prompt(schemas: list[dict[str, Any]]) -> str:
+    """Render tool schemas as a compact textual listing for JSON-fallback prompts."""
+    lines: list[str] = []
+    for schema in schemas:
+        fn = schema.get("function") if isinstance(schema, dict) else None
+        if not isinstance(fn, dict):
+            continue
+        name = fn.get("name") or ""
+        description = fn.get("description") or ""
+        parameters = fn.get("parameters") or {}
+        args_json = json.dumps(parameters, ensure_ascii=False)
+        lines.append(f"- {name}(args): {description} args: {args_json}")
+    return "\n".join(lines)
 
 
 def _safe_json_loads(text: str) -> Any:

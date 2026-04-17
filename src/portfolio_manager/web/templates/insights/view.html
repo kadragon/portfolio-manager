@@ -36,11 +36,14 @@
 
 <div id="insights-indicator" class="htmx-indicator text-xs text-base-content/60 mb-2" aria-live="polite">AI 응답 생성 중…</div>
 
-<section id="insights-panel" role="tabpanel" aria-live="polite">
-  {% if narrative %}
-    {% include "insights/_narrative.html" %}
-  {% elif not unavailable %}
-    <p class="text-sm text-base-content/60">인사이트를 생성하지 못했습니다.</p>
+<section id="insights-panel" role="tabpanel" aria-live="polite"
+         {% if not unavailable %}hx-get="/insights/narrative?period=daily"
+         hx-trigger="load"
+         hx-target="#insights-panel"
+         hx-swap="innerHTML"
+         hx-indicator="#insights-indicator"{% endif %}>
+  {% if not unavailable %}
+    <p class="text-sm text-base-content/60">인사이트 불러오는 중…</p>
   {% endif %}
 </section>
 

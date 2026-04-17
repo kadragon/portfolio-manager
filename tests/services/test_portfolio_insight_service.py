@@ -410,7 +410,10 @@ def test_explain_rebalance_parses_llm_json_response(service_factory) -> None:
         {
             "summary": "국내성장 과열 해소가 필요합니다.",
             "items": [
-                {"priority": 1, "rationale": "국내성장 상단 밴드 이탈로 감축 권고."}
+                {
+                    "rec_id": "sell-1",
+                    "rationale": "국내성장 상단 밴드 이탈로 감축 권고.",
+                }
             ],
         },
         ensure_ascii=False,
@@ -423,10 +426,80 @@ def test_explain_rebalance_parses_llm_json_response(service_factory) -> None:
     result = service.explain_rebalance()
 
     assert "국내성장 과열 해소" in result.summary
-    assert result.rationales[1] == "국내성장 상단 밴드 이탈로 감축 권고."
+    assert result.rationales["sell-1"] == "국내성장 상단 밴드 이탈로 감축 권고."
     assert result.error is None
     # format=json must be requested
     assert ollama.calls[0]["format"] == "json"
+
+
+def test_explain_rebalance_distinguishes_sell_and_buy_same_priority(
+    service_factory,
+) -> None:
+    sell_rec = RebalanceRecommendation(
+        ticker="005930",
+        action=RebalanceAction.SELL,
+        amount=Decimal("50000"),
+        priority=1,
+        currency="KRW",
+        quantity=Decimal("1"),
+        stock_name="삼성전자",
+        group_name="국내성장",
+        account_name="메인",
+        rebalance_group_name="국내성장",
+        reason="매도 근거",
+        trigger_type="group",
+        amount_krw=Decimal("50000"),
+    )
+    buy_rec = RebalanceRecommendation(
+        ticker="TSLA",
+        action=RebalanceAction.BUY,
+        amount=Decimal("50000"),
+        priority=1,
+        currency="USD",
+        quantity=Decimal("1"),
+        stock_name="Tesla",
+        group_name="해외성장",
+        account_name="메인",
+        rebalance_group_name="해외성장",
+        reason="매수 근거",
+        trigger_type="group",
+        amount_krw=Decimal("50000"),
+    )
+    plan = RebalancePlan(
+        sell_recommendations=[sell_rec],
+        buy_recommendations=[buy_rec],
+        region_diagnostic=RegionDiagnostic(
+            target_kr_percentage=Decimal("40"),
+            target_us_percentage=Decimal("60"),
+            current_kr_percentage=Decimal("45"),
+            current_us_percentage=Decimal("55"),
+            lower_kr_percentage=Decimal("35"),
+            upper_kr_percentage=Decimal("45"),
+            is_triggered=False,
+        ),
+        group_diagnostics=[],
+        total_assets_krw=Decimal("1500000"),
+    )
+    llm_payload = json.dumps(
+        {
+            "summary": "매도/매수 모두 설명.",
+            "items": [
+                {"rec_id": "sell-1", "rationale": "sell-1 rationale"},
+                {"rec_id": "buy-1", "rationale": "buy-1 rationale"},
+            ],
+        },
+        ensure_ascii=False,
+    )
+    service, _ = service_factory(
+        ollama_responses=[ChatResponse(content=llm_payload)],
+        plan=plan,
+    )
+
+    result = service.explain_rebalance()
+
+    assert result.rationales["sell-1"] == "sell-1 rationale"
+    assert result.rationales["buy-1"] == "buy-1 rationale"
+    assert result.rationales["sell-1"] != result.rationales["buy-1"]
 
 
 def test_explain_rebalance_falls_back_to_python_reasons_on_parse_failure(
@@ -441,7 +514,7 @@ def test_explain_rebalance_falls_back_to_python_reasons_on_parse_failure(
     result = service.explain_rebalance()
 
     assert result.error is not None
-    assert result.rationales[1] == "과열 그룹 절반 감축"
+    assert result.rationales["sell-1"] == "과열 그룹 절반 감축"
     assert result.summary == ""
 
 
@@ -456,7 +529,7 @@ def test_explain_rebalance_falls_back_when_ollama_unavailable(service_factory) -
 
     assert result.error is not None
     assert "timeout" in result.error
-    assert result.rationales[1] == "과열 그룹 절반 감축"
+    assert result.rationales["sell-1"] == "과열 그룹 절반 감축"
 
 
 # --- Q&A tests --------------------------------------------------------------
@@ -532,6 +605,31 @@ def test_answer_question_uses_json_fallback_when_tool_loop_yields_no_content(
     assert result.error is None
     # Final fallback call must request json format
     assert ollama.calls[-1]["format"] == "json"
+
+
+def test_json_fallback_system_prompt_includes_tool_names(service_factory) -> None:
+    fallback_final = json.dumps(
+        {"action": "final_answer", "text": "답변"}, ensure_ascii=False
+    )
+    service, ollama = service_factory(
+        ollama_responses=[
+            ChatResponse(content="", tool_calls=[]),
+            ChatResponse(content="", tool_calls=[]),
+            ChatResponse(content=fallback_final),
+        ],
+    )
+
+    service.answer_question("아무거나")
+
+    # Last call is the JSON fallback; its system message must list tools.
+    fallback_call = ollama.calls[-1]
+    system_msg = fallback_call["messages"][0]
+    assert system_msg["role"] == "system"
+    content = system_msg["content"]
+    assert "get_group_summary" in content
+    assert "get_top_movers" in content
+    assert "get_holding_value" in content
+    assert "get_deposit_history" in content
 
 
 def test_answer_question_reports_error_on_ollama_failure_mid_flight(

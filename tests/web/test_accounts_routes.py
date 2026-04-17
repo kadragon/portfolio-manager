@@ -2,6 +2,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from portfolio_manager.services.kis.kis_api_error import KisApiBusinessError
+from portfolio_manager.services.kis_account_sync_service import KisEmptySnapshotError
 
 
 class _FailingSyncService:
@@ -262,3 +263,35 @@ def test_sync_account_returns_kis_business_error_message(client, fake_container)
 
     assert response.status_code == 200
     assert "동기화 실패: OPSQ2000 - ERROR : INPUT INVALID_CHECK_ACNO" in response.text
+
+
+def test_sync_account_empty_snapshot_shows_confirm_then_allows_retry(
+    client, fake_container
+):
+    fake_container.kis_account_sync_service.sync_exception_unless_confirm = (
+        KisEmptySnapshotError("보유 종목 스냅샷이 비어 있습니다.")
+    )
+
+    first = client.post(f"/accounts/{fake_container.account.id}/sync")
+
+    assert first.status_code == 200
+    assert "동기화 중단" in first.text
+    assert "전량 매도 확정" in first.text
+    assert (
+        fake_container.kis_account_sync_service.sync_calls[-1]["allow_empty_snapshot"]
+        is False
+    )
+
+    second = client.post(
+        f"/accounts/{fake_container.account.id}/sync",
+        data={"confirm_empty": "true"},
+    )
+
+    assert second.status_code == 200
+    assert "KIS 계좌 동기화 완료" in second.text
+    assert (
+        fake_container.kis_account_sync_service.sync_calls[-1]["allow_empty_snapshot"]
+        is True
+    )
+    # Confirm button should not appear on success
+    assert "전량 매도 확정" not in second.text

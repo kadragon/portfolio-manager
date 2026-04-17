@@ -117,20 +117,18 @@ def test_get_insights_returns_unavailable_when_service_missing(
     assert "AI 인사이트 서비스가 설정되지 않았습니다" in response.text
 
 
-def test_get_insights_renders_daily_narrative_on_full_page_load(
-    client, fake_container
-) -> None:
+def test_get_insights_does_not_call_ollama_on_page_load(client, fake_container) -> None:
     stub = _install(fake_container)
 
     response = client.get("/insights")
 
     assert response.status_code == 200
-    assert stub.generate_calls == ["daily"]
-    assert "요약 텍스트" in response.text
+    # Page shell must defer narrative generation to the HTMX partial request.
+    assert stub.generate_calls == []
     # Full layout includes base nav (AI 인사이트 링크)
     assert "AI 인사이트" in response.text
-    # Python-rendered number must appear verbatim
-    assert "1,500,000" in response.text
+    # Shell should set up the HTMX trigger that will fetch the narrative.
+    assert "/insights/narrative?period=daily" in response.text
 
 
 def test_get_narrative_partial_honors_period(client, fake_container) -> None:
