@@ -12,7 +12,10 @@ from portfolio_manager.services.kis.kis_domestic_balance_client import (
     KisAccountSnapshot,
     KisHoldingPosition,
 )
-from portfolio_manager.services.kis_account_sync_service import KisAccountSyncService
+from portfolio_manager.services.kis_account_sync_service import (
+    KisAccountSyncService,
+    KisEmptySnapshotError,
+)
 
 
 def _make_holding(account: Account, stock: Stock, quantity: str) -> Holding:
@@ -174,7 +177,12 @@ def test_sync_account_clears_holdings_when_kis_has_no_positions():
         kis_balance_client=balance_client,
     )
 
-    result = service.sync_account(account=account, cano="12345678", acnt_prdt_cd="01")
+    result = service.sync_account(
+        account=account,
+        cano="12345678",
+        acnt_prdt_cd="01",
+        allow_empty_snapshot=True,
+    )
 
     account_repository.update.assert_called_once_with(
         account.id,
@@ -189,6 +197,100 @@ def test_sync_account_clears_holdings_when_kis_has_no_positions():
     holding_repository.delete_by_account.assert_not_called()
     assert result.holding_count == 0
     assert result.created_stock_count == 0
+
+
+def test_sync_account_refuses_to_wipe_when_snapshot_empty_by_default():
+    now = datetime.now()
+    account = Account(
+        id=uuid4(),
+        name="한국투자증권",
+        cash_balance=Decimal("500000"),
+        created_at=now,
+        updated_at=now,
+    )
+    group = Group(
+        id=uuid4(),
+        name="국내",
+        target_percentage=0,
+        created_at=now,
+        updated_at=now,
+    )
+    stock = Stock(
+        id=uuid4(),
+        ticker="005930",
+        group_id=group.id,
+        created_at=now,
+        updated_at=now,
+    )
+    existing_holding = _make_holding(account, stock, "7")
+
+    balance_client = Mock()
+    balance_client.fetch_account_snapshot.return_value = KisAccountSnapshot(
+        cash_balance=Decimal("0"),
+        holdings=[],
+    )
+    account_repository = Mock()
+    holding_repository = Mock()
+    holding_repository.list_by_account.return_value = [existing_holding]
+    stock_repository = Mock()
+    stock_repository.list_all.return_value = [stock]
+    group_repository = Mock()
+
+    service = KisAccountSyncService(
+        account_repository=account_repository,
+        holding_repository=holding_repository,
+        stock_repository=stock_repository,
+        group_repository=group_repository,
+        kis_balance_client=balance_client,
+    )
+
+    with pytest.raises(KisEmptySnapshotError):
+        service.sync_account(account=account, cano="12345678", acnt_prdt_cd="01")
+
+    # No mutation should have occurred.
+    holding_repository.delete.assert_not_called()
+    holding_repository.update.assert_not_called()
+    holding_repository.create.assert_not_called()
+    account_repository.update.assert_not_called()
+
+
+def test_sync_account_allows_empty_snapshot_when_no_existing_holdings():
+    now = datetime.now()
+    account = Account(
+        id=uuid4(),
+        name="신규계좌",
+        cash_balance=Decimal("0"),
+        created_at=now,
+        updated_at=now,
+    )
+
+    balance_client = Mock()
+    balance_client.fetch_account_snapshot.return_value = KisAccountSnapshot(
+        cash_balance=Decimal("50000"),
+        holdings=[],
+    )
+    account_repository = Mock()
+    holding_repository = Mock()
+    holding_repository.list_by_account.return_value = []
+    stock_repository = Mock()
+    stock_repository.list_all.return_value = []
+    group_repository = Mock()
+
+    service = KisAccountSyncService(
+        account_repository=account_repository,
+        holding_repository=holding_repository,
+        stock_repository=stock_repository,
+        group_repository=group_repository,
+        kis_balance_client=balance_client,
+    )
+
+    result = service.sync_account(account=account, cano="12345678", acnt_prdt_cd="01")
+
+    account_repository.update.assert_called_once_with(
+        account.id, name="신규계좌", cash_balance=Decimal("50000")
+    )
+    holding_repository.delete.assert_not_called()
+    assert result.holding_count == 0
 
 
 def test_sync_account_back_fills_name_on_existing_stock_with_no_name():

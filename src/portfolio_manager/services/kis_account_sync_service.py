@@ -18,6 +18,17 @@ from portfolio_manager.services.kis.kis_domestic_balance_client import (
 from portfolio_manager.services.stock_name_utils import format_stock_name
 
 
+class KisEmptySnapshotError(RuntimeError):
+    """Raised when a KIS snapshot returns no holdings while the account has some.
+
+    Guards against silently wiping existing holdings because of an unsupported
+    account type, misrouted balance client (e.g. domestic client fetching an
+    overseas-only account), or transient API issues. Pass
+    ``allow_empty_snapshot=True`` to opt into clearing holdings when the user
+    has genuinely liquidated the account.
+    """
+
+
 @dataclass(frozen=True)
 class HoldingSyncDetail:
     """Detail of a single holding change during sync."""
@@ -58,10 +69,19 @@ class KisAccountSyncService:
         cano: str,
         acnt_prdt_cd: str,
         kis_balance_client: KisDomesticBalanceClient | None = None,
+        allow_empty_snapshot: bool = False,
     ) -> KisAccountSyncResult:
         """Sync cash balance and holdings for one account."""
         balance_client = kis_balance_client or self.kis_balance_client
         snapshot = balance_client.fetch_account_snapshot(cano, acnt_prdt_cd)
+
+        existing_holdings = self.holding_repository.list_by_account(account.id)
+        if not snapshot.holdings and existing_holdings and not allow_empty_snapshot:
+            raise KisEmptySnapshotError(
+                "KIS 스냅샷이 비어 있어 기존 보유 내역을 보호합니다. "
+                "실제로 전량 매도된 경우 allow_empty_snapshot=True로 재실행하세요."
+            )
+
         stocks_by_ticker = {
             stock.ticker: stock for stock in self.stock_repository.list_all()
         }
@@ -93,7 +113,6 @@ class KisAccountSyncService:
                 stocks_by_ticker[stock.ticker] = stock
             target_quantities_by_stock_id[stock.id] += position.quantity
 
-        existing_holdings = self.holding_repository.list_by_account(account.id)
         existing_by_stock_id: dict[UUID, list[Holding]] = defaultdict(list)
         for holding in existing_holdings:
             existing_by_stock_id[holding.stock_id].append(holding)
