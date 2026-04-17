@@ -48,6 +48,7 @@ class GroupModel(BaseModel):
 class StockModel(BaseModel):
     id = UUIDField(primary_key=True, default=uuid4)
     ticker = TextField()
+    name = TextField(default="")
     group = ForeignKeyField(
         GroupModel, column_name="group_id", backref="stocks", on_delete="CASCADE"
     )
@@ -196,12 +197,30 @@ def _run_migrations(database: SqliteDatabase) -> None:
     from playhouse.migrate import SqliteMigrator, migrate
 
     migrator = SqliteMigrator(database)
-    columns = {col.name for col in database.get_columns("accounts")}
-    if "kis_account_no" not in columns:
+    account_columns = {col.name for col in database.get_columns("accounts")}
+    if "kis_account_no" not in account_columns:
         migrate(migrator.add_column("accounts", "kis_account_no", TextField(null=True)))
-    if "kis_api_key_id" not in columns:
+    if "kis_api_key_id" not in account_columns:
         migrate(
             migrator.add_column("accounts", "kis_api_key_id", IntegerField(null=True))
+        )
+
+    stock_columns = {col.name for col in database.get_columns("stocks")}
+    if "name" not in stock_columns:
+        migrate(migrator.add_column("stocks", "name", TextField(default="")))
+        database.execute_sql(
+            """
+            UPDATE stocks SET name = (
+                SELECT sp.name FROM stock_prices sp
+                WHERE sp.ticker = stocks.ticker AND sp.name <> ''
+                ORDER BY sp.price_date DESC LIMIT 1
+            )
+            WHERE (name IS NULL OR name = '')
+              AND EXISTS (
+                  SELECT 1 FROM stock_prices sp
+                  WHERE sp.ticker = stocks.ticker AND sp.name <> ''
+              )
+            """
         )
 
 

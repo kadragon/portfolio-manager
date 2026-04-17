@@ -10,12 +10,13 @@ from portfolio_manager.services.database import StockModel
 class StockRepository:
     """Repository for Stock database operations."""
 
-    def create(self, ticker: str, group_id: UUID) -> Stock:
+    def create(self, ticker: str, group_id: UUID, name: str = "") -> Stock:
         """Create a new stock."""
         now = datetime.now(timezone.utc)
         row = StockModel.create(
             id=uuid4(),
             ticker=ticker,
+            name=name,
             group=group_id,
             created_at=now,
             updated_at=now,
@@ -74,6 +75,15 @@ class StockRepository:
         row = StockModel.get_by_id(stock_id)
         return self._to_domain(row)
 
+    def update_name(self, stock_id: UUID, name: str) -> Stock:
+        """Update a stock's display name by ID."""
+        now = datetime.now(timezone.utc)
+        StockModel.update(name=name, updated_at=now).where(
+            StockModel.id == stock_id
+        ).execute()
+        row = StockModel.get_by_id(stock_id)
+        return self._to_domain(row)
+
     @staticmethod
     def _to_domain(row: StockModel) -> Stock:
         return Stock(
@@ -83,4 +93,5 @@ class StockRepository:
             created_at=row.created_at,
             updated_at=row.updated_at,
             exchange=row.exchange,
+            name=row.name,
         )

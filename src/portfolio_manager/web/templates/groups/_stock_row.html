@@ -1,5 +1,6 @@
 {% set stock_group_id = group_id if group_id is defined else stock.group_id %}
 <tr id="stock-{{ stock.id }}">
+  <td>{{ stock.name or stock.ticker }}</td>
   <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ stock.ticker }}</code></td>
   <td>{{ stock.exchange or "-" }}</td>
   <td>

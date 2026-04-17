@@ -149,7 +149,7 @@
         <table class="table table-zebra table-sm">
           <caption class="sr-only">가격 정보를 불러오지 못한 경우의 그룹별 보유 종목 요약</caption>
           <thead>
-            <tr class="text-xs uppercase tracking-wider"><th>그룹</th><th>티커</th><th class="text-right">수량</th></tr>
+            <tr class="text-xs uppercase tracking-wider"><th>그룹</th><th>종목명</th><th>티커</th><th class="text-right">수량</th></tr>
           </thead>
           <tbody>
             {% for gh in group_holdings %}
@@ -157,6 +157,7 @@
                 {% for sh in gh.stock_holdings %}
                 <tr>
                   <th scope="row" class="font-semibold">{{ gh.group.name }}</th>
+                  <td>{{ sh.stock.name or sh.stock.ticker }}</td>
                   <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ sh.stock.ticker }}</code></td>
                   <td class="text-right font-mono">{{ sh.quantity }}</td>
                 </tr>
@@ -168,7 +169,7 @@
                 </tr>
               {% endif %}
             {% else %}
-            <tr><td colspan="3" class="text-center text-base-content/40">보유 종목이 없습니다.</td></tr>
+            <tr><td colspan="4" class="text-center text-base-content/40">보유 종목이 없습니다.</td></tr>
             {% endfor %}
           </tbody>
         </table>

@@ -15,3 +15,4 @@ class Stock:
     created_at: datetime
     updated_at: datetime
     exchange: str | None = None
+    name: str = ""
