@@ -11,7 +11,7 @@ from markupsafe import escape
 
 from portfolio_manager.services.kis.kis_api_error import KisApiBusinessError
 from portfolio_manager.services.kis_account_sync_service import KisEmptySnapshotError
-from portfolio_manager.services.stock_name_utils import format_stock_name
+from portfolio_manager.services.stock_name_formatter import format_stock_name
 from portfolio_manager.web.deps import get_container, get_templates
 
 router = APIRouter(prefix="/accounts")
@@ -27,15 +27,28 @@ def _build_stock_name_map(container, stocks: list | None = None) -> dict:
 
     stock_name_map = {}
     for stock in stock_items:
+        if stock.name:
+            stock_name_map[stock.id] = format_stock_name(stock.name)
+            continue
         resolved_name = ""
         try:
             _, _, resolved_name, _ = price_service.get_stock_price(
                 stock.ticker, preferred_exchange=stock.exchange
             )
-        except ValueError:
-            resolved_name = ""
-        if resolved_name:
-            stock_name_map[stock.id] = format_stock_name(resolved_name)
+        except Exception:
+            logger.warning(
+                "price_service.get_stock_price failed for %s",
+                stock.ticker,
+                exc_info=True,
+            )
+        if not resolved_name:
+            continue
+        formatted = format_stock_name(resolved_name)
+        if not formatted:
+            continue
+        stock_name_map[stock.id] = formatted
+        container.stock_repository.update_name(stock.id, formatted)
+        stock.name = formatted
     return stock_name_map
 
 

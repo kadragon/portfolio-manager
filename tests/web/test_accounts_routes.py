@@ -295,3 +295,65 @@ def test_sync_account_empty_snapshot_shows_confirm_then_allows_retry(
     )
     # Confirm button should not appear on success
     assert "전량 매도 확정" not in second.text
+
+
+def test_build_stock_name_map_persists_name_when_stock_name_empty(fake_container):
+    """Opportunistic name fill: update_name called when stock.name empty."""
+    from portfolio_manager.web.routes.accounts import _build_stock_name_map
+
+    class _StubPriceService:
+        def get_stock_price(self, ticker, *, preferred_exchange=None):
+            return (Decimal("70000"), "KRW", "삼성전자", None)
+
+    fake_container.price_service = _StubPriceService()
+
+    result = _build_stock_name_map(fake_container, [fake_container.stock])
+
+    assert result[fake_container.stock.id] == "삼성전자"
+    updated = fake_container.stock_repository.get_by_id(fake_container.stock.id)
+    assert updated is not None
+    assert updated.name == "삼성전자"
+
+
+def test_build_stock_name_map_skips_update_when_stock_already_named(fake_container):
+    """Skip update_name when stock already has a persisted name."""
+    from portfolio_manager.models import Stock
+    from portfolio_manager.web.routes.accounts import _build_stock_name_map
+
+    named_stock = Stock(
+        id=fake_container.stock.id,
+        ticker=fake_container.stock.ticker,
+        group_id=fake_container.stock.group_id,
+        created_at=fake_container.stock.created_at,
+        updated_at=fake_container.stock.updated_at,
+        exchange=fake_container.stock.exchange,
+        name="기존이름",
+    )
+    fake_container.stock_repository._stocks[0] = named_stock
+
+    price_calls: list = []
+
+    class _StubPriceService:
+        def get_stock_price(self, ticker, *, preferred_exchange=None):
+            price_calls.append(ticker)
+            return (Decimal("70000"), "KRW", "새이름", None)
+
+    fake_container.price_service = _StubPriceService()
+
+    update_calls: list = []
+    original_update_name = fake_container.stock_repository.update_name
+
+    def _spy_update_name(stock_id, name):
+        update_calls.append((stock_id, name))
+        return original_update_name(stock_id, name)
+
+    fake_container.stock_repository.update_name = _spy_update_name
+
+    result = _build_stock_name_map(fake_container, [named_stock])
+
+    assert result[named_stock.id] == "기존이름"
+    assert update_calls == []
+    assert price_calls == []
+    stored = fake_container.stock_repository.get_by_id(named_stock.id)
+    assert stored is not None
+    assert stored.name == "기존이름"

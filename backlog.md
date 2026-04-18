@@ -10,10 +10,8 @@
 
 ## 종목명 표시 개선 — Wave 2 (feat/stock-name-wave1 머지 후)
 
-- [ ] [feat] Phase 3: Opportunistic name fill — `PortfolioService.get_portfolio_summary`에서 `stock.name == ""` 이고 quote.name이 유효할 때 `stock_repository.update_name` 호출. `accounts.py::_build_stock_name_map`에서도 동일.
 - [ ] [feat] Phase 4: KIS 잔고 응답(`output1.prdt_name`) 파싱 → `KisHoldingPosition.name` 신설 → `KisAccountSyncService`가 신규/기존 stock에 이름 저장.
 - [ ] [feat] Phase 5: 해외 종목 이름 조달 — `parse_us_price` 필드명 KIS 실 응답으로 수정 + `KisOverseasInfoClient` 신설(tr_id는 KIS 공식 문서 재확인 필수) + `KisUnifiedPriceClient` 해외 분기에 info 폴백 추가.
-- [ ] [refactor] Phase 6b: `format_stock_name` 을 `services/stock_name_formatter.py`로 승격, `web/routes/accounts.py`·`services/portfolio_service.py` 중복 제거.
 
 ## Local Ollama AI 인사이트 — Stage 1 잔여 + Stage 2 (branch `feat/llm-insights-stage1` 머지 후)
 
