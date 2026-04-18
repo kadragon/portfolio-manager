@@ -329,23 +329,31 @@ def test_build_stock_name_map_skips_update_when_stock_already_named(fake_contain
         exchange=fake_container.stock.exchange,
         name="기존이름",
     )
+    fake_container.stock_repository._stocks[0] = named_stock
+
+    price_calls: list = []
 
     class _StubPriceService:
         def get_stock_price(self, ticker, *, preferred_exchange=None):
+            price_calls.append(ticker)
             return (Decimal("70000"), "KRW", "새이름", None)
 
     fake_container.price_service = _StubPriceService()
 
-    calls: list = []
+    update_calls: list = []
     original_update_name = fake_container.stock_repository.update_name
 
     def _spy_update_name(stock_id, name):
-        calls.append((stock_id, name))
+        update_calls.append((stock_id, name))
         return original_update_name(stock_id, name)
 
     fake_container.stock_repository.update_name = _spy_update_name
 
     result = _build_stock_name_map(fake_container, [named_stock])
 
-    assert result[named_stock.id] == "새이름"
-    assert calls == []
+    assert result[named_stock.id] == "기존이름"
+    assert update_calls == []
+    assert price_calls == []
+    stored = fake_container.stock_repository.get_by_id(named_stock.id)
+    assert stored is not None
+    assert stored.name == "기존이름"

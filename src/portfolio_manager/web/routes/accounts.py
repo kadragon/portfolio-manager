@@ -27,18 +27,28 @@ def _build_stock_name_map(container, stocks: list | None = None) -> dict:
 
     stock_name_map = {}
     for stock in stock_items:
+        if stock.name:
+            stock_name_map[stock.id] = format_stock_name(stock.name)
+            continue
         resolved_name = ""
         try:
             _, _, resolved_name, _ = price_service.get_stock_price(
                 stock.ticker, preferred_exchange=stock.exchange
             )
-        except ValueError:
-            resolved_name = ""
-        if resolved_name:
-            formatted = format_stock_name(resolved_name)
-            stock_name_map[stock.id] = formatted
-            if not stock.name and formatted:
-                container.stock_repository.update_name(stock.id, formatted)
+        except Exception:
+            logger.warning(
+                "price_service.get_stock_price failed for %s",
+                stock.ticker,
+                exc_info=True,
+            )
+        if not resolved_name:
+            continue
+        formatted = format_stock_name(resolved_name)
+        if not formatted:
+            continue
+        stock_name_map[stock.id] = formatted
+        container.stock_repository.update_name(stock.id, formatted)
+        stock.name = formatted
     return stock_name_map
 
 
