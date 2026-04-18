@@ -133,6 +133,22 @@ class FakeStockRepository:
                 return updated
         raise ValueError("stock not found")
 
+    def update_name(self, stock_id: UUID, name: str) -> Stock:
+        for idx, stock in enumerate(self._stocks):
+            if stock.id == stock_id:
+                updated = Stock(
+                    id=stock.id,
+                    ticker=stock.ticker,
+                    group_id=stock.group_id,
+                    created_at=stock.created_at,
+                    updated_at=datetime.now(timezone.utc),
+                    exchange=stock.exchange,
+                    name=name,
+                )
+                self._stocks[idx] = updated
+                return updated
+        raise ValueError("stock not found")
+
     def update_group(self, stock_id: UUID, group_id: UUID) -> Stock:
         for idx, stock in enumerate(self._stocks):
             if stock.id == stock_id:

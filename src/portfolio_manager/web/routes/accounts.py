@@ -35,7 +35,10 @@ def _build_stock_name_map(container, stocks: list | None = None) -> dict:
         except ValueError:
             resolved_name = ""
         if resolved_name:
-            stock_name_map[stock.id] = format_stock_name(resolved_name)
+            formatted = format_stock_name(resolved_name)
+            stock_name_map[stock.id] = formatted
+            if not stock.name and formatted:
+                container.stock_repository.update_name(stock.id, formatted)
     return stock_name_map
 
 
