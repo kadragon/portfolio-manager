@@ -11,7 +11,7 @@ from markupsafe import escape
 
 from portfolio_manager.services.kis.kis_api_error import KisApiBusinessError
 from portfolio_manager.services.kis_account_sync_service import KisEmptySnapshotError
-from portfolio_manager.services.stock_name_utils import format_stock_name
+from portfolio_manager.services.stock_name_formatter import format_stock_name
 from portfolio_manager.web.deps import get_container, get_templates
 
 router = APIRouter(prefix="/accounts")

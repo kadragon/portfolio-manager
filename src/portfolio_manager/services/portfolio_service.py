@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from portfolio_manager.models import Group, Stock
 from portfolio_manager.repositories.account_repository import AccountRepository
-from portfolio_manager.services.stock_name_utils import format_stock_name
+from portfolio_manager.services.stock_name_formatter import format_stock_name
 from portfolio_manager.repositories.deposit_repository import DepositRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository

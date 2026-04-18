@@ -21,7 +21,7 @@ from portfolio_manager.repositories.stock_repository import StockRepository
 from portfolio_manager.services.kis.kis_domestic_balance_client import (
     KisDomesticBalanceClient,
 )
-from portfolio_manager.services.stock_name_utils import format_stock_name
+from portfolio_manager.services.stock_name_formatter import format_stock_name
 
 
 class KisEmptySnapshotError(RuntimeError):
