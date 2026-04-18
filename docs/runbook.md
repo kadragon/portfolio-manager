@@ -76,6 +76,17 @@ Pre-commit runs all of the above automatically on staged files. Install with:
 uv run pre-commit install
 ```
 
+## Sweep
+
+Harness garbage collection. Runs ruff + pyright + arch tests + bandit, plus harness-freshness checks (AGENTS.md references, CLAUDE.md pointer, AGENTS.md size).
+
+| Command | Purpose |
+|---------|---------|
+| `bash scripts/sweep.sh` | Full sweep |
+| `bash scripts/sweep.sh --quick` | Lint only |
+
+**Trigger policy:** manual. Run between features or before opening a PR. Findings are appended to `backlog.md` as checkbox items.
+
 ## Environment Variables
 
 | Variable | Required | Description | Example |

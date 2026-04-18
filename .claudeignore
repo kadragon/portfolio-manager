@@ -1,0 +1,39 @@
+# Logs & temp
+*.log
+*.tmp
+*.swp
+.DS_Store
+
+# Editor / OS
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+.venv/
+venv/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Coverage
+htmlcov/
+.coverage
+coverage.xml
+
+# Build / tooling
+bin/tailwindcss
+src/portfolio_manager/web/static/css/app.css
+uv.lock
+
+# Data / local DB
+*.db
+*.sqlite
+*.sqlite3
+
+# Archives
+*.zip
+*.tar.gz
