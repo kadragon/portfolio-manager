@@ -80,6 +80,7 @@ def view_rebalance(request: Request) -> HTMLResponse:
             "error": error,
             "sell_recommendations": plan.sell_recommendations,
             "buy_recommendations": plan.buy_recommendations,
+            "account_summaries": plan.account_summaries,
             "summary": summary,
             "plan": plan,
             "has_order_client": container.order_client is not None,

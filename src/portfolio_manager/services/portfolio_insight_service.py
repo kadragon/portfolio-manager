@@ -11,8 +11,8 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field
-from decimal import Decimal
+from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
 from portfolio_manager.models.rebalance import (
@@ -582,19 +582,60 @@ def _json_default(value: Any) -> Any:
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
+_KRW_Q = Decimal("1")
+_PCT_Q = Decimal("0.01")
+
+
+def _q_krw(value: Decimal | None) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(value).quantize(_KRW_Q, rounding=ROUND_HALF_UP)
+
+
+def _q_pct(value: Decimal | None) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(value).quantize(_PCT_Q, rounding=ROUND_HALF_UP)
+
+
+def _contributor_payload(c: ContributorInfo) -> dict[str, Any]:
+    return {
+        "ticker": c.ticker,
+        "name": c.name,
+        "group_name": c.group_name,
+        "change_rate_percent": _q_pct(c.change_rate),
+        "value_krw": _q_krw(c.value_krw),
+        "contribution_krw": _q_krw(c.contribution_krw),
+    }
+
+
+def _group_weight_payload(g: GroupWeightInfo) -> dict[str, Any]:
+    return {
+        "name": g.name,
+        "current_percentage": _q_pct(g.current_percentage),
+        "target_percentage": _q_pct(g.target_percentage),
+        "diff_percentage": _q_pct(g.diff_percentage),
+    }
+
+
 def _snapshot_to_payload(snapshot: NarrativeSnapshot) -> dict[str, Any]:
     return {
         "period": snapshot.period,
         "rate_label": snapshot.rate_label,
+        "number_format_note": "금액은 반올림된 정수 KRW, 비율은 소수점 2자리 %. 그대로 인용하세요.",
         "totals": {
-            "total_assets_krw": snapshot.total_assets,
-            "total_stock_value_krw": snapshot.total_stock_value,
-            "total_cash_balance_krw": snapshot.total_cash_balance,
-            "return_rate_percent": snapshot.return_rate,
+            "total_assets_krw": _q_krw(snapshot.total_assets),
+            "total_stock_value_krw": _q_krw(snapshot.total_stock_value),
+            "total_cash_balance_krw": _q_krw(snapshot.total_cash_balance),
+            "return_rate_percent": _q_pct(snapshot.return_rate),
         },
-        "top_contributors": [asdict(c) for c in snapshot.top_contributors],
-        "bottom_contributors": [asdict(c) for c in snapshot.bottom_contributors],
-        "group_weights": [asdict(g) for g in snapshot.group_weights],
+        "top_contributors": [
+            _contributor_payload(c) for c in snapshot.top_contributors
+        ],
+        "bottom_contributors": [
+            _contributor_payload(c) for c in snapshot.bottom_contributors
+        ],
+        "group_weights": [_group_weight_payload(g) for g in snapshot.group_weights],
     }
 
 

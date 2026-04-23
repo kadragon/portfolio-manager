@@ -1,6 +1,6 @@
 """Rebalance recommendation models."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
 
@@ -37,3 +37,19 @@ class RebalanceRecommendation:
             self.sleeve_name = self.rebalance_group_name
         elif self.sleeve_name is not None:
             self.rebalance_group_name = self.sleeve_name
+
+
+@dataclass
+class AccountRebalanceSummary:
+    """Per-account rebalance summary for UI grouping and cash tracking."""
+
+    account_id: str
+    account_name: str
+    starting_cash_krw: Decimal
+    sell_cash_krw: Decimal
+    total_sell_krw: Decimal
+    total_buy_krw: Decimal
+    unused_cash_krw: Decimal
+    unmet_groups: list[str]
+    sell_recommendations: list[RebalanceRecommendation] = field(default_factory=list)
+    buy_recommendations: list[RebalanceRecommendation] = field(default_factory=list)
