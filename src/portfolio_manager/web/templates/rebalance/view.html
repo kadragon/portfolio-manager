@@ -70,7 +70,7 @@
               {% if diag.is_upper_breached %}
               <span class="badge badge-error badge-sm">상단 이탈</span>
               {% elif diag.is_lower_breached %}
-              <span class="badge badge-success badge-sm">하단 이탈</span>
+              <span class="badge badge-warning badge-sm">하단 이탈</span>
               {% else %}
               <span>정상</span>
               {% endif %}
@@ -84,94 +84,201 @@
 </section>
 {% endif %}
 
-{% if sell_recommendations %}
-<section class="card bg-base-200 shadow-md">
-  <div class="card-body p-4">
-    <h3 class="text-sm font-semibold text-base-content mb-2"><span class="badge badge-error badge-sm">매도</span> 추천</h3>
-    <div class="overflow-x-auto" tabindex="0" aria-label="매도 추천 표 가로 스크롤 영역">
-      <table class="table table-zebra table-sm">
-        <caption>매도 추천 종목, 금액, 수량, 근거</caption>
-        <thead>
-          <tr>
-            <th class="text-xs uppercase tracking-wider">계좌</th>
-            <th class="text-xs uppercase tracking-wider">리밸런싱 그룹</th>
-            <th class="text-xs uppercase tracking-wider">원본 그룹</th>
-            <th class="text-xs uppercase tracking-wider">티커</th>
-            <th class="text-xs uppercase tracking-wider">종목명</th>
-            <th class="text-right font-mono text-xs uppercase tracking-wider">금액(통화)</th>
-            <th class="text-right font-mono text-xs uppercase tracking-wider">금액(KRW)</th>
-            <th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
-            <th class="text-xs uppercase tracking-wider">통화</th>
-            <th class="text-xs uppercase tracking-wider">근거</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for rec in sell_recommendations %}
-          <tr>
-            <td>{{ rec.account_name or "-" }}</td>
-            <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
-            <td>{{ rec.group_name or "-" }}</td>
-            <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ rec.ticker }}</code></td>
-            <td>{{ rec.stock_name or "-" }}</td>
-            <td class="text-right font-mono text-error font-semibold">
-              {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
-            </td>
-            <td class="text-right font-mono text-error font-semibold">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
-            <td class="text-right font-mono">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
-            <td>{{ rec.currency or "-" }}</td>
-            <td>{{ rec.reason or "-" }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</section>
-{% endif %}
+{% if account_summaries %}
+  {% for s in account_summaries %}
+  {% if s.sell_recommendations or s.buy_recommendations or s.unmet_groups %}
+  <section class="card bg-base-200 shadow-md">
+    <div class="card-body p-4">
+      <h3 class="text-base font-semibold text-base-content mb-2">{{ s.account_name }}</h3>
 
-{% if buy_recommendations %}
-<section class="card bg-base-200 shadow-md">
-  <div class="card-body p-4">
-    <h3 class="text-sm font-semibold text-base-content mb-2"><span class="badge badge-success badge-sm">매수</span> 추천</h3>
-    <div class="overflow-x-auto" tabindex="0" aria-label="매수 추천 표 가로 스크롤 영역">
-      <table class="table table-zebra table-sm">
-        <caption>매수 추천 종목, 금액, 수량, 근거</caption>
-        <thead>
-          <tr>
-            <th class="text-xs uppercase tracking-wider">계좌</th>
-            <th class="text-xs uppercase tracking-wider">리밸런싱 그룹</th>
-            <th class="text-xs uppercase tracking-wider">원본 그룹</th>
-            <th class="text-xs uppercase tracking-wider">티커</th>
-            <th class="text-xs uppercase tracking-wider">종목명</th>
-            <th class="text-right font-mono text-xs uppercase tracking-wider">금액(통화)</th>
-            <th class="text-right font-mono text-xs uppercase tracking-wider">금액(KRW)</th>
-            <th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
-            <th class="text-xs uppercase tracking-wider">통화</th>
-            <th class="text-xs uppercase tracking-wider">근거</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for rec in buy_recommendations %}
-          <tr>
-            <td>{{ rec.account_name or "-" }}</td>
-            <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
-            <td>{{ rec.group_name or "-" }}</td>
-            <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ rec.ticker }}</code></td>
-            <td>{{ rec.stock_name or "-" }}</td>
-            <td class="text-right font-mono text-success font-semibold">
-              {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
-            </td>
-            <td class="text-right font-mono text-success font-semibold">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
-            <td class="text-right font-mono">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
-            <td>{{ rec.currency or "-" }}</td>
-            <td>{{ rec.reason or "-" }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="flex flex-wrap gap-4 text-xs mb-3">
+        <span>시작 현금 <span class="font-mono">{{ s.starting_cash_krw | format_krw }}</span></span>
+        <span>매도 현금 <span class="font-mono text-error">{{ s.sell_cash_krw | format_krw }}</span></span>
+        <span>매수 합계 <span class="font-mono text-success">{{ s.total_buy_krw | format_krw }}</span></span>
+        {% if s.unused_cash_krw > 0 %}
+        <span class="text-warning">잔여 현금(이월) <span class="font-mono">{{ s.unused_cash_krw | format_krw }}</span></span>
+        {% endif %}
+      </div>
+
+      {% if s.unmet_groups %}
+      <div class="alert alert-warning text-xs py-2 mb-3" role="alert">
+        이 계좌에 <strong>{{ s.unmet_groups | join(", ") }}</strong> 그룹 종목이 없어 매수를 생성하지 못했습니다.
+        해당 금액은 다음 회차로 이월됩니다.
+      </div>
+      {% endif %}
+
+      {% if s.sell_recommendations %}
+      <h4 class="text-sm font-semibold mb-1"><span class="badge badge-error badge-sm">매도</span> 추천</h4>
+      <div class="overflow-x-auto mb-3" tabindex="0" aria-label="{{ s.account_name }} 매도 추천 표">
+        <table class="table table-zebra table-sm">
+          <caption>{{ s.account_name }} 매도 추천 종목</caption>
+          <thead>
+            <tr>
+              <th class="text-xs uppercase tracking-wider">리밸런싱 그룹</th>
+              <th class="text-xs uppercase tracking-wider">원본 그룹</th>
+              <th class="text-xs uppercase tracking-wider">티커</th>
+              <th class="text-xs uppercase tracking-wider">종목명</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">금액(통화)</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">금액(KRW)</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
+              <th class="text-xs uppercase tracking-wider">통화</th>
+              <th class="text-xs uppercase tracking-wider">근거</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rec in s.sell_recommendations %}
+            <tr>
+              <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
+              <td>{{ rec.group_name or "-" }}</td>
+              <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ rec.ticker }}</code></td>
+              <td>{{ rec.stock_name or "-" }}</td>
+              <td class="text-right font-mono text-error font-semibold">
+                {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
+              </td>
+              <td class="text-right font-mono text-error font-semibold">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
+              <td class="text-right font-mono">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
+              <td>{{ rec.currency or "-" }}</td>
+              <td>{{ rec.reason or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if s.buy_recommendations %}
+      <h4 class="text-sm font-semibold mb-1"><span class="badge badge-success badge-sm">매수</span> 추천</h4>
+      <div class="overflow-x-auto" tabindex="0" aria-label="{{ s.account_name }} 매수 추천 표">
+        <table class="table table-zebra table-sm">
+          <caption>{{ s.account_name }} 매수 추천 종목</caption>
+          <thead>
+            <tr>
+              <th class="text-xs uppercase tracking-wider">리밸런싱 그룹</th>
+              <th class="text-xs uppercase tracking-wider">원본 그룹</th>
+              <th class="text-xs uppercase tracking-wider">티커</th>
+              <th class="text-xs uppercase tracking-wider">종목명</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">금액(통화)</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">금액(KRW)</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
+              <th class="text-xs uppercase tracking-wider">통화</th>
+              <th class="text-xs uppercase tracking-wider">근거</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rec in s.buy_recommendations %}
+            <tr>
+              <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
+              <td>{{ rec.group_name or "-" }}</td>
+              <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ rec.ticker }}</code></td>
+              <td>{{ rec.stock_name or "-" }}</td>
+              <td class="text-right font-mono text-success font-semibold">
+                {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
+              </td>
+              <td class="text-right font-mono text-success font-semibold">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
+              <td class="text-right font-mono">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
+              <td>{{ rec.currency or "-" }}</td>
+              <td>{{ rec.reason or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
     </div>
-  </div>
-</section>
+  </section>
+  {% endif %}
+  {% endfor %}
+{% else %}
+  {# Fallback: flat tables for plans without account_summaries (e.g. test fixtures) #}
+  {% if sell_recommendations %}
+  <section class="card bg-base-200 shadow-md">
+    <div class="card-body p-4">
+      <h3 class="text-sm font-semibold text-base-content mb-2"><span class="badge badge-error badge-sm">매도</span> 추천</h3>
+      <div class="overflow-x-auto" tabindex="0" aria-label="매도 추천 표 가로 스크롤 영역">
+        <table class="table table-zebra table-sm">
+          <caption>매도 추천 종목, 금액, 수량, 근거</caption>
+          <thead>
+            <tr>
+              <th class="text-xs uppercase tracking-wider">계좌</th>
+              <th class="text-xs uppercase tracking-wider">리밸런싱 그룹</th>
+              <th class="text-xs uppercase tracking-wider">원본 그룹</th>
+              <th class="text-xs uppercase tracking-wider">티커</th>
+              <th class="text-xs uppercase tracking-wider">종목명</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">금액(통화)</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">금액(KRW)</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
+              <th class="text-xs uppercase tracking-wider">통화</th>
+              <th class="text-xs uppercase tracking-wider">근거</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rec in sell_recommendations %}
+            <tr>
+              <td>{{ rec.account_name or "-" }}</td>
+              <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
+              <td>{{ rec.group_name or "-" }}</td>
+              <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ rec.ticker }}</code></td>
+              <td>{{ rec.stock_name or "-" }}</td>
+              <td class="text-right font-mono text-error font-semibold">
+                {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
+              </td>
+              <td class="text-right font-mono text-error font-semibold">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
+              <td class="text-right font-mono">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
+              <td>{{ rec.currency or "-" }}</td>
+              <td>{{ rec.reason or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if buy_recommendations %}
+  <section class="card bg-base-200 shadow-md">
+    <div class="card-body p-4">
+      <h3 class="text-sm font-semibold text-base-content mb-2"><span class="badge badge-success badge-sm">매수</span> 추천</h3>
+      <div class="overflow-x-auto" tabindex="0" aria-label="매수 추천 표 가로 스크롤 영역">
+        <table class="table table-zebra table-sm">
+          <caption>매수 추천 종목, 금액, 수량, 근거</caption>
+          <thead>
+            <tr>
+              <th class="text-xs uppercase tracking-wider">계좌</th>
+              <th class="text-xs uppercase tracking-wider">리밸런싱 그룹</th>
+              <th class="text-xs uppercase tracking-wider">원본 그룹</th>
+              <th class="text-xs uppercase tracking-wider">티커</th>
+              <th class="text-xs uppercase tracking-wider">종목명</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">금액(통화)</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">금액(KRW)</th>
+              <th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
+              <th class="text-xs uppercase tracking-wider">통화</th>
+              <th class="text-xs uppercase tracking-wider">근거</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rec in buy_recommendations %}
+            <tr>
+              <td>{{ rec.account_name or "-" }}</td>
+              <td>{{ rec.rebalance_group_name or rec.sleeve_name or "-" }}</td>
+              <td>{{ rec.group_name or "-" }}</td>
+              <td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{{ rec.ticker }}</code></td>
+              <td>{{ rec.stock_name or "-" }}</td>
+              <td class="text-right font-mono text-success font-semibold">
+                {% if rec.currency == "KRW" %}{{ rec.amount | format_krw }}{% else %}{{ rec.amount | format_usd }}{% endif %}
+              </td>
+              <td class="text-right font-mono text-success font-semibold">{{ (rec.amount_krw or rec.amount) | format_krw }}</td>
+              <td class="text-right font-mono">{{ rec.quantity | format_rebalance_quantity(rec.currency) }}</td>
+              <td>{{ rec.currency or "-" }}</td>
+              <td>{{ rec.reason or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endif %}
 {% endif %}
 
 {% if not sell_recommendations and not buy_recommendations and not error %}

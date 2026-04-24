@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from uuid import UUID
 
 from portfolio_manager.models import Account, Group, Holding, Stock
-from portfolio_manager.models.rebalance import RebalanceAction, RebalanceRecommendation
+from portfolio_manager.models.rebalance import (
+    AccountRebalanceSummary,
+    RebalanceAction,
+    RebalanceRecommendation,
+)
 from portfolio_manager.services.kis.kis_market_detector import is_domestic_ticker
 from portfolio_manager.services.portfolio_service import PortfolioSummary
 
@@ -98,6 +102,7 @@ class RebalancePlan:
     total_assets_krw: Decimal
     group_diagnostics: list[GroupDiagnostic] | None = None
     sleeve_diagnostics: list[SleeveDiagnostic] | None = None
+    account_summaries: list[AccountRebalanceSummary] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.group_diagnostics is None and self.sleeve_diagnostics is not None:
@@ -173,6 +178,18 @@ class _BuyCandidate:
     value_krw_base: Decimal
 
 
+@dataclass
+class _AccountGroupState:
+    current_value_krw: Decimal
+    current_pct: Decimal
+    target_pct: Decimal
+    upper_pct: Decimal
+    lower_pct: Decimal
+    target_value_krw: Decimal
+    is_upper_breached: bool
+    is_lower_breached: bool
+
+
 class RebalanceService:
     """Service for calculating v2.0 rebalance recommendations."""
 
@@ -223,9 +240,6 @@ class RebalanceService:
             target_by_group=target_by_group,
             total_assets=total_assets,
         )
-        group_diag_by_name = {
-            diag.rebalance_group_name: diag for diag in group_diagnostics
-        }
 
         region_diagnostic = self._build_region_diagnostic(
             current_by_group=current_by_group,
@@ -241,53 +255,53 @@ class RebalanceService:
             ticker_snapshots=ticker_snapshots,
         )
 
-        sell_by_group = self._calculate_sell_amounts_by_group(
-            group_diagnostics=group_diagnostics,
-            total_assets=total_assets,
-        )
-
-        sell_recommendations, sold_by_group, sell_cash_by_account = (
-            self._build_sell_recommendations(
-                sell_by_group=sell_by_group,
-                positions=positions,
-                group_diag_by_name=group_diag_by_name,
-            )
-        )
-
-        buy_candidates_by_group: dict[str, list[_BuyCandidate]] = defaultdict(list)
-        for snapshot in ticker_snapshots.values():
-            if snapshot.total_quantity <= 0 or snapshot.total_value_local <= 0:
-                continue
-            buy_candidates_by_group[snapshot.rebalance_group_name].append(
-                _BuyCandidate(
-                    ticker=snapshot.ticker,
-                    currency=snapshot.currency,
-                    stock_name=snapshot.stock_name,
-                    source_group_name=snapshot.source_group_name,
-                    rebalance_group_name=snapshot.rebalance_group_name,
-                    quantity_base=snapshot.total_quantity,
-                    value_local_base=snapshot.total_value_local,
-                    value_krw_base=snapshot.total_value_krw,
-                )
-            )
-
-        for group_name in buy_candidates_by_group:
-            buy_candidates_by_group[group_name].sort(
-                key=lambda candidate: (
-                    0 if is_domestic_ticker(candidate.ticker) else 1,
-                    candidate.ticker,
-                )
-            )
-
-        buy_recommendations = self._build_buy_recommendations(
+        account_aum = self._build_account_aum(accounts=accounts, positions=positions)
+        account_group_state = self._build_account_group_state(
             accounts=accounts,
             positions=positions,
+            account_aum=account_aum,
             target_by_group=target_by_group,
-            current_by_group=current_by_group,
-            sold_by_group=sold_by_group,
+        )
+
+        sell_by_account_group = self._calculate_sell_amounts_by_account_group(
+            accounts=accounts,
+            account_group_state=account_group_state,
+            account_aum=account_aum,
+        )
+
+        (
+            sell_recommendations,
+            sell_cash_by_account,
+            sold_by_account_group,
+            sell_recs_by_account_id,
+        ) = self._build_sell_recommendations(
+            sell_by_account_group=sell_by_account_group,
+            positions=positions,
+            account_group_state=account_group_state,
+        )
+
+        (
+            buy_recommendations,
+            unused_cash_by_account,
+            unmet_by_account,
+            buy_recs_by_account_id,
+        ) = self._build_buy_recommendations(
+            accounts=accounts,
+            positions=positions,
+            account_group_state=account_group_state,
+            account_aum=account_aum,
+            sold_by_account_group=sold_by_account_group,
             sell_cash_by_account=sell_cash_by_account,
-            buy_candidates_by_group=buy_candidates_by_group,
-            total_assets=total_assets,
+            ticker_snapshots=ticker_snapshots,
+        )
+
+        account_summaries = self._build_account_summaries(
+            accounts=accounts,
+            sell_recs_by_account_id=sell_recs_by_account_id,
+            buy_recs_by_account_id=buy_recs_by_account_id,
+            sell_cash_by_account=sell_cash_by_account,
+            unused_cash_by_account=unused_cash_by_account,
+            unmet_by_account=unmet_by_account,
         )
 
         return RebalancePlan(
@@ -296,6 +310,7 @@ class RebalanceService:
             group_diagnostics=group_diagnostics,
             region_diagnostic=region_diagnostic,
             total_assets_krw=total_assets,
+            account_summaries=account_summaries,
         )
 
     def _build_target_by_group(self, groups: list[Group]) -> dict[str, Decimal]:
@@ -473,123 +488,153 @@ class RebalanceService:
                 )
         return positions
 
-    def _calculate_sell_amounts_by_group(
+    def _build_account_aum(
         self,
         *,
-        group_diagnostics: list[GroupDiagnostic],
-        total_assets: Decimal,
-    ) -> dict[str, Decimal]:
-        upper_breaches = [diag for diag in group_diagnostics if diag.is_upper_breached]
-        if not upper_breaches:
-            return {}
+        accounts: list[Account],
+        positions: list[_AccountPosition],
+    ) -> dict[UUID, Decimal]:
+        position_value_by_account: dict[UUID, Decimal] = defaultdict(Decimal)
+        for position in positions:
+            position_value_by_account[position.account_id] += position.value_krw
+        return {
+            account.id: position_value_by_account.get(account.id, Decimal("0"))
+            + account.cash_balance
+            for account in accounts
+        }
 
-        upper_breaches.sort(
-            key=lambda diag: diag.current_percentage - diag.target_percentage,
-            reverse=True,
-        )
+    def _build_account_group_state(
+        self,
+        *,
+        accounts: list[Account],
+        positions: list[_AccountPosition],
+        account_aum: dict[UUID, Decimal],
+        target_by_group: dict[str, Decimal],
+    ) -> dict[tuple[UUID, str], _AccountGroupState]:
+        current_by_account_group: dict[tuple[UUID, str], Decimal] = defaultdict(Decimal)
+        for position in positions:
+            current_by_account_group[
+                (position.account_id, position.rebalance_group_name)
+            ] += position.value_krw
 
-        sell_by_group: dict[str, Decimal] = {}
-        for diag in upper_breaches:
-            midpoint = (diag.current_percentage + diag.target_percentage) / Decimal("2")
-            next_weight = min(midpoint, diag.upper_percentage)
-            sell_weight = diag.current_percentage - next_weight
-            if sell_weight <= 0:
+        state: dict[tuple[UUID, str], _AccountGroupState] = {}
+        for account in accounts:
+            aum = account_aum[account.id]
+            for group_name in _GROUP_ORDER:
+                current_value = current_by_account_group.get(
+                    (account.id, group_name), Decimal("0")
+                )
+                current_pct = self._to_percent(current_value, aum)
+                target_pct = target_by_group.get(group_name, Decimal("0"))
+                band = _GROUP_BANDS[group_name]
+                upper_pct = target_pct + band
+                lower_pct = target_pct - band
+                target_value = (target_pct / _PERCENT_BASE) * aum
+                state[(account.id, group_name)] = _AccountGroupState(
+                    current_value_krw=current_value,
+                    current_pct=current_pct,
+                    target_pct=target_pct,
+                    upper_pct=upper_pct,
+                    lower_pct=lower_pct,
+                    target_value_krw=target_value,
+                    is_upper_breached=current_pct > upper_pct,
+                    is_lower_breached=current_pct < lower_pct,
+                )
+        return state
+
+    def _calculate_sell_amounts_by_account_group(
+        self,
+        *,
+        accounts: list[Account],
+        account_group_state: dict[tuple[UUID, str], _AccountGroupState],
+        account_aum: dict[UUID, Decimal],
+    ) -> dict[tuple[UUID, str], Decimal]:
+        sell: dict[tuple[UUID, str], Decimal] = {}
+        for account in accounts:
+            aum = account_aum[account.id]
+            if aum <= 0:
                 continue
-            sell_by_group[diag.rebalance_group_name] = (
-                sell_weight / _PERCENT_BASE
-            ) * total_assets
-        return sell_by_group
+            for group_name in _GROUP_ORDER:
+                state = account_group_state[(account.id, group_name)]
+                if not state.is_upper_breached:
+                    continue
+                midpoint = (state.current_pct + state.target_pct) / Decimal("2")
+                next_weight = min(midpoint, state.upper_pct)
+                sell_weight = state.current_pct - next_weight
+                if sell_weight <= 0:
+                    continue
+                sell_krw = (sell_weight / _PERCENT_BASE) * aum
+                sell_krw = min(sell_krw, state.current_value_krw)
+                if sell_krw > 0:
+                    sell[(account.id, group_name)] = sell_krw
+        return sell
 
     def _build_sell_recommendations(
         self,
         *,
-        sell_by_group: dict[str, Decimal],
+        sell_by_account_group: dict[tuple[UUID, str], Decimal],
         positions: list[_AccountPosition],
-        group_diag_by_name: dict[str, GroupDiagnostic],
-    ) -> tuple[list[RebalanceRecommendation], dict[str, Decimal], dict[UUID, Decimal]]:
+        account_group_state: dict[tuple[UUID, str], _AccountGroupState],
+    ) -> tuple[
+        list[RebalanceRecommendation],
+        dict[UUID, Decimal],
+        dict[tuple[UUID, str], Decimal],
+        dict[UUID, list[RebalanceRecommendation]],
+    ]:
         recommendations: list[RebalanceRecommendation] = []
-        sold_by_group: dict[str, Decimal] = defaultdict(Decimal)
         sell_cash_by_account: dict[UUID, Decimal] = defaultdict(Decimal)
+        sold_by_account_group: dict[tuple[UUID, str], Decimal] = defaultdict(Decimal)
+        sell_recs_by_account_id: dict[UUID, list[RebalanceRecommendation]] = (
+            defaultdict(list)
+        )
 
         for group_name in _GROUP_ORDER:
-            target_sell = sell_by_group.get(group_name, Decimal("0"))
-            if target_sell <= 0:
-                continue
-
-            group_positions = [
-                position
-                for position in positions
-                if position.rebalance_group_name == group_name
-                and position.value_krw > 0
-            ]
-            if not group_positions:
-                continue
-
-            total_group_value = sum(
-                (position.value_krw for position in group_positions), Decimal("0")
-            )
-            if total_group_value <= 0:
-                continue
-
-            target_sell = min(target_sell, total_group_value)
-            account_values: dict[UUID, Decimal] = defaultdict(Decimal)
-            account_name_by_id: dict[UUID, str] = {}
-            for position in group_positions:
-                account_values[position.account_id] += position.value_krw
-                account_name_by_id[position.account_id] = position.account_name
-
-            account_ids = sorted(
-                account_values.keys(),
-                key=lambda account_id: account_name_by_id.get(account_id, ""),
-            )
-
-            remaining_group_sell = target_sell
-            for account_index, account_id in enumerate(account_ids):
-                account_value = account_values[account_id]
-                if account_value <= 0:
-                    continue
-
-                if account_index == len(account_ids) - 1:
-                    account_sell = min(remaining_group_sell, account_value)
-                else:
-                    proportional = target_sell * (account_value / total_group_value)
-                    account_sell = min(
-                        proportional, remaining_group_sell, account_value
-                    )
-
-                if account_sell <= 0:
-                    continue
+            account_sell_map = {
+                account_id: sell_krw
+                for (account_id, gname), sell_krw in sell_by_account_group.items()
+                if gname == group_name and sell_krw > 0
+            }
+            for account_id in sorted(account_sell_map, key=str):
+                target_sell = account_sell_map[account_id]
+                state = account_group_state[(account_id, group_name)]
 
                 account_positions = [
-                    position
-                    for position in group_positions
-                    if position.account_id == account_id
+                    p
+                    for p in positions
+                    if p.account_id == account_id
+                    and p.rebalance_group_name == group_name
+                    and p.value_krw > 0
                 ]
+                if not account_positions:
+                    continue
+
+                account_total_value = sum(
+                    (p.value_krw for p in account_positions), Decimal("0")
+                )
+                target_sell = min(target_sell, account_total_value)
+                if target_sell <= 0:
+                    continue
+
                 account_positions.sort(
-                    key=lambda position: (
-                        1 if is_domestic_ticker(position.ticker) else 0,
-                        position.ticker,
+                    key=lambda p: (
+                        1 if is_domestic_ticker(p.ticker) else 0,
+                        -p.value_krw,
+                        p.ticker,
                     )
                 )
-                account_total_value = sum(
-                    (position.value_krw for position in account_positions), Decimal("0")
-                )
-                remaining_account_sell = account_sell
-                for position_index, position in enumerate(account_positions):
-                    if remaining_account_sell <= 0:
-                        break
-                    if account_total_value <= 0:
-                        break
 
-                    if position_index == len(account_positions) - 1:
-                        sell_krw = min(remaining_account_sell, position.value_krw)
+                remaining = target_sell
+                for i, position in enumerate(account_positions):
+                    if remaining <= 0:
+                        break
+                    is_last = i == len(account_positions) - 1
+                    if is_last:
+                        sell_krw = min(remaining, position.value_krw)
                     else:
-                        proportional = account_sell * (
+                        proportional = target_sell * (
                             position.value_krw / account_total_value
                         )
-                        sell_krw = min(
-                            proportional, remaining_account_sell, position.value_krw
-                        )
+                        sell_krw = min(proportional, remaining, position.value_krw)
 
                     if sell_krw <= 0:
                         continue
@@ -606,90 +651,173 @@ class RebalanceService:
                         position_quantity=position.quantity,
                     )
 
-                    diag = group_diag_by_name[group_name]
-                    recommendations.append(
-                        RebalanceRecommendation(
-                            ticker=position.ticker,
-                            action=RebalanceAction.SELL,
-                            amount=amount_local,
-                            priority=len(recommendations) + 1,
-                            currency=position.currency,
-                            quantity=quantity,
-                            stock_name=position.stock_name or position.ticker,
-                            group_name=position.source_group_name,
-                            account_name=position.account_name,
-                            rebalance_group_name=group_name,
-                            reason=(
-                                "과열 그룹 절반 감축 "
-                                f"({diag.current_percentage:.2f}% -> 목표근접, "
-                                f"상단 {diag.upper_percentage:.2f}%)"
-                            ),
-                            trigger_type="group",
-                            amount_krw=sell_krw,
-                            amount_local=amount_local,
-                        )
+                    rec = RebalanceRecommendation(
+                        ticker=position.ticker,
+                        action=RebalanceAction.SELL,
+                        amount=amount_local,
+                        priority=len(recommendations) + 1,
+                        currency=position.currency,
+                        quantity=quantity,
+                        stock_name=position.stock_name or position.ticker,
+                        group_name=position.source_group_name,
+                        account_name=position.account_name,
+                        rebalance_group_name=group_name,
+                        reason=(
+                            "과열 그룹 절반 감축 "
+                            f"({state.current_pct:.2f}% -> 목표근접, "
+                            f"상단 {state.upper_pct:.2f}%)"
+                        ),
+                        trigger_type="group",
+                        amount_krw=sell_krw,
+                        amount_local=amount_local,
                     )
+                    recommendations.append(rec)
+                    sell_recs_by_account_id[account_id].append(rec)
 
-                    remaining_account_sell -= sell_krw
-                    remaining_group_sell -= sell_krw
-                    sold_by_group[group_name] += sell_krw
-                    sell_cash_by_account[position.account_id] += sell_krw
+                    remaining -= sell_krw
+                    sell_cash_by_account[account_id] += sell_krw
+                    sold_by_account_group[(account_id, group_name)] += sell_krw
 
-        return recommendations, dict(sold_by_group), dict(sell_cash_by_account)
+        return (
+            recommendations,
+            dict(sell_cash_by_account),
+            dict(sold_by_account_group),
+            dict(sell_recs_by_account_id),
+        )
+
+    def _select_buy_candidate_account_scoped(
+        self,
+        *,
+        account_id: UUID,
+        rebalance_group_name: str,
+        positions: list[_AccountPosition],
+    ) -> _BuyCandidate | None:
+        account_positions = [
+            p
+            for p in positions
+            if p.account_id == account_id
+            and p.rebalance_group_name == rebalance_group_name
+            and p.value_local > 0
+        ]
+        if not account_positions:
+            return None
+        account_positions.sort(
+            key=lambda p: (
+                0 if is_domestic_ticker(p.ticker) else 1,
+                -p.value_krw,
+                p.ticker,
+            )
+        )
+        top = account_positions[0]
+        return _BuyCandidate(
+            ticker=top.ticker,
+            currency=top.currency,
+            stock_name=top.stock_name,
+            source_group_name=top.source_group_name,
+            rebalance_group_name=top.rebalance_group_name,
+            quantity_base=top.quantity,
+            value_local_base=top.value_local,
+            value_krw_base=top.value_krw,
+        )
+
+    def _select_buy_candidate_portfolio_fallback(
+        self,
+        *,
+        rebalance_group_name: str,
+        ticker_snapshots: dict[str, _TickerSnapshot],
+    ) -> _BuyCandidate | None:
+        group_snaps = [
+            snap
+            for snap in ticker_snapshots.values()
+            if snap.rebalance_group_name == rebalance_group_name
+            and snap.total_value_local > 0
+        ]
+        if not group_snaps:
+            return None
+        group_snaps.sort(
+            key=lambda s: (
+                0 if is_domestic_ticker(s.ticker) else 1,
+                -s.total_value_krw,
+                s.ticker,
+            )
+        )
+        top = group_snaps[0]
+        return _BuyCandidate(
+            ticker=top.ticker,
+            currency=top.currency,
+            stock_name=top.stock_name,
+            source_group_name=top.source_group_name,
+            rebalance_group_name=top.rebalance_group_name,
+            quantity_base=top.total_quantity,
+            value_local_base=top.total_value_local,
+            value_krw_base=top.total_value_krw,
+        )
 
     def _build_buy_recommendations(
         self,
         *,
         accounts: list[Account],
         positions: list[_AccountPosition],
-        target_by_group: dict[str, Decimal],
-        current_by_group: dict[str, Decimal],
-        sold_by_group: dict[str, Decimal],
+        account_group_state: dict[tuple[UUID, str], _AccountGroupState],
+        account_aum: dict[UUID, Decimal],
+        sold_by_account_group: dict[tuple[UUID, str], Decimal],
         sell_cash_by_account: dict[UUID, Decimal],
-        buy_candidates_by_group: dict[str, list[_BuyCandidate]],
-        total_assets: Decimal,
-    ) -> list[RebalanceRecommendation]:
+        ticker_snapshots: dict[str, _TickerSnapshot],
+    ) -> tuple[
+        list[RebalanceRecommendation],
+        dict[UUID, Decimal],
+        dict[UUID, list[str]],
+        dict[UUID, list[RebalanceRecommendation]],
+    ]:
         recommendations: list[RebalanceRecommendation] = []
-
-        projected_by_group: dict[str, Decimal] = {}
-        need_by_group: dict[str, Decimal] = {}
-        for group_name in _GROUP_ORDER:
-            projected_value = current_by_group.get(
-                group_name, Decimal("0")
-            ) - sold_by_group.get(group_name, Decimal("0"))
-            target_value = (
-                target_by_group.get(group_name, Decimal("0")) / _PERCENT_BASE
-            ) * total_assets
-            projected_by_group[group_name] = projected_value
-            need_by_group[group_name] = max(
-                Decimal("0"), target_value - projected_value
-            )
+        unused_cash_by_account: dict[UUID, Decimal] = {}
+        unmet_by_account: dict[UUID, list[str]] = {}
+        buy_recs_by_account_id: dict[UUID, list[RebalanceRecommendation]] = defaultdict(
+            list
+        )
 
         for account in accounts:
             cash = account.cash_balance + sell_cash_by_account.get(
                 account.id, Decimal("0")
             )
-            if cash <= 0:
-                continue
+            aum = account_aum[account.id]
 
+            account_need: dict[str, Decimal] = {}
+            account_projected: dict[str, Decimal] = {}
+            for group_name in _GROUP_ORDER:
+                state = account_group_state[(account.id, group_name)]
+                sold = sold_by_account_group.get((account.id, group_name), Decimal("0"))
+                projected = state.current_value_krw - sold
+                account_need[group_name] = max(
+                    Decimal("0"), state.target_value_krw - projected
+                )
+                account_projected[group_name] = projected
+
+            unmet_groups: list[str] = []
             blocked_groups: set[str] = set()
+
             while cash > 0:
-                group_name = self._pick_next_group(need_by_group, blocked_groups)
+                group_name = self._pick_next_group(account_need, blocked_groups)
                 if group_name is None:
                     break
 
-                need = need_by_group[group_name]
+                need = account_need[group_name]
                 if need <= 0:
                     blocked_groups.add(group_name)
                     continue
 
-                candidate = self._select_buy_candidate(
+                candidate = self._select_buy_candidate_account_scoped(
                     account_id=account.id,
                     rebalance_group_name=group_name,
                     positions=positions,
-                    buy_candidates_by_group=buy_candidates_by_group,
                 )
                 if candidate is None:
+                    candidate = self._select_buy_candidate_portfolio_fallback(
+                        rebalance_group_name=group_name,
+                        ticker_snapshots=ticker_snapshots,
+                    )
+                if candidate is None:
+                    unmet_groups.append(group_name)
                     blocked_groups.add(group_name)
                     continue
 
@@ -709,38 +837,102 @@ class RebalanceService:
                     position_quantity=candidate.quantity_base,
                 )
 
-                projected_weight = self._to_percent(
-                    projected_by_group[group_name], total_assets
+                projected_pct = self._to_percent(account_projected[group_name], aum)
+                state = account_group_state[(account.id, group_name)]
+                rec = RebalanceRecommendation(
+                    ticker=candidate.ticker,
+                    action=RebalanceAction.BUY,
+                    amount=amount_local,
+                    priority=len(recommendations) + 1,
+                    currency=candidate.currency,
+                    quantity=quantity,
+                    stock_name=candidate.stock_name or candidate.ticker,
+                    group_name=candidate.source_group_name,
+                    account_name=account.name,
+                    rebalance_group_name=group_name,
+                    reason=(
+                        "목표 대비 부족분 보충 "
+                        f"({projected_pct:.2f}% -> 목표 {state.target_pct:.2f}%)"
+                    ),
+                    trigger_type="group",
+                    amount_krw=buy_krw,
+                    amount_local=amount_local,
                 )
-                recommendations.append(
-                    RebalanceRecommendation(
-                        ticker=candidate.ticker,
-                        action=RebalanceAction.BUY,
-                        amount=amount_local,
-                        priority=len(recommendations) + 1,
-                        currency=candidate.currency,
-                        quantity=quantity,
-                        stock_name=candidate.stock_name or candidate.ticker,
-                        group_name=candidate.source_group_name,
-                        account_name=account.name,
-                        rebalance_group_name=group_name,
-                        reason=(
-                            "목표 대비 부족 수분 공급 "
-                            f"({projected_weight:.2f}% -> 목표 {target_by_group[group_name]:.2f}%)"
-                        ),
-                        trigger_type="group",
-                        amount_krw=buy_krw,
-                        amount_local=amount_local,
-                    )
-                )
+                recommendations.append(rec)
+                buy_recs_by_account_id[account.id].append(rec)
 
                 cash -= buy_krw
-                projected_by_group[group_name] += buy_krw
-                need_by_group[group_name] = max(
-                    Decimal("0"), need_by_group[group_name] - buy_krw
+                account_projected[group_name] += buy_krw
+                account_need[group_name] = max(
+                    Decimal("0"), account_need[group_name] - buy_krw
                 )
 
-        return recommendations
+            # Collect groups that still have need but no candidates (not yet tracked).
+            for group_name in _GROUP_ORDER:
+                if group_name in blocked_groups:
+                    continue
+                if account_need.get(group_name, Decimal("0")) > 0:
+                    candidate = self._select_buy_candidate_account_scoped(
+                        account_id=account.id,
+                        rebalance_group_name=group_name,
+                        positions=positions,
+                    )
+                    if candidate is None:
+                        candidate = self._select_buy_candidate_portfolio_fallback(
+                            rebalance_group_name=group_name,
+                            ticker_snapshots=ticker_snapshots,
+                        )
+                    if candidate is None and group_name not in unmet_groups:
+                        unmet_groups.append(group_name)
+
+            unused_cash_by_account[account.id] = cash
+            unmet_by_account[account.id] = unmet_groups
+
+        return (
+            recommendations,
+            unused_cash_by_account,
+            unmet_by_account,
+            dict(buy_recs_by_account_id),
+        )
+
+    def _build_account_summaries(
+        self,
+        *,
+        accounts: list[Account],
+        sell_recs_by_account_id: dict[UUID, list[RebalanceRecommendation]],
+        buy_recs_by_account_id: dict[UUID, list[RebalanceRecommendation]],
+        sell_cash_by_account: dict[UUID, Decimal],
+        unused_cash_by_account: dict[UUID, Decimal],
+        unmet_by_account: dict[UUID, list[str]],
+    ) -> list[AccountRebalanceSummary]:
+        summaries: list[AccountRebalanceSummary] = []
+        for account in accounts:
+            sell_recs = sell_recs_by_account_id.get(account.id, [])
+            buy_recs = buy_recs_by_account_id.get(account.id, [])
+            sell_cash = sell_cash_by_account.get(account.id, Decimal("0"))
+            total_buy = sum(
+                (
+                    r.amount_krw if r.amount_krw is not None else r.amount
+                    for r in buy_recs
+                ),
+                Decimal("0"),
+            )
+            unused = unused_cash_by_account.get(account.id, account.cash_balance)
+            unmet = unmet_by_account.get(account.id, [])
+            summaries.append(
+                AccountRebalanceSummary(
+                    account_id=str(account.id),
+                    account_name=account.name,
+                    starting_cash_krw=account.cash_balance,
+                    sell_cash_krw=sell_cash,
+                    total_buy_krw=total_buy,
+                    unused_cash_krw=unused,
+                    unmet_groups=unmet,
+                    sell_recommendations=sell_recs,
+                    buy_recommendations=buy_recs,
+                )
+            )
+        return summaries
 
     def _pick_next_group(
         self,
@@ -758,53 +950,10 @@ class RebalanceService:
         candidates.sort(
             key=lambda group_name: (
                 need_by_group.get(group_name, Decimal("0")),
-                # tiebreak: higher index in _GROUP_ORDER wins (해외 groups last
-                # -> buy US positions only after KR needs are met), negated for
-                # reverse sort.
                 -_GROUP_ORDER.index(group_name),
             ),
             reverse=True,
         )
-        return candidates[0]
-
-    def _select_buy_candidate(
-        self,
-        *,
-        account_id: UUID,
-        rebalance_group_name: str,
-        positions: list[_AccountPosition],
-        buy_candidates_by_group: dict[str, list[_BuyCandidate]],
-    ) -> _BuyCandidate | None:
-        account_positions = [
-            position
-            for position in positions
-            if position.account_id == account_id
-            and position.rebalance_group_name == rebalance_group_name
-            and position.value_local > 0
-        ]
-        if account_positions:
-            account_positions.sort(
-                key=lambda position: (
-                    0 if is_domestic_ticker(position.ticker) else 1,
-                    -position.value_krw,
-                    position.ticker,
-                )
-            )
-            top = account_positions[0]
-            return _BuyCandidate(
-                ticker=top.ticker,
-                currency=top.currency,
-                stock_name=top.stock_name,
-                source_group_name=top.source_group_name,
-                rebalance_group_name=top.rebalance_group_name,
-                quantity_base=top.quantity,
-                value_local_base=top.value_local,
-                value_krw_base=top.value_krw,
-            )
-
-        candidates = buy_candidates_by_group.get(rebalance_group_name, [])
-        if not candidates:
-            return None
         return candidates[0]
 
     @staticmethod
