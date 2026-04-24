@@ -717,13 +717,14 @@ def test_build_plan_leftover_cash_when_account_has_excess_sell() -> None:
     assert len(plan.account_summaries) == 1
     summary_a = plan.account_summaries[0]
     # Some sell cash must remain unused (no candidates for several groups)
-    assert summary_a.unused_cash_krw >= 0
+    assert summary_a.unused_cash_krw > 0
     assert summary_a.sell_cash_krw > 0
 
 
 def test_build_plan_does_not_cross_account_for_buy_candidate() -> None:
-    # Regression: B holds the only foreign ticker. A has domestic only + sell cash.
-    # Old algorithm would pick B's ticker and assign it to A. New one must not.
+    # Regression: cash from account A must stay in account A.
+    # A sells overweight domestic stock; total buys for A must not exceed
+    # A's own starting cash + A's sell proceeds (cash isolation invariant).
     groups = make_standard_groups()
     stocks = make_standard_stocks(groups)
     account_a = make_account("A", Decimal("0"))
@@ -755,17 +756,97 @@ def test_build_plan_does_not_cross_account_for_buy_candidate() -> None:
         stocks=list(stocks.values()),
     )
 
-    # A sells domestic. A must NOT get a buy rec for QQQ (which only B holds).
+    summary_a = next(s for s in plan.account_summaries if s.account_name == "A")
+    summary_b = next(s for s in plan.account_summaries if s.account_name == "B")
+
+    # Cash isolation: A's total buys ≤ A's starting cash + A's sell proceeds
+    a_total_buy = sum(
+        r.amount_krw if r.amount_krw is not None else r.amount
+        for r in summary_a.buy_recommendations
+    )
+    assert a_total_buy <= account_a.cash_balance + summary_a.sell_cash_krw
+
+    # B's cash is not spent on A's behalf
+    b_total_buy = sum(
+        r.amount_krw if r.amount_krw is not None else r.amount
+        for r in summary_b.buy_recommendations
+    )
+    assert b_total_buy <= account_b.cash_balance + summary_b.sell_cash_krw
+
+
+def test_build_plan_same_name_accounts_correct_attribution() -> None:
+    # Regression: two accounts with the same name must not have their recs
+    # cross-attributed (old name-keyed lookup would only keep one of them).
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    account_a = make_account("계좌", Decimal("0"))  # overweight in 국내성장
+    account_b = make_account("계좌", Decimal("0"))  # same name, no holdings → no sells
+
+    summary = make_summary(groups, stocks, {"국내성장": Decimal("600")})
+    # Build holdings manually to avoid the name-collision in make_holdings_by_account
+    holdings_by_account = {
+        account_a.id: [
+            make_holding(account_a.id, stocks["국내성장"].id, Decimal("600"))
+        ],
+        account_b.id: [],
+    }
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=[account_a, account_b],
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=list(stocks.values()),
+    )
+
+    assert len(plan.account_summaries) == 2
+    s_a = next(s for s in plan.account_summaries if s.account_id == str(account_a.id))
+    s_b = next(s for s in plan.account_summaries if s.account_id == str(account_b.id))
+
+    # account_a is overweight in 국내성장 → has sell recs attributed to it
+    assert s_a.sell_recommendations
+    assert all(r.ticker == "005930" for r in s_a.sell_recommendations)
+    # account_b has no holdings → no sell recs (old name-keyed code would give b all of a's recs)
+    assert not s_b.sell_recommendations
+
+
+def test_build_plan_portfolio_fallback_buys_into_new_group() -> None:
+    # account_a has no holdings in 해외성장 but portfolio snapshot has QQQ.
+    # With fallback, account_a should receive a buy rec for QQQ using its cash.
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    account_a = make_account("A", Decimal("10000"))  # cash only, no foreign holdings
+    account_b = make_account("B", Decimal("0"))
+
+    summary = make_summary(
+        groups,
+        stocks,
+        {"국내성장": Decimal("30000"), "해외성장": Decimal("10000")},
+    )
+    holdings_by_account = {
+        account_a.id: [
+            make_holding(account_a.id, stocks["국내성장"].id, Decimal("30000"))
+        ],
+        account_b.id: [
+            make_holding(account_b.id, stocks["해외성장"].id, Decimal("10000"))
+        ],
+    }
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=[account_a, account_b],
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=list(stocks.values()),
+    )
+
+    # account_a has cash and 해외성장 is lower-breached; portfolio has QQQ → fallback fires
     a_buy_tickers = {
         rec.ticker for rec in plan.buy_recommendations if rec.account_name == "A"
     }
-    assert "QQQ" not in a_buy_tickers
-
-    # B should also not receive a buy rec for QQQ coming from A's cash
-    for rec in plan.buy_recommendations:
-        if rec.ticker == "QQQ":
-            # If QQQ buy exists, it must be in B (from B's own cash or sell)
-            assert rec.account_name == "B"
+    assert "QQQ" in a_buy_tickers
 
 
 def test_build_plan_account_summaries_populated() -> None:

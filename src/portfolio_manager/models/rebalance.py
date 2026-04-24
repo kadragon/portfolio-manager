@@ -47,7 +47,6 @@ class AccountRebalanceSummary:
     account_name: str
     starting_cash_krw: Decimal
     sell_cash_krw: Decimal
-    total_sell_krw: Decimal
     total_buy_krw: Decimal
     unused_cash_krw: Decimal
     unmet_groups: list[str]
