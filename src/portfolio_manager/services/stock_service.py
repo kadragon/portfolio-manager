@@ -34,16 +34,16 @@ class StockService:
     def persist_name(self, stock: Stock, raw_name: str | None) -> str:
         """Format raw_name and persist it when stock.name is unset.
 
-        Always returns the formatted raw_name (or "" when raw_name is empty or
-        reduces to nothing after formatting). Mutates stock.name in-place and
-        calls update_name only when the stock had no name and a non-empty
-        formatted name was produced.
+        Returns the formatted raw_name when non-empty; falls back to the
+        formatted stored name otherwise. Mutates stock.name and stock.updated_at
+        in-place when a new name is persisted.
         """
         formatted = format_stock_name(raw_name) if raw_name else ""
         if not stock.name and formatted:
-            self._stock_repository.update_name(stock.id, formatted)
-            stock.name = formatted
-        return formatted
+            updated = self._stock_repository.update_name(stock.id, formatted)
+            stock.name = updated.name
+            stock.updated_at = updated.updated_at
+        return formatted or format_stock_name(stock.name) or ""
 
     def resolve_and_persist_name(self, stock: Stock) -> str:
         """Return formatted display name, persisting it when newly resolved.

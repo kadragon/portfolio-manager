@@ -14,3 +14,10 @@
 
 - [x] [debt] Redundant `StockService` initialization: replaced second construction with `set_price_service()` setter — single object identity across container lifecycle. (#71)
 - [x] [debt] `_build_stock_name_map` no-price_service path: added `has_price_service` property to `StockService`. Fast-exit in routes left unchanged — existing test confirmed that stocks with already-persisted names should be returned even when `price_service` is unavailable. (#71)
+
+## Review Backlog
+
+### PR #71 — [REFACTOR] StockService API (2026-04-25)
+
+- [ ] [debt] Remove `else` fallback in `portfolio_service.py:149-152` — `stock_service` is always injected by `ServiceContainer.get_portfolio_service()`, making the fallback dead code. Remove it and the now-unused `format_stock_name` import. (source: Claude)
+- [ ] [doc] `persist_name` docstring: the dual-path behaviour (stock_service vs else-branch in `portfolio_service.py`) is not documented; update when fallback is removed. (source: Claude)

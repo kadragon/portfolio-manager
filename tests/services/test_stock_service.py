@@ -26,8 +26,17 @@ class _FakeStockRepository:
     def __init__(self):
         self.update_name_calls: list[tuple] = []
 
-    def update_name(self, stock_id, name):
+    def update_name(self, stock_id, name) -> Stock:
         self.update_name_calls.append((stock_id, name))
+        now = datetime.now(timezone.utc)
+        return Stock(
+            id=stock_id,
+            ticker="",
+            group_id=uuid4(),
+            name=name,
+            created_at=now,
+            updated_at=now,
+        )
 
 
 class _FakePriceService:
@@ -151,6 +160,18 @@ def test_persist_name_empty_raw_returns_empty_skips_persist():
 
     assert result == ""
     assert repo.update_name_calls == []
+
+
+def test_persist_name_stock_has_name_empty_raw_returns_stored_name():
+    repo = _FakeStockRepository()
+    service = StockService(repo)
+    stock = _make_stock("삼성전자")
+
+    result = service.persist_name(stock, "")
+
+    assert result == "삼성전자"
+    assert repo.update_name_calls == []
+    assert stock.name == "삼성전자"
 
 
 def test_persist_name_suffix_only_raw_returns_empty_skips_persist():
