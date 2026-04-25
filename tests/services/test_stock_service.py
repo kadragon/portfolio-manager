@@ -91,3 +91,25 @@ def test_no_price_service_returns_empty():
 
     assert result == ""
     assert repo.update_name_calls == []
+
+
+def test_price_service_returns_empty_name_skips_persist():
+    repo = _FakeStockRepository()
+    service = StockService(repo, _FakePriceService(""))
+    stock = _make_stock("")
+
+    result = service.resolve_and_persist_name(stock)
+
+    assert result == ""
+    assert repo.update_name_calls == []
+
+
+def test_price_service_returns_suffix_only_name_skips_persist():
+    repo = _FakeStockRepository()
+    service = StockService(repo, _FakePriceService("증권상장지수투자신탁(주식)"))
+    stock = _make_stock("")
+
+    result = service.resolve_and_persist_name(stock)
+
+    assert result == ""
+    assert repo.update_name_calls == []

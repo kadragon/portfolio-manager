@@ -1,8 +1,11 @@
 from decimal import Decimal
 from uuid import uuid4
 
+from portfolio_manager.models import Stock
 from portfolio_manager.services.kis.kis_api_error import KisApiBusinessError
 from portfolio_manager.services.kis_account_sync_service import KisEmptySnapshotError
+from portfolio_manager.services.stock_service import StockService
+from portfolio_manager.web.routes.accounts import _build_stock_name_map
 
 
 class _FailingSyncService:
@@ -299,8 +302,6 @@ def test_sync_account_empty_snapshot_shows_confirm_then_allows_retry(
 
 def test_build_stock_name_map_persists_name_when_stock_name_empty(fake_container):
     """Opportunistic name fill: update_name called when stock.name empty."""
-    from portfolio_manager.services.stock_service import StockService
-    from portfolio_manager.web.routes.accounts import _build_stock_name_map
 
     class _StubPriceService:
         def get_stock_price(self, ticker, *, preferred_exchange=None):
@@ -320,10 +321,6 @@ def test_build_stock_name_map_persists_name_when_stock_name_empty(fake_container
 
 def test_build_stock_name_map_skips_update_when_stock_already_named(fake_container):
     """Skip update_name when stock already has a persisted name."""
-    from portfolio_manager.models import Stock
-    from portfolio_manager.services.stock_service import StockService
-    from portfolio_manager.web.routes.accounts import _build_stock_name_map
-
     named_stock = Stock(
         id=fake_container.stock.id,
         ticker=fake_container.stock.ticker,
@@ -356,8 +353,6 @@ def test_build_stock_name_map_skips_update_when_stock_already_named(fake_contain
 
 def test_build_stock_name_map_strips_etf_suffix(fake_container):
     """ETF suffix is stripped when name is resolved from price service."""
-    from portfolio_manager.services.stock_service import StockService
-    from portfolio_manager.web.routes.accounts import _build_stock_name_map
 
     class _StubPriceService:
         def get_stock_price(self, ticker, *, preferred_exchange=None):

@@ -1,18 +1,30 @@
 """Service for resolving and persisting stock display names."""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from portfolio_manager.services.stock_name_formatter import format_stock_name
+
+if TYPE_CHECKING:
+    from portfolio_manager.models import Stock
+    from portfolio_manager.repositories.stock_repository import StockRepository
+    from portfolio_manager.services.price_service import PriceService
 
 logger = logging.getLogger(__name__)
 
 
 class StockService:
-    def __init__(self, stock_repository, price_service=None):
+    def __init__(
+        self,
+        stock_repository: StockRepository,
+        price_service: PriceService | None = None,
+    ):
         self._stock_repository = stock_repository
         self._price_service = price_service
 
-    def resolve_and_persist_name(self, stock) -> str:
+    def resolve_and_persist_name(self, stock: Stock) -> str:
         """Return formatted display name, persisting it when newly resolved.
 
         Returns the formatted existing name if already set.
