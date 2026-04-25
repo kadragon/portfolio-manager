@@ -9,11 +9,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 from uuid import UUID
 
 from portfolio_manager.core.time import now_kst
 from portfolio_manager.models import Account, Holding
+
 from portfolio_manager.repositories.account_repository import AccountRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
@@ -22,6 +23,9 @@ from portfolio_manager.services.kis.kis_domestic_balance_client import (
     KisDomesticBalanceClient,
 )
 from portfolio_manager.services.stock_name_formatter import format_stock_name
+
+if TYPE_CHECKING:
+    from portfolio_manager.services.stock_service import StockService
 
 
 class KisEmptySnapshotError(RuntimeError):
@@ -69,6 +73,7 @@ class KisAccountSyncService:
     stock_repository: StockRepository
     group_repository: GroupRepository
     kis_balance_client: KisDomesticBalanceClient
+    stock_service: StockService | None = None
     default_group_name: str = "KIS 자동동기화"
     sync_log_path: Path | None = None
     _now: Callable[[], datetime] = field(default=now_kst, repr=False)
@@ -141,9 +146,12 @@ class KisAccountSyncService:
                 stock_id_to_ticker[stock.id] = stock.ticker
                 created_stock_count += 1
             elif not stock.name and position.name:
-                stock = self.stock_repository.update_name(
-                    stock.id, format_stock_name(position.name)
-                )
+                if self.stock_service is not None:
+                    self.stock_service.persist_name(stock, position.name)
+                else:
+                    stock = self.stock_repository.update_name(
+                        stock.id, format_stock_name(position.name)
+                    )
                 stocks_by_ticker[stock.ticker] = stock
             target_quantities_by_stock_id[stock.id] += position.quantity
 

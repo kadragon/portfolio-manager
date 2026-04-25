@@ -24,6 +24,27 @@ class StockService:
         self._stock_repository = stock_repository
         self._price_service = price_service
 
+    def set_price_service(self, price_service: PriceService) -> None:
+        self._price_service = price_service
+
+    @property
+    def has_price_service(self) -> bool:
+        return self._price_service is not None
+
+    def persist_name(self, stock: Stock, raw_name: str | None) -> str:
+        """Format raw_name and persist it when stock.name is unset.
+
+        Always returns the formatted raw_name (or "" when raw_name is empty or
+        reduces to nothing after formatting). Mutates stock.name in-place and
+        calls update_name only when the stock had no name and a non-empty
+        formatted name was produced.
+        """
+        formatted = format_stock_name(raw_name) if raw_name else ""
+        if not stock.name and formatted:
+            self._stock_repository.update_name(stock.id, formatted)
+            stock.name = formatted
+        return formatted
+
     def resolve_and_persist_name(self, stock: Stock) -> str:
         """Return formatted display name, persisting it when newly resolved.
 
@@ -51,13 +72,4 @@ class StockService:
             )
             return ""
 
-        if not resolved_name:
-            return ""
-
-        formatted = format_stock_name(resolved_name)
-        if not formatted:
-            return ""
-
-        self._stock_repository.update_name(stock.id, formatted)
-        stock.name = formatted
-        return formatted
+        return self.persist_name(stock, resolved_name)

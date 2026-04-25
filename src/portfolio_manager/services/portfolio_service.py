@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         ExchangeRateService,
     )
     from portfolio_manager.services.price_service import PriceService
+    from portfolio_manager.services.stock_service import StockService
 
 
 @dataclass
@@ -82,6 +83,7 @@ class PortfolioService:
         exchange_rate_service: "ExchangeRateService | None" = None,
         account_repository: AccountRepository | None = None,
         deposit_repository: DepositRepository | None = None,
+        stock_service: "StockService | None" = None,
     ):
         """Initialize service with repositories."""
         self.group_repository = group_repository
@@ -91,6 +93,7 @@ class PortfolioService:
         self.exchange_rate_service = exchange_rate_service
         self.account_repository = account_repository
         self.deposit_repository = deposit_repository
+        self.stock_service = stock_service
 
     def get_holdings_by_group(self) -> list[GroupHoldings]:
         """Get holdings aggregated by group."""
@@ -141,7 +144,12 @@ class PortfolioService:
                     ) = self.price_service.get_stock_price(
                         stock.ticker, preferred_exchange=stock.exchange
                     )
-                    name = format_stock_name(name)
+                    if self.stock_service is not None:
+                        name = self.stock_service.persist_name(stock, name)
+                    else:
+                        name = format_stock_name(name)
+                        if not stock.name and name:
+                            self.stock_repository.update_name(stock.id, name)
                     value_krw: Decimal | None = None
                     holding_value = quantity * price
                     if currency == "USD":
@@ -165,8 +173,6 @@ class PortfolioService:
                         )
                     if exchange and exchange != stock.exchange:
                         self.stock_repository.update_exchange(stock.id, exchange)
-                    if not stock.name and name:
-                        self.stock_repository.update_name(stock.id, name)
                     holding_with_price = StockHoldingWithPrice(
                         stock=stock,
                         quantity=quantity,

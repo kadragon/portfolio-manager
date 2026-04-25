@@ -284,9 +284,7 @@ class ServiceContainer:
                     unified_client,
                     price_cache_repository=self.stock_price_repository,
                 )
-                self.stock_service = StockService(
-                    self.stock_repository, self.price_service
-                )
+                self.stock_service.set_price_service(self.price_service)
 
                 cano, acnt_prdt_cd = self._load_kis_account_credentials()
                 if cano and acnt_prdt_cd:
@@ -297,6 +295,7 @@ class ServiceContainer:
                         group_repository=self.group_repository,
                         kis_balance_client=client_set_1.balance_client,
                         sync_log_path=Path(".data/kis_sync.log"),
+                        stock_service=self.stock_service,
                     )
                     self.kis_cano = cano
                     self.kis_acnt_prdt_cd = acnt_prdt_cd
@@ -366,6 +365,7 @@ class ServiceContainer:
             self.exchange_rate_service,
             account_repository=self.account_repository,
             deposit_repository=self.deposit_repository,
+            stock_service=self.stock_service,
         )
 
     def close(self) -> None:

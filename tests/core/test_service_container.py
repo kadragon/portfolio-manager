@@ -425,6 +425,7 @@ def test_get_portfolio_service_passes_dependencies(
         container.exchange_rate_service,
         account_repository=container.account_repository,
         deposit_repository=container.deposit_repository,
+        stock_service=container.stock_service,
     )
 
 

@@ -113,3 +113,81 @@ def test_price_service_returns_suffix_only_name_skips_persist():
 
     assert result == ""
     assert repo.update_name_calls == []
+
+
+# --- persist_name ---
+
+
+def test_persist_name_empty_stock_valid_raw_persists_and_returns_formatted():
+    repo = _FakeStockRepository()
+    service = StockService(repo)
+    stock = _make_stock("")
+
+    result = service.persist_name(stock, "KODEX 200증권상장지수투자신탁(주식)")
+
+    assert result == "KODEX 200"
+    assert repo.update_name_calls == [(stock.id, "KODEX 200")]
+    assert stock.name == "KODEX 200"
+
+
+def test_persist_name_stock_already_has_name_skips_persist_returns_formatted_raw():
+    repo = _FakeStockRepository()
+    service = StockService(repo)
+    stock = _make_stock("삼성전자")
+
+    result = service.persist_name(stock, "KODEX 200증권상장지수투자신탁(주식)")
+
+    assert result == "KODEX 200"
+    assert repo.update_name_calls == []
+    assert stock.name == "삼성전자"
+
+
+def test_persist_name_empty_raw_returns_empty_skips_persist():
+    repo = _FakeStockRepository()
+    service = StockService(repo)
+    stock = _make_stock("")
+
+    result = service.persist_name(stock, "")
+
+    assert result == ""
+    assert repo.update_name_calls == []
+
+
+def test_persist_name_suffix_only_raw_returns_empty_skips_persist():
+    repo = _FakeStockRepository()
+    service = StockService(repo)
+    stock = _make_stock("")
+
+    result = service.persist_name(stock, "증권상장지수투자신탁(주식)")
+
+    assert result == ""
+    assert repo.update_name_calls == []
+
+
+# --- has_price_service ---
+
+
+def test_has_price_service_false_when_none():
+    service = StockService(_FakeStockRepository(), price_service=None)
+    assert service.has_price_service is False
+
+
+def test_has_price_service_true_when_set():
+    service = StockService(_FakeStockRepository(), _FakePriceService("삼성전자"))
+    assert service.has_price_service is True
+
+
+# --- set_price_service ---
+
+
+def test_set_price_service_enables_resolve():
+    repo = _FakeStockRepository()
+    service = StockService(repo, price_service=None)
+    stock = _make_stock("")
+
+    assert service.resolve_and_persist_name(stock) == ""
+
+    service.set_price_service(_FakePriceService("KODEX 200증권상장지수투자신탁(주식)"))
+    stock2 = _make_stock("")
+    assert service.resolve_and_persist_name(stock2) == "KODEX 200"
+    assert repo.update_name_calls == [(stock2.id, "KODEX 200")]
