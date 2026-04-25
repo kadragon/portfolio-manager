@@ -41,7 +41,16 @@ class RebalanceRecommendation:
 
 @dataclass
 class AccountRebalanceSummary:
-    """Per-account rebalance summary for UI grouping and cash tracking."""
+    """Per-account rebalance summary for UI grouping and cash tracking.
+
+    starting_cash_krw: Account KRW cash balance before any rebalance trade is applied.
+    sell_cash_krw: Total KRW proceeds expected from this account's SELL recommendations
+        (overheated-group reductions); adds to spendable cash for buys.
+    unused_cash_krw: KRW left over after the buy loop ends — either all groups satisfied
+        or remaining groups had no buyable candidate. Carries forward to the next cycle.
+    unmet_groups: Group names with positive shortfall but no eligible ticker (neither in
+        account positions nor portfolio-wide fallback). Surfaced as a UI warning.
+    """
 
     account_id: str
     account_name: str

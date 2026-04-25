@@ -1,8 +1,9 @@
 # Tasks — Deferred from PR reviews
 
-## From PR #67 (feat/stock-name-wave2) — 2026-04-18
+## From PR #69 (feat/per-account-rebalance) — 2026-04-24
 
-- [ ] **GP-1 spirit: move `stock_repository.update_name` out of `web/routes/accounts.py`** — Route currently calls repository directly. Arch test passes, but principle says web → service → repository. Introduce `StockService.ensure_name(stock, resolved_name)` or similar. (Claude review, important)
-- [ ] **Add ETF-suffix edge case test for `_build_stock_name_map`** — Verify `format_stock_name` truncation is what gets persisted, e.g. `"KODEX 200증권상장지수투자신탁(주식)"`. (Claude review, nice-to-have)
-- [ ] **Add test covering non-`ValueError` exception path in `_build_stock_name_map`** — Verify page renders + warning logged when `get_stock_price` raises `RuntimeError`/`KeyError`/etc. (Claude review, nice-to-have)
-- [ ] **Fix `FakeStockRepository.update` to preserve `name`** — `tests/web/conftest.py:121–134` drops `name` on ticker update. Latent test-double bug, not caused by PR #67. (Claude review, nice-to-have)
+- ~~**Optimize `_pick_next_group` sort key**~~ — Skipped. Sort key (`need_by_group[g]`) mutates every iteration; a priority queue would need decrease-key + stale-entry handling for a 5-element collection. O(5 log 5) per iteration is effectively free. (`rebalance_service.py:866-868`)
+
+## Follow-up from feat/stock-service-extraction (PR #70)
+
+- [ ] **Consolidate duplicate name-resolution flows** — `services/portfolio_service.py:144-169` and `services/kis_account_sync_service.py:138-145` duplicate `format_stock_name + update_name`. Migrate both to `StockService.resolve_and_persist_name`.

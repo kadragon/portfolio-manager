@@ -299,13 +299,16 @@ def test_sync_account_empty_snapshot_shows_confirm_then_allows_retry(
 
 def test_build_stock_name_map_persists_name_when_stock_name_empty(fake_container):
     """Opportunistic name fill: update_name called when stock.name empty."""
+    from portfolio_manager.services.stock_service import StockService
     from portfolio_manager.web.routes.accounts import _build_stock_name_map
 
     class _StubPriceService:
         def get_stock_price(self, ticker, *, preferred_exchange=None):
             return (Decimal("70000"), "KRW", "삼성전자", None)
 
-    fake_container.price_service = _StubPriceService()
+    fake_container.stock_service = StockService(
+        fake_container.stock_repository, _StubPriceService()
+    )
 
     result = _build_stock_name_map(fake_container, [fake_container.stock])
 
@@ -318,6 +321,7 @@ def test_build_stock_name_map_persists_name_when_stock_name_empty(fake_container
 def test_build_stock_name_map_skips_update_when_stock_already_named(fake_container):
     """Skip update_name when stock already has a persisted name."""
     from portfolio_manager.models import Stock
+    from portfolio_manager.services.stock_service import StockService
     from portfolio_manager.web.routes.accounts import _build_stock_name_map
 
     named_stock = Stock(
@@ -331,15 +335,6 @@ def test_build_stock_name_map_skips_update_when_stock_already_named(fake_contain
     )
     fake_container.stock_repository._stocks[0] = named_stock
 
-    price_calls: list = []
-
-    class _StubPriceService:
-        def get_stock_price(self, ticker, *, preferred_exchange=None):
-            price_calls.append(ticker)
-            return (Decimal("70000"), "KRW", "새이름", None)
-
-    fake_container.price_service = _StubPriceService()
-
     update_calls: list = []
     original_update_name = fake_container.stock_repository.update_name
 
@@ -348,12 +343,38 @@ def test_build_stock_name_map_skips_update_when_stock_already_named(fake_contain
         return original_update_name(stock_id, name)
 
     fake_container.stock_repository.update_name = _spy_update_name
+    fake_container.stock_service = StockService(fake_container.stock_repository)
 
     result = _build_stock_name_map(fake_container, [named_stock])
 
     assert result[named_stock.id] == "기존이름"
     assert update_calls == []
-    assert price_calls == []
     stored = fake_container.stock_repository.get_by_id(named_stock.id)
     assert stored is not None
     assert stored.name == "기존이름"
+
+
+def test_build_stock_name_map_strips_etf_suffix(fake_container):
+    """ETF suffix is stripped when name is resolved from price service."""
+    from portfolio_manager.services.stock_service import StockService
+    from portfolio_manager.web.routes.accounts import _build_stock_name_map
+
+    class _StubPriceService:
+        def get_stock_price(self, ticker, *, preferred_exchange=None):
+            return (
+                Decimal("10000"),
+                "KRW",
+                "KODEX 200증권상장지수투자신탁(주식)",
+                None,
+            )
+
+    fake_container.stock_service = StockService(
+        fake_container.stock_repository, _StubPriceService()
+    )
+
+    result = _build_stock_name_map(fake_container, [fake_container.stock])
+
+    assert result[fake_container.stock.id] == "KODEX 200"
+    updated = fake_container.stock_repository.get_by_id(fake_container.stock.id)
+    assert updated is not None
+    assert updated.name == "KODEX 200"

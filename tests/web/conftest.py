@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.testclient import TestClient
 
 from portfolio_manager.models import Account, Deposit, Group, Holding, Stock
+from portfolio_manager.services.stock_service import StockService
 from portfolio_manager.services.portfolio_service import (
     GroupHoldings,
     PortfolioSummary,
@@ -128,6 +129,7 @@ class FakeStockRepository:
                     created_at=stock.created_at,
                     updated_at=datetime.now(timezone.utc),
                     exchange=stock.exchange,
+                    name=stock.name,
                 )
                 self._stocks[idx] = updated
                 return updated
@@ -498,6 +500,7 @@ class FakeContainer:
         self.deposit_repository = FakeDepositRepository([self.deposit])
 
         self.price_service = object()
+        self.stock_service: StockService = StockService(self.stock_repository)
         self.order_client = object()
         self.execution_repository = None
         self.kis_account_sync_service = FakeKisAccountSyncService()
