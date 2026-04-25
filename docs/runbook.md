@@ -158,3 +158,8 @@ KIS token files are cached in `.data/kis_token_{key_id}.json`. Mount `.data/` in
 **Symptom:** Tests pass individually but fail when run together (state leaks).  
 **Cause:** Test fixture not scoped correctly, or shared container instance.  
 **Fix:** Use `function`-scoped `test_container` fixture. Check `tests/conftest.py`.
+
+### Timezone / KST migration
+
+**Background:** Timestamps were migrated from UTC (`+00:00`) to KST (`+09:00`) in a prior release.  
+**Effect:** Pre-migration rows retain their original `+00:00` `created_at` permanently — this column is immutable after insert. `updated_at` columns update to KST offset on the next write to that row. No manual data migration is needed; affected rows self-heal naturally over time.

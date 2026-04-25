@@ -1,3 +1,9 @@
+<!--
+Schema / lifecycle:
+  Active sprint  — open [ ] items grouped by PR or feature branch below this header.
+  Dormant        — no active sprint; file starts with "# (dormant)" and retains only open [debt/blocked] items.
+-->
+
 # Tasks — Deferred from PR reviews
 
 ## From PR #69 (feat/per-account-rebalance) — 2026-04-24
@@ -19,5 +25,12 @@
 
 ### PR #71 — [REFACTOR] StockService API (2026-04-25)
 
-- [ ] [debt] Remove `else` fallback in `portfolio_service.py:149-152` — `stock_service` is always injected by `ServiceContainer.get_portfolio_service()`, making the fallback dead code. Remove it and the now-unused `format_stock_name` import. (source: Claude)
-- [ ] [doc] `persist_name` docstring: the dual-path behaviour (stock_service vs else-branch in `portfolio_service.py`) is not documented; update when fallback is removed. (source: Claude)
+- [ ] [debt/blocked] Remove `else` fallback in `portfolio_service.py:149-152` — multiple tests instantiate `PortfolioService` without `stock_service` (`test_portfolio_service.py:62` etc.); removal requires refactoring those tests first. (source: Claude)
+- [ ] [doc/blocked] `persist_name` docstring: update dual-path description when the else-branch above is removed. (source: Claude)
+
+## Review Backlog
+
+### PR #72 — [HARNESS] Clear backlog — log rotation, Q&A deadline, KST docs, tasks schema (2026-04-25)
+
+- [ ] [doc] `runbook.md` KST 섹션에 영향받는 테이블/모델명 명시 — `created_at`/`updated_at` 컬럼이 어떤 모델에 있는지 나열 또는 마이그레이션 링크 추가. (source: Claude) — `docs/runbook.md:163-165`
+- [ ] [debt] 멀티-세대 로그 백업 고려 — 현재 단일 세대(`.log.1`)만 유지. 필요 시 `logging.handlers.RotatingFileHandler` 도입. (source: Gemini) — `kis_account_sync_service.py:266`
