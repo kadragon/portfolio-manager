@@ -48,9 +48,8 @@ NarrativePeriod = Literal["daily", "weekly"]
 _PERIOD_RATE_LABEL: dict[str, str] = {"daily": "1d", "weekly": "1m"}
 _MAX_CONTRIBUTORS = 3
 _QA_TOOL_ITERATIONS = 3
-_QA_DEADLINE_SEC: float = (
-    120.0  # soft cap; last in-flight call may add up to one chat timeout
-)
+# soft cap; last in-flight call may add up to one chat timeout
+_QA_DEADLINE_SEC: float = 120.0
 
 
 # --- Result data classes -----------------------------------------------------

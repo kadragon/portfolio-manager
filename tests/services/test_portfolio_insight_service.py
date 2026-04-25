@@ -685,11 +685,12 @@ def test_answer_question_times_out_before_any_llm_call(
     import portfolio_manager.services.portfolio_insight_service as svc_mod
 
     base = time.monotonic()
-    call_count = [0]
+    call_count = 0
 
     def fake_monotonic() -> float:
-        call_count[0] += 1
-        if call_count[0] == 1:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
             return base  # sets _deadline = base + _QA_DEADLINE_SEC
         return (
             base + svc_mod._QA_DEADLINE_SEC + 1
