@@ -1,12 +1,12 @@
 # Backlog
 
-- [ ] [harness] Define dormant `tasks.md` schema/status for no-active-sprint sessions
+- [x] [harness] Define dormant `tasks.md` schema/status for no-active-sprint sessions
 
 ## Review follow-ups from PR #65
 
-- [ ] [docs] `runbook.md` — KST 마이그레이션 이후 기존 DB 행은 `+00:00` offset 으로 남아 있음을 명시 (다음 업데이트 시 자연 복구).
-- [ ] [harness] `.data/kis_sync.log` JSONL 로테이션 — 일 단위 또는 크기 기반(`logging.handlers.RotatingFileHandler` 또는 커스텀). 현재 append-only.
-- [ ] [feat] Q&A 전체 iteration 상한 + wall-clock deadline — tool loop 3 + fallback 3 = 최대 7 회 호출, 26B 모델에서 수 분 소요 가능. 합산 상한 또는 타임아웃 도입.
+- [x] [docs] `runbook.md` — KST 마이그레이션 이후 기존 DB 행은 `+00:00` offset 으로 남아 있음을 명시 (다음 업데이트 시 자연 복구).
+- [x] [harness] `.data/kis_sync.log` JSONL 로테이션 — 크기 기반(`_MAX_SYNC_LOG_BYTES = 10 MB`), `.log.1` 백업으로 rotate.
+- [x] [feat] Q&A soft wall-clock deadline 도입 — `_QA_DEADLINE_SEC = 120.0`, `time.monotonic()` 기반, primary/fallback 루프 + no-tools call 모두 가드.
 
 ## 종목명 표시 개선 — Wave 2 (feat/stock-name-wave1 머지 후)
 

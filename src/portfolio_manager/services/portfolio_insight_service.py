@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
@@ -47,6 +48,9 @@ NarrativePeriod = Literal["daily", "weekly"]
 _PERIOD_RATE_LABEL: dict[str, str] = {"daily": "1d", "weekly": "1m"}
 _MAX_CONTRIBUTORS = 3
 _QA_TOOL_ITERATIONS = 3
+_QA_DEADLINE_SEC: float = (
+    120.0  # soft cap; last in-flight call may add up to one chat timeout
+)
 
 
 # --- Result data classes -----------------------------------------------------
@@ -327,8 +331,11 @@ class PortfolioInsightService:
         ]
 
         tools_used: list[str] = []
+        _deadline = time.monotonic() + _QA_DEADLINE_SEC
         try:
             for _ in range(_QA_TOOL_ITERATIONS):
+                if time.monotonic() > _deadline:
+                    break
                 response = self._ollama.chat(messages, tools=QA_TOOL_SCHEMAS)
                 if not response.tool_calls:
                     if response.content:
@@ -366,6 +373,13 @@ class PortfolioInsightService:
                         }
                     )
             # Fallthrough: ask for a final answer without tools.
+            if time.monotonic() > _deadline:
+                return QaResult(
+                    question=question,
+                    answer="",
+                    tool_calls_used=tools_used,
+                    error=f"Q&A timed out after {_QA_DEADLINE_SEC:.0f}s",
+                )
             final = self._ollama.chat(messages)
             if final.content:
                 return QaResult(
@@ -383,10 +397,12 @@ class PortfolioInsightService:
             )
 
         # Fallback: retry with JSON-action protocol.
-        return self._answer_via_json_fallback(question, context_json, tools_used)
+        return self._answer_via_json_fallback(
+            question, context_json, tools_used, _deadline
+        )
 
     def _answer_via_json_fallback(
-        self, question: str, context_json: str, tools_used: list[str]
+        self, question: str, context_json: str, tools_used: list[str], deadline: float
     ) -> QaResult:
         system_content = (
             QA_JSON_FALLBACK_SYSTEM_PROMPT
@@ -399,6 +415,13 @@ class PortfolioInsightService:
         ]
         try:
             for _ in range(_QA_TOOL_ITERATIONS):
+                if time.monotonic() > deadline:
+                    return QaResult(
+                        question=question,
+                        answer="",
+                        tool_calls_used=tools_used,
+                        error=f"Q&A timed out after {_QA_DEADLINE_SEC:.0f}s",
+                    )
                 response = self._ollama.chat(messages, format="json")
                 parsed = _safe_json_loads(response.content)
                 if parsed is None:

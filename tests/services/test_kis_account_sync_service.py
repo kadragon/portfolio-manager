@@ -17,6 +17,7 @@ from portfolio_manager.services.kis.kis_domestic_balance_client import (
 from portfolio_manager.services.kis_account_sync_service import (
     KisAccountSyncService,
     KisEmptySnapshotError,
+    _MAX_SYNC_LOG_BYTES,
 )
 
 
@@ -704,3 +705,23 @@ def test_sync_writes_snapshot_error_event(tmp_path: Path):
     assert event["event"] == "sync_snapshot_error"
     assert event["error_type"] == "RuntimeError"
     assert event["error"] == "boom"
+
+
+def test_log_event_rotates_when_file_exceeds_size_limit(tmp_path: Path):
+    log_path = tmp_path / "kis_sync.log"
+    log_path.write_bytes(b"\x00" * _MAX_SYNC_LOG_BYTES)
+
+    balance_client = Mock()
+    balance_client.fetch_account_snapshot.return_value = KisAccountSnapshot(
+        cash_balance=Decimal("0"),
+        holdings=[],
+    )
+    service = _make_service(balance_client, log_path=log_path)
+    service._log_event({"event": "test"})
+
+    backup = tmp_path / "kis_sync.log.1"
+    assert backup.exists()
+    assert backup.stat().st_size == _MAX_SYNC_LOG_BYTES
+    assert log_path.exists()
+    new_content = log_path.read_text(encoding="utf-8").strip()
+    assert '"event": "test"' in new_content

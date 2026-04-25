@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -673,3 +674,32 @@ def test_dispatch_unknown_tool_returns_error(service_factory) -> None:
     result = service._dispatch_qa_tool("does_not_exist", {})
 
     assert "error" in result
+
+
+# --- deadline tests ---------------------------------------------------------
+
+
+def test_answer_question_times_out_before_any_llm_call(
+    service_factory, monkeypatch
+) -> None:
+    import portfolio_manager.services.portfolio_insight_service as svc_mod
+
+    base = time.monotonic()
+    call_count = [0]
+
+    def fake_monotonic() -> float:
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return base  # sets _deadline = base + _QA_DEADLINE_SEC
+        return (
+            base + svc_mod._QA_DEADLINE_SEC + 1
+        )  # every subsequent check: past deadline
+
+    monkeypatch.setattr(svc_mod.time, "monotonic", fake_monotonic)
+
+    service, ollama = service_factory(ollama_responses=[])
+    result = service.answer_question("테스트 질문")
+
+    assert ollama.calls == []
+    assert result.error is not None
+    assert "120" in result.error
