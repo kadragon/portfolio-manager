@@ -61,6 +61,7 @@ from portfolio_manager.services.exchange.exchange_rate_service import (
 from portfolio_manager.services.kis_account_sync_service import KisAccountSyncService
 from portfolio_manager.services.database import init_db, close_db
 from portfolio_manager.services.llm.ollama_client import OllamaClient
+from portfolio_manager.services.stock_service import StockService
 from portfolio_manager.services.portfolio_insight_service import (
     PortfolioInsightService,
 )
@@ -98,6 +99,7 @@ class ServiceContainer:
 
         # Services (initialized on demand or setup)
         self.price_service: PriceService | None = None
+        self.stock_service: StockService = StockService(self.stock_repository)
         self.exchange_rate_service: ExchangeRateService | None = None
         self.kis_account_sync_service: KisAccountSyncService | None = None
         self.order_client: object | None = None
@@ -281,6 +283,9 @@ class ServiceContainer:
                 self.price_service = PriceService(
                     unified_client,
                     price_cache_repository=self.stock_price_repository,
+                )
+                self.stock_service = StockService(
+                    self.stock_repository, self.price_service
                 )
 
                 cano, acnt_prdt_cd = self._load_kis_account_credentials()

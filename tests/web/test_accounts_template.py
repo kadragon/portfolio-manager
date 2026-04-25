@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from portfolio_manager.services.stock_service import StockService
+
 
 def test_accounts_page_uses_buttons_for_edit_sync_delete(client):
     response = client.get("/accounts")
@@ -111,7 +113,9 @@ def test_holdings_page_shows_stock_name_when_price_service_available(
             assert ticker == fake_container.stock.ticker
             return Decimal("70000"), "KRW", "삼성전자", preferred_exchange
 
-    fake_container.price_service = FakePriceService()
+    fake_container.stock_service = StockService(
+        fake_container.stock_repository, FakePriceService()
+    )
 
     response = client.get(f"/accounts/{fake_container.account.id}/holdings")
 
