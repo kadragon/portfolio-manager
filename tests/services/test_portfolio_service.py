@@ -313,6 +313,73 @@ def test_portfolio_summary_strips_etf_suffix_from_name():
     assert holding.name == "KODEX 200"
 
 
+def test_portfolio_summary_strips_etf_suffix_via_stock_service():
+    """stock_service가 주입되면 persist_name을 경유하여 이름을 처리한다."""
+    group_id = uuid4()
+    stock_id = uuid4()
+
+    group_repo = Mock()
+    group_repo.list_all.return_value = [
+        Group(
+            id=group_id,
+            name="ETFs",
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+
+    stock_repo = Mock()
+    stock_repo.list_all.return_value = [
+        Stock(
+            id=stock_id,
+            ticker="069500",
+            group_id=group_id,
+            created_at=None,  # type: ignore[arg-type]
+            updated_at=None,  # type: ignore[arg-type]
+        )
+    ]
+
+    holding_repo = Mock()
+    holding_repo.get_aggregated_holdings_by_stock.return_value = {
+        stock_id: Decimal("10"),
+    }
+
+    price_service = Mock()
+    price_service.get_stock_price.return_value = (
+        Decimal("10000"),
+        "KRW",
+        "KODEX 200 증권상장지수투자신탁(주식)",
+        None,
+    )
+
+    stock_service = Mock()
+    stock_service.persist_name.return_value = "KODEX 200"
+
+    account_repo = Mock()
+    account_repo.list_all.return_value = []
+    deposit_repo = Mock()
+    deposit_repo.get_total.return_value = Decimal("0")
+    deposit_repo.get_first_deposit_date.return_value = None
+
+    portfolio_service = PortfolioService(
+        group_repo,
+        stock_repo,
+        holding_repo,
+        price_service,
+        Mock(),
+        stock_service=stock_service,
+        account_repository=account_repo,
+        deposit_repository=deposit_repo,
+    )
+
+    summary = portfolio_service.get_portfolio_summary()
+
+    holding = summary.holdings[0][1]
+    assert holding.name == "KODEX 200"
+    stock_service.persist_name.assert_called_once()
+    stock_repo.update_name.assert_not_called()
+
+
 def test_portfolio_summary_calculates_return_rate():
     """총 평가금액과 투자원금을 비교하여 수익률을 계산한다."""
     from datetime import datetime
