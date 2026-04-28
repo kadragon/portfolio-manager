@@ -49,9 +49,8 @@ class HoldingSyncDetail:
     new_quantity: Decimal | None = None
 
 
-_MAX_SYNC_LOG_BYTES = (
-    10 * 1024 * 1024
-)  # 10 MB; rotates to .log.1 (one generation only — prior .log.1 is overwritten)
+_MAX_SYNC_LOG_BYTES = 10 * 1024 * 1024  # 10 MB per generation
+_LOG_BACKUP_COUNT = 5  # keep .log.1 … .log.5; oldest is dropped on next rotation
 
 
 @dataclass(frozen=True)
@@ -265,9 +264,12 @@ class KisAccountSyncService:
                 self.sync_log_path.exists()
                 and self.sync_log_path.stat().st_size >= _MAX_SYNC_LOG_BYTES
             ):
-                self.sync_log_path.replace(
-                    self.sync_log_path.parent / (self.sync_log_path.name + ".1")
-                )
+                base = self.sync_log_path
+                for i in range(_LOG_BACKUP_COUNT - 1, 0, -1):
+                    src = base.parent / f"{base.name}.{i}"
+                    if src.exists():
+                        src.replace(base.parent / f"{base.name}.{i + 1}")
+                base.replace(base.parent / f"{base.name}.1")
             with self.sync_log_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(payload, ensure_ascii=False) + "\n")
         except OSError as exc:
