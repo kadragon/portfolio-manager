@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from portfolio_manager.models.group import Group
 from portfolio_manager.models.stock import Stock
+from portfolio_manager.services.stock_service import StockService
 
 
 def test_portfolio_summary_holdings_sorted_by_value_krw_descending():
@@ -89,6 +90,7 @@ def test_portfolio_summary_holdings_sorted_by_value_krw_descending():
         price_service=price_service,
         account_repository=account_repo,
         deposit_repository=deposit_repo,
+        stock_service=StockService(stock_repo),
     )
 
     summary = service.get_portfolio_summary()

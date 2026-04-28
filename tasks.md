@@ -25,8 +25,16 @@ Schema / lifecycle:
 
 ### PR #71 — [REFACTOR] StockService API (2026-04-25)
 
-- [ ] [debt/blocked] Remove `else` fallback in `portfolio_service.py:149-152` — multiple tests instantiate `PortfolioService` without `stock_service` (`test_portfolio_service.py:62` etc.); removal requires refactoring those tests first. (source: Claude)
-- [ ] [doc/blocked] `persist_name` docstring: update dual-path description when the else-branch above is removed. (source: Claude)
+- [x] [debt/blocked] Remove `else` fallback in `portfolio_service.py:149-152` — made `stock_service` a required keyword-only arg; updated all test call sites with `StockService(stock_repo)` or `Mock()`. (#77)
+- [x] [doc/blocked] `persist_name` docstring: updated to single-path description. (#77)
+
+## Review Backlog
+
+### PR #77 — [REFACTOR] PortfolioService — require stock_service, drop else fallback (2026-04-28)
+
+- [ ] [debt] Constructor shape: move all optional collaborators in `PortfolioService.__init__` to keyword-only — currently optional positional args precede the required keyword-only `stock_service` (source: Claude) — `portfolio_service.py:76-87`
+- [ ] [debt] `_make_stock_service` helper vs inline inconsistency — centralize in `conftest.py` or always inline across test files (source: Claude) — `tests/services/test_portfolio_service.py:15-16`
+- [ ] [constraint] No test for `persist_name` raising — if `stock_repository.update_name` fails, `get_portfolio_summary` crashes silently; add error-path test or explicit except-and-log (source: Claude) — `portfolio_service.py:147`
 
 ## Review Backlog
 
