@@ -1,7 +1,7 @@
 """Test portfolio service."""
 
 from decimal import Decimal
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 from uuid import uuid4
 
 from portfolio_manager.models import Group, Stock
@@ -65,7 +65,7 @@ def test_get_holdings_by_group():
     }
 
     service = PortfolioService(
-        group_repo, stock_repo, holding_repo, stock_service=Mock()
+        group_repo, stock_repo, holding_repo, stock_service=MagicMock(spec=StockService)
     )
 
     # When: 그룹별 보유 현황을 조회
@@ -258,7 +258,7 @@ def test_portfolio_summary_sets_value_krw_for_usd_holdings():
 
 
 def test_portfolio_summary_strips_etf_suffix_from_name():
-    """ETF 접미어는 제거된 이름으로 저장한다."""
+    """End-to-end: real StockService strips ETF suffix and persists the formatted name."""
     group_id = uuid4()
     stock_id = uuid4()
 
@@ -324,7 +324,7 @@ def test_portfolio_summary_strips_etf_suffix_from_name():
 
 
 def test_portfolio_summary_strips_etf_suffix_via_stock_service():
-    """stock_service가 주입되면 persist_name을 경유하여 이름을 처리한다."""
+    """Contract: PortfolioService delegates name formatting to stock_service.persist_name."""
     group_id = uuid4()
     stock_id = uuid4()
 

@@ -30,6 +30,14 @@ Schema / lifecycle:
 
 ## Review Backlog
 
+### PR #77 — [REFACTOR] PortfolioService — require stock_service, drop else fallback (2026-04-28)
+
+- [ ] [debt] Constructor shape: move all optional collaborators in `PortfolioService.__init__` to keyword-only — currently optional positional args precede the required keyword-only `stock_service` (source: Claude) — `portfolio_service.py:76-87`
+- [ ] [debt] `_make_stock_service` helper vs inline inconsistency — centralize in `conftest.py` or always inline across test files (source: Claude) — `tests/services/test_portfolio_service.py:15-16`
+- [ ] [constraint] No test for `persist_name` raising — if `stock_repository.update_name` fails, `get_portfolio_summary` crashes silently; add error-path test or explicit except-and-log (source: Claude) — `portfolio_service.py:147`
+
+## Review Backlog
+
 ### PR #72 — [HARNESS] Clear backlog — log rotation, Q&A deadline, KST docs, tasks schema (2026-04-25)
 
 - [x] [doc] `runbook.md` KST 섹션에 영향받는 테이블/모델명 명시 — 6개 모델 + `OrderExecutionModel` 예외 + `BaseModel.save()` 메커니즘 명시. (#75)
