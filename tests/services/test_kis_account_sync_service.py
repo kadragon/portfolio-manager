@@ -17,6 +17,7 @@ from portfolio_manager.services.kis.kis_domestic_balance_client import (
 from portfolio_manager.services.kis_account_sync_service import (
     KisAccountSyncService,
     KisEmptySnapshotError,
+    _LOG_BACKUP_COUNT,
     _MAX_SYNC_LOG_BYTES,
 )
 
@@ -725,3 +726,26 @@ def test_log_event_rotates_when_file_exceeds_size_limit(tmp_path: Path):
     assert log_path.exists()
     new_content = log_path.read_text(encoding="utf-8").strip()
     assert '"event": "test"' in new_content
+
+
+def test_log_event_multi_generation_rotation(tmp_path: Path):
+    log_path = tmp_path / "kis_sync.log"
+    balance_client = Mock()
+    balance_client.fetch_account_snapshot.return_value = KisAccountSnapshot(
+        cash_balance=Decimal("0"),
+        holdings=[],
+    )
+    service = _make_service(balance_client, log_path=log_path)
+
+    for generation in range(_LOG_BACKUP_COUNT + 1):
+        log_path.write_bytes(b"\x00" * _MAX_SYNC_LOG_BYTES)
+        service._log_event({"gen": generation})
+
+    # .log.1 through .log._LOG_BACKUP_COUNT must all exist
+    for i in range(1, _LOG_BACKUP_COUNT + 1):
+        assert (tmp_path / f"kis_sync.log.{i}").exists(), f".log.{i} missing"
+    # no generation beyond the count should exist
+    assert not (tmp_path / f"kis_sync.log.{_LOG_BACKUP_COUNT + 1}").exists()
+    # main log has the latest event
+    latest = log_path.read_text(encoding="utf-8").strip()
+    assert f'"gen": {_LOG_BACKUP_COUNT}' in latest
