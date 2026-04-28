@@ -163,3 +163,11 @@ KIS token files are cached in `.data/kis_token_{key_id}.json`. Mount `.data/` in
 
 **Background:** Timestamps were migrated from UTC (`+00:00`) to KST (`+09:00`) in a prior release.  
 **Effect:** Pre-migration rows retain their original `+00:00` `created_at` permanently — this column is immutable after insert. `updated_at` columns update to KST offset on the next write to that row. No manual data migration is needed; affected rows self-heal naturally over time.
+
+**Affected models** (`created_at` + `updated_at`, both self-heal on next write):
+`GroupModel`, `StockModel`, `AccountModel`, `HoldingModel`, `DepositModel`, `StockPriceModel`
+— all defined in `src/portfolio_manager/services/database.py`.
+
+**Self-heal mechanism:** `BaseModel.save()` (`database.py:29-32`) sets `updated_at = now_kst()` on every write. Pre-migration rows self-heal on their next update; no batch job is needed.
+
+**Exception — `OrderExecutionModel`:** insert-only, no `updated_at` column. Its `created_at` rows written before migration remain at `+00:00` permanently and will not self-heal.
