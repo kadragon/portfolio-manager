@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 from portfolio_manager.models import Group, Stock
 from portfolio_manager.repositories.account_repository import AccountRepository
-from portfolio_manager.services.stock_name_formatter import format_stock_name
 from portfolio_manager.repositories.deposit_repository import DepositRepository
 from portfolio_manager.repositories.group_repository import GroupRepository
 from portfolio_manager.repositories.holding_repository import HoldingRepository
@@ -83,7 +82,8 @@ class PortfolioService:
         exchange_rate_service: "ExchangeRateService | None" = None,
         account_repository: AccountRepository | None = None,
         deposit_repository: DepositRepository | None = None,
-        stock_service: "StockService | None" = None,
+        *,
+        stock_service: "StockService",
     ):
         """Initialize service with repositories."""
         self.group_repository = group_repository
@@ -144,12 +144,7 @@ class PortfolioService:
                     ) = self.price_service.get_stock_price(
                         stock.ticker, preferred_exchange=stock.exchange
                     )
-                    if self.stock_service is not None:
-                        name = self.stock_service.persist_name(stock, name)
-                    else:
-                        name = format_stock_name(name)
-                        if not stock.name and name:
-                            self.stock_repository.update_name(stock.id, name)
+                    name = self.stock_service.persist_name(stock, name)
                     value_krw: Decimal | None = None
                     holding_value = quantity * price
                     if currency == "USD":

@@ -4,6 +4,8 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock
 
+from portfolio_manager.services.stock_service import StockService
+
 
 def test_portfolio_summary_has_annualized_return_rate():
     """PortfolioSummary should have annualized_return_rate field."""
@@ -53,6 +55,7 @@ def test_portfolio_service_calculates_annualized_return():
         price_service=price_service,
         account_repository=account_repo,
         deposit_repository=deposit_repo,
+        stock_service=StockService(stock_repo),
     )
 
     # Mock today's date - assume 1 year has passed

@@ -9,6 +9,11 @@ from portfolio_manager.services.portfolio_service import (
     PortfolioService,
     StockHoldingWithPrice,
 )
+from portfolio_manager.services.stock_service import StockService
+
+
+def _make_stock_service(stock_repo: Mock) -> StockService:
+    return StockService(stock_repo)
 
 
 def test_get_holdings_by_group():
@@ -59,7 +64,9 @@ def test_get_holdings_by_group():
         stock2_id: Decimal("20"),
     }
 
-    service = PortfolioService(group_repo, stock_repo, holding_repo)
+    service = PortfolioService(
+        group_repo, stock_repo, holding_repo, stock_service=Mock()
+    )
 
     # When: 그룹별 보유 현황을 조회
     result = service.get_holdings_by_group()
@@ -168,6 +175,7 @@ def test_portfolio_summary_calculates_total_value():
         exchange_rate_service,
         account_repository=account_repo,
         deposit_repository=deposit_repo,
+        stock_service=_make_stock_service(stock_repo),
     )
 
     # When: Get portfolio summary with valuations
@@ -240,6 +248,7 @@ def test_portfolio_summary_sets_value_krw_for_usd_holdings():
         exchange_rate_service,
         account_repository=account_repo,
         deposit_repository=deposit_repo,
+        stock_service=_make_stock_service(stock_repo),
     )
 
     summary = portfolio_service.get_portfolio_summary()
@@ -304,6 +313,7 @@ def test_portfolio_summary_strips_etf_suffix_from_name():
         exchange_rate_service,
         account_repository=account_repo,
         deposit_repository=deposit_repo,
+        stock_service=_make_stock_service(stock_repo),
     )
 
     summary = portfolio_service.get_portfolio_summary()
@@ -427,6 +437,7 @@ def test_portfolio_summary_calculates_return_rate():
         Mock(),
         account_repository=account_repo,
         deposit_repository=deposit_repo,
+        stock_service=_make_stock_service(stock_repo),
     )
 
     summary = portfolio_service.get_portfolio_summary()
@@ -491,6 +502,7 @@ def test_portfolio_summary_includes_change_rates():
         holding_repo,
         price_service,
         exchange_rate_service,
+        stock_service=_make_stock_service(stock_repo),
     )
 
     summary = portfolio_service.get_portfolio_summary()
@@ -552,6 +564,7 @@ def test_portfolio_summary_passes_custom_change_rate_periods():
         stock_repo,
         holding_repo,
         price_service,
+        stock_service=_make_stock_service(stock_repo),
     )
 
     service.get_portfolio_summary(change_rate_periods=("1d", "1m", "1y"))
@@ -609,6 +622,7 @@ def test_portfolio_summary_skips_change_rates_when_disabled():
         holding_repo,
         price_service,
         None,
+        stock_service=_make_stock_service(stock_repo),
     )
 
     summary = portfolio_service.get_portfolio_summary(include_change_rates=False)
@@ -672,7 +686,13 @@ def test_portfolio_summary_uses_single_stock_list_call():
         (Decimal("120"), "KRW", "JPM", None),
     ]
 
-    service = PortfolioService(group_repo, stock_repo, holding_repo, price_service)
+    service = PortfolioService(
+        group_repo,
+        stock_repo,
+        holding_repo,
+        price_service,
+        stock_service=_make_stock_service(stock_repo),
+    )
 
     service.get_portfolio_summary(include_change_rates=False)
 
@@ -734,6 +754,7 @@ def test_portfolio_summary_updates_stock_exchange_cache():
         holding_repo,
         price_service,
         exchange_rate_service,
+        stock_service=_make_stock_service(stock_repo),
     )
 
     portfolio_service.get_portfolio_summary()

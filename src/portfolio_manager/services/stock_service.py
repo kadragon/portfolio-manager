@@ -32,11 +32,12 @@ class StockService:
         return self._price_service is not None
 
     def persist_name(self, stock: Stock, raw_name: str | None) -> str:
-        """Format raw_name and persist it when stock.name is unset.
+        """Format raw_name via format_stock_name and persist it when stock.name is unset.
 
-        Returns the formatted raw_name when non-empty; falls back to the
-        formatted stored name otherwise. Mutates stock.name and stock.updated_at
-        in-place when a new name is persisted.
+        When stock.name is empty and the formatted name is non-empty, persists via
+        stock_repository.update_name and mutates stock.name / stock.updated_at in-place.
+        Returns the formatted raw_name if non-empty, otherwise the formatted stored name,
+        otherwise "".
         """
         formatted = format_stock_name(raw_name) if raw_name else ""
         if not stock.name and formatted:

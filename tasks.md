@@ -25,8 +25,8 @@ Schema / lifecycle:
 
 ### PR #71 — [REFACTOR] StockService API (2026-04-25)
 
-- [ ] [debt/blocked] Remove `else` fallback in `portfolio_service.py:149-152` — multiple tests instantiate `PortfolioService` without `stock_service` (`test_portfolio_service.py:62` etc.); removal requires refactoring those tests first. (source: Claude)
-- [ ] [doc/blocked] `persist_name` docstring: update dual-path description when the else-branch above is removed. (source: Claude)
+- [x] [debt/blocked] Remove `else` fallback in `portfolio_service.py:149-152` — made `stock_service` a required keyword-only arg; updated all test call sites with `StockService(stock_repo)` or `Mock()`. (#77)
+- [x] [doc/blocked] `persist_name` docstring: updated to single-path description. (#77)
 
 ## Review Backlog
 
