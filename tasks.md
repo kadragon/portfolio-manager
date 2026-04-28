@@ -32,5 +32,5 @@ Schema / lifecycle:
 
 ### PR #72 — [HARNESS] Clear backlog — log rotation, Q&A deadline, KST docs, tasks schema (2026-04-25)
 
-- [ ] [doc] `runbook.md` KST 섹션에 영향받는 테이블/모델명 명시 — `created_at`/`updated_at` 컬럼이 어떤 모델에 있는지 나열 또는 마이그레이션 링크 추가. (source: Claude) — `docs/runbook.md:163-165`
-- [ ] [debt] 멀티-세대 로그 백업 고려 — 현재 단일 세대(`.log.1`)만 유지. 필요 시 `logging.handlers.RotatingFileHandler` 도입. (source: Gemini) — `kis_account_sync_service.py:266`
+- [x] [doc] `runbook.md` KST 섹션에 영향받는 테이블/모델명 명시 — 6개 모델 + `OrderExecutionModel` 예외 + `BaseModel.save()` 메커니즘 명시. (#75)
+- [x] [debt] 멀티-세대 로그 백업 — `_LOG_BACKUP_COUNT = 5` 도입, `.log.1`~`.log.5` 유지, 다세대 테스트 추가. (#76)
