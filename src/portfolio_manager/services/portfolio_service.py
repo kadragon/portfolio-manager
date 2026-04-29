@@ -1,5 +1,6 @@
 """Portfolio service for aggregating holdings data."""
 
+import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
     )
     from portfolio_manager.services.price_service import PriceService
     from portfolio_manager.services.stock_service import StockService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -144,7 +147,15 @@ class PortfolioService:
                     ) = self.price_service.get_stock_price(
                         stock.ticker, preferred_exchange=stock.exchange
                     )
-                    name = self.stock_service.persist_name(stock, name)
+                    try:
+                        name = self.stock_service.persist_name(stock, name)
+                    except Exception:
+                        logger.warning(
+                            "stock_service.persist_name failed for %s",
+                            stock.ticker,
+                            exc_info=True,
+                        )
+                        name = name or stock.name or ""
                     value_krw: Decimal | None = None
                     holding_value = quantity * price
                     if currency == "USD":
