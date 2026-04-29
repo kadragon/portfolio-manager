@@ -11,6 +11,9 @@ from portfolio_manager.services.kis.kis_domestic_info_client import (
 from portfolio_manager.services.kis.kis_domestic_price_client import (
     KisDomesticPriceClient,
 )
+from portfolio_manager.services.kis.kis_overseas_info_client import (
+    KisOverseasInfoClient,
+)
 from portfolio_manager.services.kis.kis_overseas_price_client import (
     KisOverseasPriceClient,
 )
@@ -36,12 +39,14 @@ class KisUnifiedPriceClient:
         overseas_client: KisOverseasPriceClient,
         domestic_info_client: KisDomesticInfoClient | None = None,
         prdt_type_cd: str = "300",
+        overseas_info_client: KisOverseasInfoClient | None = None,
     ):
         """Initialize with domestic and overseas clients."""
         self.domestic_client = domestic_client
         self.overseas_client = overseas_client
         self.domestic_info_client = domestic_info_client
         self.prdt_type_cd = prdt_type_cd
+        self.overseas_info_client = overseas_info_client
 
     def get_price(
         self, ticker: str, preferred_exchange: str | None = None
@@ -95,7 +100,7 @@ class KisUnifiedPriceClient:
                 if best_quote.price == 0 and quote.price > 0:
                     best_quote = quote
                 if preferred_exchange is not None:
-                    return best_quote
+                    break
             if best_quote is None:
                 return PriceQuote(
                     symbol=ticker,
@@ -104,6 +109,22 @@ class KisUnifiedPriceClient:
                     market="US",
                     currency="USD",
                     exchange=None,
+                )
+            if best_quote.name == "" and self.overseas_info_client is not None:
+                excd_for_info = best_quote.exchange or exchanges[0]
+                try:
+                    info = self.overseas_info_client.fetch_basic_info(
+                        excd=excd_for_info, symb=ticker
+                    )
+                except Exception:
+                    return best_quote
+                return PriceQuote(
+                    symbol=best_quote.symbol,
+                    name=info.name,
+                    price=best_quote.price,
+                    market=best_quote.market,
+                    currency=best_quote.currency,
+                    exchange=best_quote.exchange,
                 )
             return best_quote
 

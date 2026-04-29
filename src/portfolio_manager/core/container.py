@@ -33,6 +33,9 @@ from portfolio_manager.services.kis.kis_domestic_info_client import (
 from portfolio_manager.services.kis.kis_domestic_price_client import (
     KisDomesticPriceClient,
 )
+from portfolio_manager.services.kis.kis_overseas_info_client import (
+    KisOverseasInfoClient,
+)
 from portfolio_manager.services.kis.kis_overseas_price_client import (
     KisOverseasPriceClient,
 )
@@ -265,6 +268,17 @@ class ServiceContainer:
                     tr_id=info_tr_id,
                     cust_type=cust_type,
                 )
+                overseas_info_tr_id = os.getenv(
+                    "KIS_OVERSEAS_INFO_TR_ID", "CTPF1702R"
+                ).strip()
+                overseas_info_client = KisOverseasInfoClient(
+                    client=self.http_client,
+                    app_key=app_key,
+                    app_secret=app_secret,
+                    access_token=token,
+                    tr_id=overseas_info_tr_id,
+                    cust_type=cust_type,
+                )
                 overseas_client = KisOverseasPriceClient(
                     client=self.http_client,
                     app_key=app_key,
@@ -279,6 +293,7 @@ class ServiceContainer:
                     overseas_client,
                     domestic_info_client,
                     prdt_type_cd=prdt_type_cd,
+                    overseas_info_client=overseas_info_client,
                 )
                 self.price_service = PriceService(
                     unified_client,

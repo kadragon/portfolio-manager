@@ -15,6 +15,7 @@ from portfolio_manager.services.kis.kis_unified_price_client import (
     KisUnifiedPriceClient,
 )
 from portfolio_manager.services.kis.kis_domestic_info_client import DomesticStockInfo
+from portfolio_manager.services.kis.kis_overseas_info_client import OverseasStockInfo
 from portfolio_manager.services.kis.kis_price_parser import (
     parse_korea_price,
     parse_us_price,
@@ -97,7 +98,7 @@ def test_env_allows_real_prod_token():
 
 
 def test_overseas_price_empty_last_returns_zero():
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(
             status_code=200,
             json={
@@ -131,7 +132,7 @@ def test_overseas_price_empty_last_returns_zero():
 
 
 def test_overseas_price_uses_alternate_name_field():
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(
             status_code=200,
             json={
@@ -650,3 +651,124 @@ def test_parse_price_helpers_handle_missing_symbol_and_list_output():
     assert us_price.name == "Vanguard High Dividend Yield ETF"
     assert us_price.price == 144.76
     assert us_price.exchange == "NAS"
+
+
+# --- KisUnifiedPriceClient overseas info fallback tests ---
+
+
+@pytest.fixture
+def mock_overseas_info_client():
+    client = MagicMock()
+    client.fetch_basic_info.return_value = OverseasStockInfo(
+        pdno="VYM",
+        prdt_type_cd="512",
+        excd="NAS",
+        name="Vanguard High Dividend Yield ETF",
+    )
+    return client
+
+
+def test_overseas_name_falls_back_to_basic_info_when_missing(
+    mock_domestic_client, mock_overseas_info_client
+):
+    """해외 가격 응답에 이름이 없으면 기본정보로 보완한다."""
+    overseas_client = MagicMock()
+    overseas_client.fetch_current_price.return_value = PriceQuote(
+        symbol="VYM", name="", price=144.76, market="US", currency="USD", exchange="NAS"
+    )
+    unified = KisUnifiedPriceClient(
+        mock_domestic_client,
+        overseas_client,
+        overseas_info_client=mock_overseas_info_client,
+    )
+
+    quote = unified.get_price("VYM")
+
+    assert quote.name == "Vanguard High Dividend Yield ETF"
+    assert quote.price == 144.76
+    mock_overseas_info_client.fetch_basic_info.assert_called_once_with(
+        excd="NAS", symb="VYM"
+    )
+
+
+def test_overseas_name_lookup_failure_returns_price_quote(
+    mock_domestic_client, mock_overseas_info_client
+):
+    """해외 기본정보 조회가 실패해도 가격 응답은 반환한다."""
+    overseas_client = MagicMock()
+    overseas_client.fetch_current_price.return_value = PriceQuote(
+        symbol="VYM", name="", price=144.76, market="US", currency="USD", exchange="NAS"
+    )
+    mock_overseas_info_client.fetch_basic_info.side_effect = ValueError("API error")
+    unified = KisUnifiedPriceClient(
+        mock_domestic_client,
+        overseas_client,
+        overseas_info_client=mock_overseas_info_client,
+    )
+
+    quote = unified.get_price("VYM")
+
+    assert quote.name == ""
+    assert quote.price == 144.76
+
+
+def test_overseas_info_uses_best_quote_exchange(
+    mock_domestic_client, mock_overseas_info_client
+):
+    """가격이 NYS 에서 잡혔을 때 info 조회도 NYS 로 요청한다."""
+    overseas_client = MagicMock()
+    overseas_client.fetch_current_price.side_effect = [
+        PriceQuote(
+            symbol="VYM",
+            name="",
+            price=0.0,
+            market="US",
+            currency="USD",
+            exchange="NAS",
+        ),
+        PriceQuote(
+            symbol="VYM",
+            name="",
+            price=144.76,
+            market="US",
+            currency="USD",
+            exchange="NYS",
+        ),
+        httpx.HTTPError("AMS unavailable"),
+    ]
+    unified = KisUnifiedPriceClient(
+        mock_domestic_client,
+        overseas_client,
+        overseas_info_client=mock_overseas_info_client,
+    )
+
+    unified.get_price("VYM")
+
+    mock_overseas_info_client.fetch_basic_info.assert_called_once_with(
+        excd="NYS", symb="VYM"
+    )
+
+
+def test_overseas_info_not_called_when_name_already_present(
+    mock_domestic_client, mock_overseas_info_client
+):
+    """가격 응답에 이미 이름이 있으면 info 조회를 하지 않는다."""
+    overseas_client = MagicMock()
+    overseas_client.fetch_current_price.return_value = PriceQuote(
+        symbol="AAPL",
+        name="Apple Inc.",
+        price=192.0,
+        market="US",
+        currency="USD",
+        exchange="NAS",
+    )
+    unified = KisUnifiedPriceClient(
+        mock_domestic_client,
+        overseas_client,
+        overseas_info_client=mock_overseas_info_client,
+    )
+
+    quote = unified.get_price("AAPL")
+
+    assert quote.name == "Apple Inc."
+    mock_overseas_info_client.fetch_basic_info.assert_not_called()

@@ -1,8 +1,13 @@
 import httpx
+import pytest
 
 from portfolio_manager.services.kis.kis_domestic_info_client import (
     DomesticStockInfo,
     KisDomesticInfoClient,
+)
+from portfolio_manager.services.kis.kis_overseas_info_client import (
+    KisOverseasInfoClient,
+    OverseasStockInfo,
 )
 
 
@@ -102,3 +107,131 @@ def test_domestic_info_uses_fallback_name_fields():
 
     assert captured["method"] == "GET"
     assert result.name == "KB RISE 미국"
+
+
+# --- KisOverseasInfoClient Tests ---
+
+
+def test_overseas_info_request_uses_headers_and_params():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["params"] = dict(request.url.params)
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(
+            status_code=200,
+            json={
+                "rt_cd": "0",
+                "output": {
+                    "pdno": "AAPL",
+                    "prdt_name": "Apple Inc.",
+                },
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.Client(
+        transport=transport, base_url="https://openapi.koreainvestment.com:9443"
+    )
+
+    kis = KisOverseasInfoClient(
+        client=client,
+        app_key="app-key",
+        app_secret="app-secret",
+        access_token="access-token",
+        tr_id="CTPF1702R",
+        cust_type="P",
+    )
+
+    result = kis.fetch_basic_info(excd="NAS", symb="AAPL")
+
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/uapi/overseas-price/v1/quotations/search-info"
+    assert captured["params"] == {"PRDT_TYPE_CD": "512", "PDNO": "AAPL"}
+    assert captured["headers"]["authorization"] == "Bearer access-token"
+    assert captured["headers"]["appkey"] == "app-key"
+    assert captured["headers"]["appsecret"] == "app-secret"
+    assert captured["headers"]["tr_id"] == "CTPF1702R"
+    assert captured["headers"]["custtype"] == "P"
+
+    assert result == OverseasStockInfo(
+        pdno="AAPL",
+        prdt_type_cd="512",
+        excd="NAS",
+        name="Apple Inc.",
+    )
+
+
+def test_overseas_info_uses_fallback_name_fields():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={
+                "rt_cd": "0",
+                "output": {
+                    "pdno": "VYM",
+                    "prdt_name": "",
+                    "prdt_eng_name": "Vanguard High Dividend Yield ETF",
+                },
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.Client(
+        transport=transport, base_url="https://openapi.koreainvestment.com:9443"
+    )
+
+    kis = KisOverseasInfoClient(
+        client=client,
+        app_key="app-key",
+        app_secret="app-secret",
+        access_token="access-token",
+        tr_id="CTPF1702R",
+        cust_type="P",
+    )
+
+    result = kis.fetch_basic_info(excd="NYS", symb="VYM")
+
+    assert result.name == "Vanguard High Dividend Yield ETF"
+
+
+@pytest.mark.parametrize(
+    "excd,expected_prdt_type_cd",
+    [
+        ("NAS", "512"),
+        ("NYS", "513"),
+        ("AMS", "529"),
+        ("nas", "512"),
+    ],
+)
+def test_overseas_info_maps_exchange_to_prdt_type_cd(excd, expected_prdt_type_cd):
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(
+            status_code=200,
+            json={
+                "rt_cd": "0",
+                "output": {"pdno": "AAPL", "prdt_name": "Apple"},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.Client(
+        transport=transport, base_url="https://openapi.koreainvestment.com:9443"
+    )
+
+    kis = KisOverseasInfoClient(
+        client=client,
+        app_key="k",
+        app_secret="s",
+        access_token="t",
+        tr_id="CTPF1702R",
+        cust_type="P",
+    )
+    kis.fetch_basic_info(excd=excd, symb="AAPL")
+
+    assert captured["params"]["PRDT_TYPE_CD"] == expected_prdt_type_cd
