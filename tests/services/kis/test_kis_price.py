@@ -98,7 +98,7 @@ def test_env_allows_real_prod_token():
 
 
 def test_overseas_price_empty_last_returns_zero():
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(
             status_code=200,
             json={
@@ -132,7 +132,7 @@ def test_overseas_price_empty_last_returns_zero():
 
 
 def test_overseas_price_uses_alternate_name_field():
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(
             status_code=200,
             json={
