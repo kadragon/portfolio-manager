@@ -78,12 +78,12 @@ class PortfolioService:
         group_repository: GroupRepository,
         stock_repository: StockRepository,
         holding_repository: HoldingRepository,
+        *,
+        stock_service: "StockService",
         price_service: "PriceService | None" = None,
         exchange_rate_service: "ExchangeRateService | None" = None,
         account_repository: AccountRepository | None = None,
         deposit_repository: DepositRepository | None = None,
-        *,
-        stock_service: "StockService",
     ):
         """Initialize service with repositories."""
         self.group_repository = group_repository

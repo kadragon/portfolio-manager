@@ -12,10 +12,6 @@ from portfolio_manager.services.portfolio_service import (
 from portfolio_manager.services.stock_service import StockService
 
 
-def _make_stock_service(stock_repo: Mock) -> StockService:
-    return StockService(stock_repo)
-
-
 def test_get_holdings_by_group():
     """그룹별로 주식과 합산 수량을 조회한다."""
     # Given: 그룹과 주식
@@ -171,11 +167,11 @@ def test_portfolio_summary_calculates_total_value():
         group_repo,
         stock_repo,
         holding_repo,
-        price_service,
-        exchange_rate_service,
+        stock_service=StockService(stock_repo),
+        price_service=price_service,
+        exchange_rate_service=exchange_rate_service,
         account_repository=account_repo,
         deposit_repository=deposit_repo,
-        stock_service=_make_stock_service(stock_repo),
     )
 
     # When: Get portfolio summary with valuations
@@ -244,11 +240,11 @@ def test_portfolio_summary_sets_value_krw_for_usd_holdings():
         group_repo,
         stock_repo,
         holding_repo,
-        price_service,
-        exchange_rate_service,
+        stock_service=StockService(stock_repo),
+        price_service=price_service,
+        exchange_rate_service=exchange_rate_service,
         account_repository=account_repo,
         deposit_repository=deposit_repo,
-        stock_service=_make_stock_service(stock_repo),
     )
 
     summary = portfolio_service.get_portfolio_summary()
@@ -309,11 +305,11 @@ def test_portfolio_summary_strips_etf_suffix_from_name():
         group_repo,
         stock_repo,
         holding_repo,
-        price_service,
-        exchange_rate_service,
+        stock_service=StockService(stock_repo),
+        price_service=price_service,
+        exchange_rate_service=exchange_rate_service,
         account_repository=account_repo,
         deposit_repository=deposit_repo,
-        stock_service=_make_stock_service(stock_repo),
     )
 
     summary = portfolio_service.get_portfolio_summary()
@@ -375,9 +371,9 @@ def test_portfolio_summary_strips_etf_suffix_via_stock_service():
         group_repo,
         stock_repo,
         holding_repo,
-        price_service,
-        Mock(),
         stock_service=stock_service,
+        price_service=price_service,
+        exchange_rate_service=Mock(),
         account_repository=account_repo,
         deposit_repository=deposit_repo,
     )
@@ -433,11 +429,11 @@ def test_portfolio_summary_calculates_return_rate():
         group_repo,
         stock_repo,
         holding_repo,
-        price_service,
-        Mock(),
+        stock_service=StockService(stock_repo),
+        price_service=price_service,
+        exchange_rate_service=Mock(),
         account_repository=account_repo,
         deposit_repository=deposit_repo,
-        stock_service=_make_stock_service(stock_repo),
     )
 
     summary = portfolio_service.get_portfolio_summary()
@@ -500,9 +496,9 @@ def test_portfolio_summary_includes_change_rates():
         group_repo,
         stock_repo,
         holding_repo,
-        price_service,
-        exchange_rate_service,
-        stock_service=_make_stock_service(stock_repo),
+        stock_service=StockService(stock_repo),
+        price_service=price_service,
+        exchange_rate_service=exchange_rate_service,
     )
 
     summary = portfolio_service.get_portfolio_summary()
@@ -563,8 +559,8 @@ def test_portfolio_summary_passes_custom_change_rate_periods():
         group_repo,
         stock_repo,
         holding_repo,
-        price_service,
-        stock_service=_make_stock_service(stock_repo),
+        stock_service=StockService(stock_repo),
+        price_service=price_service,
     )
 
     service.get_portfolio_summary(change_rate_periods=("1d", "1m", "1y"))
@@ -620,9 +616,8 @@ def test_portfolio_summary_skips_change_rates_when_disabled():
         group_repo,
         stock_repo,
         holding_repo,
-        price_service,
-        None,
-        stock_service=_make_stock_service(stock_repo),
+        stock_service=StockService(stock_repo),
+        price_service=price_service,
     )
 
     summary = portfolio_service.get_portfolio_summary(include_change_rates=False)
@@ -690,8 +685,8 @@ def test_portfolio_summary_uses_single_stock_list_call():
         group_repo,
         stock_repo,
         holding_repo,
-        price_service,
-        stock_service=_make_stock_service(stock_repo),
+        stock_service=StockService(stock_repo),
+        price_service=price_service,
     )
 
     service.get_portfolio_summary(include_change_rates=False)
@@ -752,9 +747,9 @@ def test_portfolio_summary_updates_stock_exchange_cache():
         group_repo,
         stock_repo,
         holding_repo,
-        price_service,
-        exchange_rate_service,
-        stock_service=_make_stock_service(stock_repo),
+        stock_service=StockService(stock_repo),
+        price_service=price_service,
+        exchange_rate_service=exchange_rate_service,
     )
 
     portfolio_service.get_portfolio_summary()
