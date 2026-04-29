@@ -42,6 +42,10 @@ class KisOverseasInfoClient(KisBaseClient):
         )
         response.raise_for_status()
         data = response.json()
+        if data.get("rt_cd") not in (None, "0"):
+            raise ValueError(
+                f"KIS overseas info error [{data.get('msg_cd')}]: {data.get('msg1')}"
+            )
         output = data.get("output")
         if isinstance(output, list):
             output = output[0] if output else None

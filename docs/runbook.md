@@ -102,6 +102,7 @@ Harness garbage collection. Runs ruff + pyright + arch tests + bandit, plus harn
 | `KIS_APP_SECRET_2` | No | Second KIS app secret | |
 | `KIS_PRDT_TYPE_CD` | No | Product type code for stock info queries | `300` |
 | `KIS_DOMESTIC_INFO_TR_ID` | No | TR ID for domestic stock info | `CTPF1002R` |
+| `KIS_OVERSEAS_INFO_TR_ID` | No | TR ID for overseas stock info | `CTPF1702R` |
 | `USD_KRW_RATE` | No† | Fixed USD/KRW rate (overrides EXIM) | `1350.00` |
 | `EXIM_AUTH_KEY` | No† | EXIM API key for live exchange rates | |
 | `OLLAMA_HOST` | No | Ollama server URL (default `http://localhost:11434`) | `http://localhost:11434` |

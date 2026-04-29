@@ -100,7 +100,7 @@ class KisUnifiedPriceClient:
                 if best_quote.price == 0 and quote.price > 0:
                     best_quote = quote
                 if preferred_exchange is not None:
-                    return best_quote
+                    break
             if best_quote is None:
                 return PriceQuote(
                     symbol=ticker,
