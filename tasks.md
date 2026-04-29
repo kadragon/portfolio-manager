@@ -32,9 +32,9 @@ Schema / lifecycle:
 
 ### PR #77 — [REFACTOR] PortfolioService — require stock_service, drop else fallback (2026-04-28)
 
-- [ ] [debt] Constructor shape: move all optional collaborators in `PortfolioService.__init__` to keyword-only — currently optional positional args precede the required keyword-only `stock_service` (source: Claude) — `portfolio_service.py:76-87`
-- [ ] [debt] `_make_stock_service` helper vs inline inconsistency — centralize in `conftest.py` or always inline across test files (source: Claude) — `tests/services/test_portfolio_service.py:15-16`
-- [ ] [constraint] No test for `persist_name` raising — if `stock_repository.update_name` fails, `get_portfolio_summary` crashes silently; add error-path test or explicit except-and-log (source: Claude) — `portfolio_service.py:147`
+- [x] [debt] Constructor shape: move all optional collaborators in `PortfolioService.__init__` to keyword-only — currently optional positional args precede the required keyword-only `stock_service` (source: Claude) — `portfolio_service.py:76-87`
+- [x] [debt] `_make_stock_service` helper vs inline inconsistency — centralize in `conftest.py` or always inline across test files (source: Claude) — `tests/services/test_portfolio_service.py:15-16`
+- [x] [constraint] No test for `persist_name` raising — if `stock_repository.update_name` fails, `get_portfolio_summary` crashes silently; add error-path test or explicit except-and-log (source: Claude) — `portfolio_service.py:147`
 
 ## Review Backlog
 

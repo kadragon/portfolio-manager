@@ -361,11 +361,11 @@ class ServiceContainer:
             self.group_repository,
             self.stock_repository,
             self.holding_repository,
-            self.price_service,
-            self.exchange_rate_service,
+            stock_service=self.stock_service,
+            price_service=self.price_service,
+            exchange_rate_service=self.exchange_rate_service,
             account_repository=self.account_repository,
             deposit_repository=self.deposit_repository,
-            stock_service=self.stock_service,
         )
 
     def close(self) -> None:
