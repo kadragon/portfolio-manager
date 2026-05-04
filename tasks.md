@@ -48,3 +48,9 @@ Schema / lifecycle:
 
 - [x] [doc] `runbook.md` KST 섹션에 영향받는 테이블/모델명 명시 — 6개 모델 + `OrderExecutionModel` 예외 + `BaseModel.save()` 메커니즘 명시. (#75)
 - [x] [debt] 멀티-세대 로그 백업 — `_LOG_BACKUP_COUNT = 5` 도입, `.log.1`~`.log.5` 유지, 다세대 테스트 추가. (#76)
+
+## Review Backlog
+
+### PR #85 — [FEAT] Add KisDomesticInvestorClient for daily investor flow (2026-05-04)
+
+- [ ] [debt] Add individual investor fields (`individual_net_qty`, `individual_net_krw`) to `DomesticInvestorFlow` — KIS `inquire-investor` endpoint exposes `prsn_ntby_qty` / `prsn_ntby_tr_pbmn` but these are not mapped (source: Claude) — `kis_domestic_investor_client.py:17-21`
