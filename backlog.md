@@ -11,7 +11,7 @@
 ## 종목명 표시 개선 — Wave 2 (feat/stock-name-wave1 머지 후)
 
 - [x] [feat] Phase 4: KIS 잔고 응답(`output1.prdt_name`) 파싱 → `KisHoldingPosition.name` 신설 → `KisAccountSyncService`가 신규/기존 stock에 이름 저장.
-- [ ] [feat] Phase 5: 해외 종목 이름 조달 — `parse_us_price` 다중 필드명 폴백은 완료. 잔여: `KisOverseasInfoClient` 신설(tr_id는 KIS 공식 문서 재확인 필수) + `KisUnifiedPriceClient` 해외 분기에 info 폴백 추가.
+- [x] [feat] Phase 5: 해외 종목 이름 조달 — `parse_us_price` 다중 필드명 폴백은 완료. 잔여: `KisOverseasInfoClient` 신설(tr_id는 KIS 공식 문서 재확인 필수) + `KisUnifiedPriceClient` 해외 분기에 info 폴백 추가. (#79; KisUnifiedPriceClient overseas fallback wired in `container.py:278`)
 
 ## Local Ollama AI 인사이트 — Stage 1 잔여 + Stage 2 (branch `feat/llm-insights-stage1` 머지 후)
 
