@@ -72,13 +72,16 @@ All wiring happens in `core/container.py`. Route handlers receive the container 
 
 ```
 KisAuthClient + FileTokenStore → TokenManager
-TokenManager → Kis*Client (base_client.py)
+TokenManager → KisBaseClient (base_client.py)
   ├── KisDomesticPriceClient
   ├── KisOverseasPriceClient
   ├── KisDomesticBalanceClient
   ├── KisDomesticOrderClient
-  └── KisOverseasOrderClient
+  ├── KisOverseasOrderClient
+  ├── KisDomesticInfoClient
+  └── KisOverseasInfoClient
 KisUnifiedPriceClient / KisUnifiedOrderClient  # facade over domestic + overseas
+Helpers: KisMarketDetector, KisErrorHandler, KisPriceParser
 ```
 
 Each client shares the same `httpx.Client` and `TokenManager` per key set. `ServiceContainer` builds key sets keyed by integer ID (1, 2, …).
