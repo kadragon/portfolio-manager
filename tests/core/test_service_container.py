@@ -2,14 +2,67 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from decimal import Decimal
 import os
 from typing import Iterator
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
 import pytest
 
 from portfolio_manager.core.container import ServiceContainer
+
+
+@contextmanager
+def _dual_key_env_patches(container: ServiceContainer, build_side_effect: list):
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "KIS_APP_KEY": "k1",
+                "KIS_APP_SECRET": "s1",
+                "KIS_APP_KEY_2": "k2",
+                "KIS_APP_SECRET_2": "s2",
+                "KIS_ENV": "real",
+            },
+            clear=False,
+        ),
+        patch(
+            "portfolio_manager.core.container.httpx.Client", return_value=MagicMock()
+        ),
+        patch.object(
+            container, "_build_kis_client_set", side_effect=build_side_effect
+        ) as build_mock,
+        patch(
+            "portfolio_manager.core.container.KisDomesticPriceClient",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "portfolio_manager.core.container.KisDomesticInfoClient",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "portfolio_manager.core.container.KisOverseasInfoClient",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "portfolio_manager.core.container.KisOverseasPriceClient",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "portfolio_manager.core.container.KisUnifiedPriceClient",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "portfolio_manager.core.container.PriceService", return_value=MagicMock()
+        ),
+        patch.object(
+            ServiceContainer,
+            "_load_kis_account_credentials",
+            return_value=(None, None),
+        ),
+    ):
+        yield build_mock
 
 
 @pytest.fixture
@@ -212,6 +265,10 @@ def test_setup_kis_client_initializes_price_service(
             return_value=MagicMock(),
         ),
         patch(
+            "portfolio_manager.core.container.KisOverseasInfoClient",
+            return_value=MagicMock(),
+        ),
+        patch(
             "portfolio_manager.core.container.KisOverseasPriceClient",
             return_value=MagicMock(),
         ),
@@ -271,6 +328,10 @@ def test_setup_kis_client_wires_sync_and_order_clients_when_account_exists(
         ),
         patch(
             "portfolio_manager.core.container.KisDomesticInfoClient",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "portfolio_manager.core.container.KisOverseasInfoClient",
             return_value=MagicMock(),
         ),
         patch(
@@ -350,70 +411,23 @@ def test_setup_kis_client_logs_warning_on_exception(
 
 
 def test_setup_kis_client_initializes_both_key_sets_when_key_2_present(
-    container: ServiceContainer,
+    container: ServiceContainer, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Both key sets should be populated when KIS_APP_KEY_2 is configured."""
     set1, set2 = MagicMock(), MagicMock()
     mgr = MagicMock()
 
-    with (
-        patch.dict(
-            os.environ,
-            {
-                "KIS_APP_KEY": "k1",
-                "KIS_APP_SECRET": "s1",
-                "KIS_APP_KEY_2": "k2",
-                "KIS_APP_SECRET_2": "s2",
-                "KIS_ENV": "real",
-            },
-            clear=False,
-        ),
-        patch(
-            "portfolio_manager.core.container.httpx.Client", return_value=MagicMock()
-        ),
-        patch.object(
-            container,
-            "_build_kis_client_set",
-            side_effect=[(set1, mgr, "tok1"), (set2, mgr, "tok2")],
-        ) as build_mock,
-        patch(
-            "portfolio_manager.core.container.KisDomesticPriceClient",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "portfolio_manager.core.container.KisDomesticInfoClient",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "portfolio_manager.core.container.KisOverseasInfoClient",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "portfolio_manager.core.container.KisOverseasPriceClient",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "portfolio_manager.core.container.KisUnifiedPriceClient",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "portfolio_manager.core.container.PriceService", return_value=MagicMock()
-        ),
-        patch.object(
-            ServiceContainer,
-            "_load_kis_account_credentials",
-            return_value=(None, None),
-        ),
-    ):
+    with _dual_key_env_patches(
+        container, [(set1, mgr, "tok1"), (set2, mgr, "tok2")]
+    ) as build_mock:
         container._setup_kis_client()
 
     assert build_mock.call_count == 2
-    first_args = build_mock.call_args_list[0].args
-    second_args = build_mock.call_args_list[1].args
-    assert first_args[0] == 1 and first_args[1] == "k1" and first_args[2] == "s1"
-    assert second_args[0] == 2 and second_args[1] == "k2" and second_args[2] == "s2"
+    assert build_mock.call_args_list[0] == call(1, "k1", "s1", ANY, ANY, ANY)
+    assert build_mock.call_args_list[1] == call(2, "k2", "s2", ANY, ANY, ANY)
     assert container.kis_client_sets[1] is set1
     assert container.kis_client_sets[2] is set2
+    assert "Could not initialize KIS key set 2" not in caplog.text
 
 
 def test_setup_kis_client_key_set_2_failure_does_not_block_key_set_1(
@@ -423,54 +437,8 @@ def test_setup_kis_client_key_set_2_failure_does_not_block_key_set_1(
     set1 = MagicMock()
     mgr = MagicMock()
 
-    with (
-        patch.dict(
-            os.environ,
-            {
-                "KIS_APP_KEY": "k1",
-                "KIS_APP_SECRET": "s1",
-                "KIS_APP_KEY_2": "k2",
-                "KIS_APP_SECRET_2": "s2",
-                "KIS_ENV": "real",
-            },
-            clear=False,
-        ),
-        patch(
-            "portfolio_manager.core.container.httpx.Client", return_value=MagicMock()
-        ),
-        patch.object(
-            container,
-            "_build_kis_client_set",
-            side_effect=[(set1, mgr, "tok1"), RuntimeError("key-2 init failed")],
-        ),
-        patch(
-            "portfolio_manager.core.container.KisDomesticPriceClient",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "portfolio_manager.core.container.KisDomesticInfoClient",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "portfolio_manager.core.container.KisOverseasInfoClient",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "portfolio_manager.core.container.KisOverseasPriceClient",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "portfolio_manager.core.container.KisUnifiedPriceClient",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "portfolio_manager.core.container.PriceService", return_value=MagicMock()
-        ),
-        patch.object(
-            ServiceContainer,
-            "_load_kis_account_credentials",
-            return_value=(None, None),
-        ),
+    with _dual_key_env_patches(
+        container, [(set1, mgr, "tok1"), RuntimeError("key-2 init failed")]
     ):
         container._setup_kis_client()  # must not raise
 

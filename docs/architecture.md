@@ -81,7 +81,7 @@ TokenManager → KisBaseClient (base_client.py)
   ├── KisDomesticInfoClient
   └── KisOverseasInfoClient
 KisUnifiedPriceClient / KisUnifiedOrderClient  # facade over domestic + overseas
-Helpers: KisMarketDetector, KisErrorHandler, KisPriceParser
+Helper modules: kis_market_detector, kis_error_handler, kis_price_parser
 ```
 
 Each client shares the same `httpx.Client` and `TokenManager` per key set. `ServiceContainer` builds key sets keyed by integer ID (1, 2, …).
