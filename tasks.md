@@ -40,7 +40,7 @@ Schema / lifecycle:
 
 ### PR #81 — [FIX] Remove over-conservative cold-start guard for KIS key set 2 (2026-05-04)
 
-- [ ] [constraint] Add unit test for dual-key-set init path: assert `_build_kis_client_set` is called twice when `KIS_APP_KEY_2` is set, and that a second-call exception does not prevent key-set-1 init (source: Claude) — `container.py:308-323`
+- [x] [constraint] Add unit test for dual-key-set init path: assert `_build_kis_client_set` is called twice when `KIS_APP_KEY_2` is set, and that a second-call exception does not prevent key-set-1 init (source: Claude) — `container.py:308-323` (#83)
 
 ## Review Backlog
 

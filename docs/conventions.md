@@ -9,7 +9,8 @@ What agents frequently get wrong in this codebase. Ruff/pyright catch style and 
 | Python files | `snake_case` | `account_repository.py` |
 | Classes | `PascalCase` | `AccountRepository`, `KisDomesticPriceClient` |
 | Functions / methods | `snake_case` | `get_by_id()`, `sync_account()` |
-| Peewee model classes | `PascalCase`, singular | `Account`, `Holding`, `StockPrice` |
+| Peewee ORM model classes | `{Name}Model`, singular | `AccountModel`, `HoldingModel`, `StockPriceModel` |
+| Domain dataclasses | `PascalCase`, singular | `Account`, `Holding`, `StockPrice` |
 | Repository classes | `{Model}Repository` | `AccountRepository`, `HoldingRepository` |
 | KIS client classes | `Kis{Scope}{Role}Client` | `KisDomesticPriceClient`, `KisOverseasOrderClient` |
 | Route files | `snake_case`, plural noun | `accounts.py`, `groups.py` |
