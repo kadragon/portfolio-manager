@@ -53,4 +53,4 @@ Schema / lifecycle:
 
 ### PR #85 — [FEAT] Add KisDomesticInvestorClient for daily investor flow (2026-05-04)
 
-- [ ] [debt] Add individual investor fields (`individual_net_qty`, `individual_net_krw`) to `DomesticInvestorFlow` — KIS `inquire-investor` endpoint exposes `prsn_ntby_qty` / `prsn_ntby_tr_pbmn` but these are not mapped (source: Claude) — `kis_domestic_investor_client.py:17-21`
+- [x] [debt] Add individual investor fields (`individual_net_qty`, `individual_net_krw`) to `DomesticInvestorFlow` — KIS `prsn_ntby_qty` / `prsn_ntby_tr_pbmn` now mapped; test added (PR TBD)

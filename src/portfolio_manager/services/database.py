@@ -149,6 +149,27 @@ class OrderExecutionModel(BaseModel):
         indexes = ((("created_at",), False),)
 
 
+class InvestorFlowModel(BaseModel):
+    id = UUIDField(primary_key=True, default=uuid4)
+    ticker = TextField()
+    flow_date = DateField()
+    foreign_net_qty = IntegerField(default=0)
+    institution_net_qty = IntegerField(default=0)
+    individual_net_qty = IntegerField(default=0)
+    foreign_net_krw = IntegerField(default=0)
+    institution_net_krw = IntegerField(default=0)
+    individual_net_krw = IntegerField(default=0)
+    created_at = DateTimeField(default=now_kst)
+    updated_at = DateTimeField(default=now_kst)
+
+    class Meta:
+        table_name = "investor_flows"
+        indexes = (
+            (("ticker", "flow_date"), True),
+            (("ticker",), False),
+        )
+
+
 ALL_MODELS = [
     GroupModel,
     StockModel,
@@ -157,6 +178,7 @@ ALL_MODELS = [
     DepositModel,
     StockPriceModel,
     OrderExecutionModel,
+    InvestorFlowModel,
 ]
 
 

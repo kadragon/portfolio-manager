@@ -19,8 +19,10 @@ class DomesticInvestorFlow:
     date: str
     foreign_net_qty: int
     institution_net_qty: int
+    individual_net_qty: int
     foreign_net_krw: int
     institution_net_krw: int
+    individual_net_krw: int
 
 
 @dataclass(frozen=True)
@@ -61,8 +63,10 @@ class KisDomesticInvestorClient(KisBaseClient):
                 date=row.get("stck_bsop_date", ""),
                 foreign_net_qty=_parse_int(row.get("frgn_ntby_qty")),
                 institution_net_qty=_parse_int(row.get("orgn_ntby_qty")),
+                individual_net_qty=_parse_int(row.get("prsn_ntby_qty")),
                 foreign_net_krw=_parse_int(row.get("frgn_ntby_tr_pbmn")),
                 institution_net_krw=_parse_int(row.get("orgn_ntby_tr_pbmn")),
+                individual_net_krw=_parse_int(row.get("prsn_ntby_tr_pbmn")),
             )
             for row in output
         ]

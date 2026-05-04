@@ -74,15 +74,19 @@ def test_investor_flow_request_uses_headers_and_params():
             date="20260503",
             foreign_net_qty=1000,
             institution_net_qty=-500,
+            individual_net_qty=0,
             foreign_net_krw=5000000,
             institution_net_krw=-2500000,
+            individual_net_krw=0,
         ),
         DomesticInvestorFlow(
             date="20260502",
             foreign_net_qty=200,
             institution_net_qty=300,
+            individual_net_qty=0,
             foreign_net_krw=1000000,
             institution_net_krw=1500000,
+            individual_net_krw=0,
         ),
     ]
 
@@ -124,8 +128,10 @@ def test_investor_flow_handles_missing_optional_fields():
             date="20260501",
             foreign_net_qty=50,
             institution_net_qty=0,
+            individual_net_qty=0,
             foreign_net_krw=0,
             institution_net_krw=0,
+            individual_net_krw=0,
         )
     ]
 
@@ -180,8 +186,10 @@ def test_investor_flow_handles_space_padded_integers():
             date="20260501",
             foreign_net_qty=1000,
             institution_net_qty=0,
+            individual_net_qty=0,
             foreign_net_krw=5000000,
             institution_net_krw=0,
+            individual_net_krw=0,
         )
     ]
 
@@ -226,3 +234,39 @@ def test_investor_flow_refreshes_token_on_expiry():
     assert result == []
     assert call_count == 2
     assert token_manager.get_token.call_count == 1
+
+
+def test_investor_flow_parses_individual_investor_fields():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={
+                "rt_cd": "0",
+                "output": [
+                    {
+                        "stck_bsop_date": "20260503",
+                        "frgn_ntby_qty": "100",
+                        "orgn_ntby_qty": "200",
+                        "prsn_ntby_qty": "300",
+                        "frgn_ntby_tr_pbmn": "1000000",
+                        "orgn_ntby_tr_pbmn": "2000000",
+                        "prsn_ntby_tr_pbmn": "3000000",
+                    }
+                ],
+            },
+        )
+
+    kis = _make_client(handler)
+    result = kis.fetch_daily_flow("005930")
+
+    assert result == [
+        DomesticInvestorFlow(
+            date="20260503",
+            foreign_net_qty=100,
+            institution_net_qty=200,
+            individual_net_qty=300,
+            foreign_net_krw=1000000,
+            institution_net_krw=2000000,
+            individual_net_krw=3000000,
+        )
+    ]

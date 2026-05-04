@@ -24,7 +24,7 @@
 ### Stage 2 — KIS 수급 + B2 이상치 감지
 
 - [ ] [feat] `services/kis/kis_domestic_investor_client.py` — `/uapi/domestic-stock/v1/quotations/inquire-investor` 래퍼. tr_id 는 KIS 공식 문서 재확인 필수. 기존 `KisBaseClient` 상속 + `TokenManager` 공유.
-- [ ] [feat] `services/database.py` + `repositories/investor_flow_repository.py` — 외인/기관 일별 순매수 캐시 테이블(ticker, date, foreign_net_krw, institution_net_krw) + migration smoke test.
+- [x] [feat] `services/database.py` + `repositories/investor_flow_repository.py` — 외인/기관/개인 일별 순매수 캐시 테이블(ticker, flow_date, foreign/institution/individual net qty/krw) + `KisDomesticInvestorClient` container wiring + migration smoke test. (PR TBD)
 - [ ] [feat] `services/flow_anomaly_service.py` — z-score > 2 또는 5일 연속 순매수 감지 → `AnomalySignal` 반환. 보유 종목 대상 lazy 조회(당일 캐시 우선).
 - [ ] [feat] `PortfolioInsightService.explain_anomalies()` + 라우트 `/insights/alerts` (HTMX partial) + `view.html` 네 번째 탭 또는 배너.
 - [ ] [docs] `runbook.md` — KIS demo 환경에서 수급 데이터 제한 가능성 명시 + `pytest -m integration` 커버.
