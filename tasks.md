@@ -38,6 +38,12 @@ Schema / lifecycle:
 
 ## Review Backlog
 
+### PR #81 — [FIX] Remove over-conservative cold-start guard for KIS key set 2 (2026-05-04)
+
+- [ ] [constraint] Add unit test for dual-key-set init path: assert `_build_kis_client_set` is called twice when `KIS_APP_KEY_2` is set, and that a second-call exception does not prevent key-set-1 init (source: Claude) — `container.py:308-323`
+
+## Review Backlog
+
 ### PR #72 — [HARNESS] Clear backlog — log rotation, Q&A deadline, KST docs, tasks schema (2026-04-25)
 
 - [x] [doc] `runbook.md` KST 섹션에 영향받는 테이블/모델명 명시 — 6개 모델 + `OrderExecutionModel` 예외 + `BaseModel.save()` 메커니즘 명시. (#75)
