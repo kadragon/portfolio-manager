@@ -85,3 +85,26 @@ def test_list_by_ticker_range_returns_empty_when_no_data():
     repo = InvestorFlowRepository()
     results = repo.list_by_ticker_range("005930", date(2026, 1, 1), date(2026, 1, 31))
     assert results == []
+
+
+def test_save_preserves_created_at_on_upsert():
+    repo = InvestorFlowRepository()
+    first = _save(repo, "005930", date(2026, 5, 1))
+    updated = _save(repo, "005930", date(2026, 5, 1), foreign_net_qty=999)
+    assert updated.created_at == first.created_at
+    assert updated.updated_at >= first.updated_at
+
+
+def test_save_round_trips_negative_net_values():
+    repo = InvestorFlowRepository()
+    _save(
+        repo,
+        "005930",
+        date(2026, 5, 2),
+        foreign_net_qty=-500,
+        foreign_net_krw=-2_500_000,
+    )
+    result = repo.get_by_ticker_and_date("005930", date(2026, 5, 2))
+    assert result is not None
+    assert result.foreign_net_qty == -500
+    assert result.foreign_net_krw == -2_500_000
