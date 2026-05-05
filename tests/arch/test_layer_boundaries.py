@@ -14,7 +14,7 @@ ROOT = pathlib.Path(__file__).parent.parent.parent / "src" / "portfolio_manager"
 # Anchoring prevents false positives on stdlib/framework classes (e.g. Response.delete).
 _ORM_CLASS_QUERY_PATTERN = re.compile(
     r"\b(BaseModel|GroupModel|StockModel|AccountModel|HoldingModel|"
-    r"DepositModel|StockPriceModel|OrderExecutionModel)"
+    r"DepositModel|StockPriceModel|OrderExecutionModel|InvestorFlowModel)"
     r"\.(select|get|get_by_id|get_or_none|get_or_create|create|"
     r"delete|drop_table|create_table|bulk_create|bulk_insert|insert_many)\("
 )

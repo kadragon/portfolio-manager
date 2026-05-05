@@ -53,4 +53,10 @@ Schema / lifecycle:
 
 ### PR #85 — [FEAT] Add KisDomesticInvestorClient for daily investor flow (2026-05-04)
 
-- [ ] [debt] Add individual investor fields (`individual_net_qty`, `individual_net_krw`) to `DomesticInvestorFlow` — KIS `inquire-investor` endpoint exposes `prsn_ntby_qty` / `prsn_ntby_tr_pbmn` but these are not mapped (source: Claude) — `kis_domestic_investor_client.py:17-21`
+- [x] [debt] Add individual investor fields (`individual_net_qty`, `individual_net_krw`) to `DomesticInvestorFlow` — KIS `prsn_ntby_qty` / `prsn_ntby_tr_pbmn` now mapped; test added (PR TBD)
+
+### PR #86 — [FEAT] Stage 2 — investor flow persistence layer + KisDomesticInvestorClient wiring (2026-05-05)
+
+- [ ] [debt] Consider `BigIntegerField` for KRW fields if DB backend changes — SQLite INTEGER is 8-byte and safe now, but portability concern if ever migrating to PostgreSQL/MySQL (source: Gemini) — `services/database.py:159-161`
+- [ ] [debt] Narrow `IntegrityError` catch in `InvestorFlowRepository.save` — broad catch also captures non-uniqueness constraint violations; same pattern exists in `StockPriceRepository` (source: Gemini) — `repositories/investor_flow_repository.py:51`
+- [ ] [debt] Align `DomesticInvestorFlow.date` (str) naming/type with repository's `flow_date` (date) — currently requires service-layer conversion; intentional design but naming divergence adds friction (source: Gemini) — `services/kis/kis_domestic_investor_client.py:19`

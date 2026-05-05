@@ -18,6 +18,9 @@ from portfolio_manager.repositories.stock_repository import StockRepository
 from portfolio_manager.repositories.order_execution_repository import (
     OrderExecutionRepository,
 )
+from portfolio_manager.repositories.investor_flow_repository import (
+    InvestorFlowRepository,
+)
 from portfolio_manager.repositories.stock_price_repository import StockPriceRepository
 from portfolio_manager.services.kis.kis_auth_client import KisAuthClient
 from portfolio_manager.services.kis.kis_domestic_balance_client import (
@@ -39,6 +42,9 @@ from portfolio_manager.services.kis.kis_token_manager import TokenManager
 from portfolio_manager.services.kis.kis_token_store import FileTokenStore
 from portfolio_manager.services.kis.kis_unified_price_client import (
     KisUnifiedPriceClient,
+)
+from portfolio_manager.services.kis.kis_domestic_investor_client import (
+    KisDomesticInvestorClient,
 )
 from portfolio_manager.services.kis.kis_domestic_order_client import (
     KisDomesticOrderClient,
@@ -91,6 +97,7 @@ class ServiceContainer:
         self.group_repository = GroupRepository()
         self.stock_repository = StockRepository()
         self.stock_price_repository = StockPriceRepository()
+        self.investor_flow_repository = InvestorFlowRepository()
         self.account_repository = AccountRepository()
         self.holding_repository = HoldingRepository()
         self.deposit_repository = DepositRepository()
@@ -106,6 +113,7 @@ class ServiceContainer:
         self.kis_acnt_prdt_cd: str | None = None
         self.kis_client_sets: dict[int, KisClientSet] = {}
         self.ollama_client: OllamaClient | None = None
+        self.investor_client: KisDomesticInvestorClient | None = None
 
     def setup(self) -> None:
         """Setup external services (KIS, Exchange, Ollama)."""
@@ -276,6 +284,15 @@ class ServiceContainer:
                     domestic_info_client,
                     prdt_type_cd=prdt_type_cd,
                     overseas_info_client=overseas_info_client,
+                )
+                self.investor_client = KisDomesticInvestorClient(
+                    client=self.http_client,
+                    app_key=app_key,
+                    app_secret=app_secret,
+                    access_token=token,
+                    cust_type=cust_type,
+                    env=env,
+                    token_manager=manager,
                 )
                 self.price_service = PriceService(
                     unified_client,
