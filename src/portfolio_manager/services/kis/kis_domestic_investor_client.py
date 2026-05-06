@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
 
 import httpx
 
@@ -14,9 +15,14 @@ def _parse_int(val: object) -> int:
     return int(text) if text else 0
 
 
+def _parse_yyyymmdd(val: object) -> date:
+    text = str(val).strip() if val is not None else ""
+    return datetime.strptime(text, "%Y%m%d").date() if len(text) == 8 else date.min
+
+
 @dataclass(frozen=True)
 class DomesticInvestorFlow:
-    date: str
+    flow_date: date
     foreign_net_qty: int
     institution_net_qty: int
     individual_net_qty: int
@@ -60,7 +66,7 @@ class KisDomesticInvestorClient(KisBaseClient):
         output = data.get("output") or []
         return [
             DomesticInvestorFlow(
-                date=row.get("stck_bsop_date", ""),
+                flow_date=_parse_yyyymmdd(row.get("stck_bsop_date")),
                 foreign_net_qty=_parse_int(row.get("frgn_ntby_qty")),
                 institution_net_qty=_parse_int(row.get("orgn_ntby_qty")),
                 individual_net_qty=_parse_int(row.get("prsn_ntby_qty")),
