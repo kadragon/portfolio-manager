@@ -27,7 +27,6 @@ _GROUP_ORDER = (
     "해외배당",
 )
 
-_DOMESTIC_GROUPS = ("국내성장", "국내배당")
 
 _GROUP_BANDS: dict[str, Decimal] = {
     "국내성장": Decimal("5"),
@@ -270,7 +269,6 @@ class RebalanceService:
             accounts=accounts,
             account_group_state=account_group_state,
             account_aum=account_aum,
-            restrict_overseas=restrict_overseas,
         )
 
         (
@@ -554,7 +552,6 @@ class RebalanceService:
         accounts: list[Account],
         account_group_state: dict[tuple[UUID, str], _AccountGroupState],
         account_aum: dict[UUID, Decimal],
-        restrict_overseas: bool = False,
     ) -> dict[tuple[UUID, str], Decimal]:
         sell: dict[tuple[UUID, str], Decimal] = {}
         for account in accounts:
@@ -562,8 +559,6 @@ class RebalanceService:
             if aum <= 0:
                 continue
             for group_name in _GROUP_ORDER:
-                if restrict_overseas and group_name not in _DOMESTIC_GROUPS:
-                    continue
                 state = account_group_state[(account.id, group_name)]
                 if not state.is_upper_breached:
                     continue
@@ -702,6 +697,7 @@ class RebalanceService:
         account_id: UUID,
         rebalance_group_name: str,
         positions: list[_AccountPosition],
+        restrict_overseas: bool = False,
     ) -> _BuyCandidate | None:
         account_positions = [
             p
@@ -709,6 +705,7 @@ class RebalanceService:
             if p.account_id == account_id
             and p.rebalance_group_name == rebalance_group_name
             and p.value_local > 0
+            and (not restrict_overseas or is_domestic_ticker(p.ticker))
         ]
         if not account_positions:
             return None
@@ -736,12 +733,14 @@ class RebalanceService:
         *,
         rebalance_group_name: str,
         ticker_snapshots: dict[str, _TickerSnapshot],
+        restrict_overseas: bool = False,
     ) -> _BuyCandidate | None:
         group_snaps = [
             snap
             for snap in ticker_snapshots.values()
             if snap.rebalance_group_name == rebalance_group_name
             and snap.total_value_local > 0
+            and (not restrict_overseas or is_domestic_ticker(snap.ticker))
         ]
         if not group_snaps:
             return None
@@ -807,12 +806,6 @@ class RebalanceService:
 
             unmet_groups: list[str] = []
             blocked_groups: set[str] = set()
-            if restrict_overseas:
-                for g in _GROUP_ORDER:
-                    if g not in _DOMESTIC_GROUPS:
-                        blocked_groups.add(g)
-                        if account_need.get(g, Decimal("0")) > 0:
-                            unmet_groups.append(g)
 
             while cash > 0:
                 group_name = self._pick_next_group(account_need, blocked_groups)
@@ -828,11 +821,13 @@ class RebalanceService:
                     account_id=account.id,
                     rebalance_group_name=group_name,
                     positions=positions,
+                    restrict_overseas=restrict_overseas,
                 )
                 if candidate is None:
                     candidate = self._select_buy_candidate_portfolio_fallback(
                         rebalance_group_name=group_name,
                         ticker_snapshots=ticker_snapshots,
+                        restrict_overseas=restrict_overseas,
                     )
                 if candidate is None:
                     unmet_groups.append(group_name)
@@ -894,11 +889,13 @@ class RebalanceService:
                         account_id=account.id,
                         rebalance_group_name=group_name,
                         positions=positions,
+                        restrict_overseas=restrict_overseas,
                     )
                     if candidate is None:
                         candidate = self._select_buy_candidate_portfolio_fallback(
                             rebalance_group_name=group_name,
                             ticker_snapshots=ticker_snapshots,
+                            restrict_overseas=restrict_overseas,
                         )
                     if candidate is None and group_name not in unmet_groups:
                         unmet_groups.append(group_name)
