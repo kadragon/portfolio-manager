@@ -1,6 +1,6 @@
 """Rebalance routes — recommendations + order execution."""
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse
 
 from portfolio_manager.services.rebalance_execution_service import (
@@ -13,7 +13,9 @@ from portfolio_manager.web.deps import get_container, get_templates
 router = APIRouter(prefix="/rebalance")
 
 
-def _build_rebalance_plan(container) -> tuple[PortfolioSummary, RebalancePlan]:
+def _build_rebalance_plan(
+    container, restrict_overseas: bool = False
+) -> tuple[PortfolioSummary, RebalancePlan]:
     portfolio_service = container.get_portfolio_service()
     summary = portfolio_service.get_portfolio_summary(include_change_rates=False)
 
@@ -32,12 +34,16 @@ def _build_rebalance_plan(container) -> tuple[PortfolioSummary, RebalancePlan]:
         holdings_by_account=holdings_by_account,
         groups=groups,
         stocks=stocks,
+        restrict_overseas=restrict_overseas,
     )
     return summary, plan
 
 
 @router.get("", response_class=HTMLResponse)
-def view_rebalance(request: Request) -> HTMLResponse:
+def view_rebalance(
+    request: Request,
+    restrict_overseas: bool = Query(False),
+) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
 
@@ -53,11 +59,14 @@ def view_rebalance(request: Request) -> HTMLResponse:
                 "account_summaries": [],
                 "summary": None,
                 "plan": None,
+                "restrict_overseas": restrict_overseas,
             },
         )
 
     try:
-        summary, plan = _build_rebalance_plan(container)
+        summary, plan = _build_rebalance_plan(
+            container, restrict_overseas=restrict_overseas
+        )
         error = None
     except Exception as e:
         return templates.TemplateResponse(
@@ -71,6 +80,7 @@ def view_rebalance(request: Request) -> HTMLResponse:
                 "account_summaries": [],
                 "summary": None,
                 "plan": None,
+                "restrict_overseas": restrict_overseas,
             },
         )
 
@@ -86,6 +96,7 @@ def view_rebalance(request: Request) -> HTMLResponse:
             "summary": summary,
             "plan": plan,
             "has_order_client": container.order_client is not None,
+            "restrict_overseas": restrict_overseas,
         },
     )
 
@@ -94,6 +105,7 @@ def view_rebalance(request: Request) -> HTMLResponse:
 def execute_rebalance(
     request: Request,
     confirm: str = Form(default=""),
+    restrict_overseas: str = Form(default=""),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
@@ -106,7 +118,9 @@ def execute_rebalance(
         )
 
     try:
-        _summary, plan = _build_rebalance_plan(container)
+        _summary, plan = _build_rebalance_plan(
+            container, restrict_overseas=(restrict_overseas == "on")
+        )
         all_recs = plan.sell_recommendations + plan.buy_recommendations
 
         # Build exchange map from stocks

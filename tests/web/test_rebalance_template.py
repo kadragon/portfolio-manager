@@ -89,7 +89,7 @@ def test_rebalance_page_shows_fractional_quantity_for_overseas(client, monkeypat
     monkeypatch.setattr(
         rebalance_routes,
         "_build_rebalance_plan",
-        lambda _container: (summary, plan),
+        lambda _container, **_kw: (summary, plan),
     )
 
     response = client.get("/rebalance")
@@ -162,7 +162,7 @@ def test_rebalance_page_renders_account_sections(client, monkeypatch):
     monkeypatch.setattr(
         rebalance_routes,
         "_build_rebalance_plan",
-        lambda _container: (
+        lambda _container, **_kw: (
             PortfolioSummary(holdings=[], total_value=Decimal("0")),
             plan,
         ),
@@ -203,7 +203,7 @@ def test_rebalance_page_shows_unmet_groups_warning(client, monkeypatch):
     monkeypatch.setattr(
         rebalance_routes,
         "_build_rebalance_plan",
-        lambda _container: (
+        lambda _container, **_kw: (
             PortfolioSummary(holdings=[], total_value=Decimal("0")),
             plan,
         ),

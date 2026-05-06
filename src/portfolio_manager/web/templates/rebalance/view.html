@@ -4,6 +4,22 @@
 {% block content %}
 <h1 class="text-lg font-semibold text-base-content mb-3">리밸런싱 추천</h1>
 
+<form method="get" action="/rebalance" class="mb-3 flex items-center gap-2">
+  <label class="label cursor-pointer justify-start gap-2 inline-flex">
+    <input type="checkbox" name="restrict_overseas" value="on"
+           class="checkbox checkbox-sm"
+           {% if restrict_overseas %}checked{% endif %}>
+    <span class="label-text text-sm">해외 주식 매도 제한 (국내 종목으로만 리밸런싱)</span>
+  </label>
+  <button type="submit" class="btn btn-ghost btn-xs">적용</button>
+</form>
+
+{% if restrict_overseas %}
+<div class="alert alert-info text-sm py-2 mb-3" role="status">
+  해외 매도 제한 옵션 적용 중 — 해외 그룹은 매도·매수 추천에서 제외됩니다.
+</div>
+{% endif %}
+
 {% if error %}
 <div class="alert alert-error text-sm py-2" role="alert" aria-live="polite">{{ error }}</div>
 {% endif %}
@@ -297,6 +313,9 @@
           hx-swap="outerHTML"
           hx-confirm="실제 주문을 실행하시겠습니까?"
           data-request-message="주문을 실행하는 중…">
+      {% if restrict_overseas %}
+      <input type="hidden" name="restrict_overseas" value="on">
+      {% endif %}
       {% if has_order_client %}
       <button type="submit" class="btn btn-primary btn-sm" hx-disabled-elt="this">주문 실행</button>
       {% else %}

@@ -56,3 +56,22 @@ def test_view_rebalance_shows_error_when_group_mapping_is_invalid(
 
     assert response.status_code == 200
     assert "리밸런싱 그룹 매핑 불가 그룹" in response.text
+
+
+def test_view_rebalance_restrict_overseas_renders_checkbox_checked_and_banner(
+    client, fake_container
+):
+    response = client.get("/rebalance?restrict_overseas=on")
+
+    assert response.status_code == 200
+    assert 'name="restrict_overseas"' in response.text
+    assert "checked" in response.text
+    assert "해외 매도 제한 옵션 적용 중" in response.text
+
+
+def test_execute_rebalance_passes_restrict_overseas_flag(client, fake_container):
+    # Sending restrict_overseas=on should not cause an error; the flag is forwarded
+    # to build_plan which still works with the fake container's domestic-only holdings.
+    response = client.post("/rebalance/execute", data={"restrict_overseas": "on"})
+
+    assert response.status_code == 200
