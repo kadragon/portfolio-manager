@@ -883,3 +883,86 @@ def test_build_plan_account_summaries_populated() -> None:
     assert len(plan.account_summaries) == 2
     names = {s.account_name for s in plan.account_summaries}
     assert names == {"Alpha", "Beta"}
+
+
+def test_restrict_overseas_excludes_overseas_tickers_from_sells_and_buys() -> None:
+    # Portfolio: 국내성장 41% (upper breach, ticker 005930 — 6 digits = domestic),
+    #            해외성장 35% (upper breach, ticker QQQ — non-6-digit = overseas).
+    # With restrict_overseas=True: sells/buys must only use domestic tickers (len==6).
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    values = {
+        "국내성장": Decimal("410"),
+        "국내배당": Decimal("100"),
+        "해외성장": Decimal("350"),
+        "해외안정": Decimal("80"),
+        "해외배당": Decimal("60"),
+    }
+    summary = make_summary(groups, stocks, values)
+    account = make_account("A", Decimal("0"))
+    holdings_by_account = make_holdings_by_account(
+        [account],
+        stocks,
+        {
+            "A": {k: v for k, v in values.items()},
+        },
+    )
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=[account],
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=list(stocks.values()),
+        restrict_overseas=True,
+    )
+
+    sell_tickers = {rec.ticker for rec in plan.sell_recommendations}
+    buy_tickers = {rec.ticker for rec in plan.buy_recommendations}
+    assert all(len(t) == 6 for t in sell_tickers), (
+        f"해외 티커 SELL 포함: {sell_tickers}"
+    )
+    assert all(len(t) == 6 for t in buy_tickers), f"해외 티커 BUY 포함: {buy_tickers}"
+    assert any(plan.sell_recommendations), "국내 종목 SELL 추천이 있어야 함"
+
+    # Groups with only overseas tickers should appear in unmet_groups.
+    assert plan.account_summaries
+    unmet = set(plan.account_summaries[0].unmet_groups)
+    assert "해외안정" in unmet or "해외배당" in unmet, (
+        "해외 전용 그룹이 unmet에 포함돼야 함"
+    )
+
+
+def test_restrict_overseas_off_includes_overseas_sells() -> None:
+    # Same scenario without the flag: 해외성장 upper breach should yield a SELL.
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    values = {
+        "국내성장": Decimal("410"),
+        "국내배당": Decimal("100"),
+        "해외성장": Decimal("350"),
+        "해외안정": Decimal("80"),
+        "해외배당": Decimal("60"),
+    }
+    summary = make_summary(groups, stocks, values)
+    account = make_account("A", Decimal("0"))
+    holdings_by_account = make_holdings_by_account(
+        [account],
+        stocks,
+        {
+            "A": {k: v for k, v in values.items()},
+        },
+    )
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=[account],
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=list(stocks.values()),
+    )
+
+    sell_groups = {rec.rebalance_group_name for rec in plan.sell_recommendations}
+    assert "해외성장" in sell_groups, "플래그 미설정 시 해외성장 SELL 추천이 있어야 함"

@@ -27,6 +27,7 @@ _GROUP_ORDER = (
     "해외배당",
 )
 
+
 _GROUP_BANDS: dict[str, Decimal] = {
     "국내성장": Decimal("5"),
     "국내배당": Decimal("3"),
@@ -201,6 +202,7 @@ class RebalanceService:
         holdings_by_account: dict[UUID, list[Holding]],
         groups: list[Group],
         stocks: list[Stock],
+        restrict_overseas: bool = False,
     ) -> RebalancePlan:
         total_assets = (
             summary.total_assets if summary.total_assets != 0 else summary.total_value
@@ -278,6 +280,7 @@ class RebalanceService:
             sell_by_account_group=sell_by_account_group,
             positions=positions,
             account_group_state=account_group_state,
+            restrict_overseas=restrict_overseas,
         )
 
         (
@@ -293,6 +296,7 @@ class RebalanceService:
             sold_by_account_group=sold_by_account_group,
             sell_cash_by_account=sell_cash_by_account,
             ticker_snapshots=ticker_snapshots,
+            restrict_overseas=restrict_overseas,
         )
 
         account_summaries = self._build_account_summaries(
@@ -575,6 +579,7 @@ class RebalanceService:
         sell_by_account_group: dict[tuple[UUID, str], Decimal],
         positions: list[_AccountPosition],
         account_group_state: dict[tuple[UUID, str], _AccountGroupState],
+        restrict_overseas: bool = False,
     ) -> tuple[
         list[RebalanceRecommendation],
         dict[UUID, Decimal],
@@ -604,6 +609,7 @@ class RebalanceService:
                     if p.account_id == account_id
                     and p.rebalance_group_name == group_name
                     and p.value_krw > 0
+                    and (not restrict_overseas or is_domestic_ticker(p.ticker))
                 ]
                 if not account_positions:
                     continue
@@ -691,6 +697,7 @@ class RebalanceService:
         account_id: UUID,
         rebalance_group_name: str,
         positions: list[_AccountPosition],
+        restrict_overseas: bool = False,
     ) -> _BuyCandidate | None:
         account_positions = [
             p
@@ -698,6 +705,7 @@ class RebalanceService:
             if p.account_id == account_id
             and p.rebalance_group_name == rebalance_group_name
             and p.value_local > 0
+            and (not restrict_overseas or is_domestic_ticker(p.ticker))
         ]
         if not account_positions:
             return None
@@ -725,12 +733,14 @@ class RebalanceService:
         *,
         rebalance_group_name: str,
         ticker_snapshots: dict[str, _TickerSnapshot],
+        restrict_overseas: bool = False,
     ) -> _BuyCandidate | None:
         group_snaps = [
             snap
             for snap in ticker_snapshots.values()
             if snap.rebalance_group_name == rebalance_group_name
             and snap.total_value_local > 0
+            and (not restrict_overseas or is_domestic_ticker(snap.ticker))
         ]
         if not group_snaps:
             return None
@@ -763,6 +773,7 @@ class RebalanceService:
         sold_by_account_group: dict[tuple[UUID, str], Decimal],
         sell_cash_by_account: dict[UUID, Decimal],
         ticker_snapshots: dict[str, _TickerSnapshot],
+        restrict_overseas: bool = False,
     ) -> tuple[
         list[RebalanceRecommendation],
         dict[UUID, Decimal],
@@ -810,11 +821,13 @@ class RebalanceService:
                     account_id=account.id,
                     rebalance_group_name=group_name,
                     positions=positions,
+                    restrict_overseas=restrict_overseas,
                 )
                 if candidate is None:
                     candidate = self._select_buy_candidate_portfolio_fallback(
                         rebalance_group_name=group_name,
                         ticker_snapshots=ticker_snapshots,
+                        restrict_overseas=restrict_overseas,
                     )
                 if candidate is None:
                     unmet_groups.append(group_name)
@@ -876,11 +889,13 @@ class RebalanceService:
                         account_id=account.id,
                         rebalance_group_name=group_name,
                         positions=positions,
+                        restrict_overseas=restrict_overseas,
                     )
                     if candidate is None:
                         candidate = self._select_buy_candidate_portfolio_fallback(
                             rebalance_group_name=group_name,
                             ticker_snapshots=ticker_snapshots,
+                            restrict_overseas=restrict_overseas,
                         )
                     if candidate is None and group_name not in unmet_groups:
                         unmet_groups.append(group_name)

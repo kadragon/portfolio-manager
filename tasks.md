@@ -60,3 +60,8 @@ Schema / lifecycle:
 - [ ] [debt] Consider `BigIntegerField` for KRW fields if DB backend changes — SQLite INTEGER is 8-byte and safe now, but portability concern if ever migrating to PostgreSQL/MySQL (source: Gemini) — `services/database.py:159-161`
 - [ ] [debt] Narrow `IntegrityError` catch in `InvestorFlowRepository.save` — broad catch also captures non-uniqueness constraint violations; same pattern exists in `StockPriceRepository` (source: Gemini) — `repositories/investor_flow_repository.py:51`
 - [ ] [debt] Align `DomesticInvestorFlow.date` (str) naming/type with repository's `flow_date` (date) — currently requires service-layer conversion; intentional design but naming divergence adds friction (source: Gemini) — `services/kis/kis_domestic_investor_client.py:19`
+
+### PR #87 — [FEAT] Add restrict-overseas toggle to rebalancing (2026-05-06)
+
+- [ ] [debt] `_calculate_sell_amounts_by_account_group` computes sell targets for restricted overseas groups unnecessarily — filter could be applied earlier to skip non-domestic groups when `restrict_overseas=True` (source: Claude+Gemini) — `rebalance_service.py:549`
+- [ ] [doc] Add comment to `is_domestic_ticker` documenting the 6-char heuristic assumption and known limitation (e.g., 6-char overseas tickers would be misclassified) (source: Claude) — `kis_market_detector.py`
