@@ -69,9 +69,21 @@ def test_view_rebalance_restrict_overseas_renders_checkbox_checked_and_banner(
     assert "해외 매도 제한 옵션 적용 중" in response.text
 
 
-def test_execute_rebalance_passes_restrict_overseas_flag(client, fake_container):
-    # Sending restrict_overseas=on should not cause an error; the flag is forwarded
-    # to build_plan which still works with the fake container's domestic-only holdings.
+def test_execute_rebalance_passes_restrict_overseas_flag(
+    client, fake_container, monkeypatch
+):
+    from portfolio_manager.web.routes import rebalance as rebalance_routes
+
+    captured: dict = {}
+    original = rebalance_routes._build_rebalance_plan
+
+    def _spy(container, **kwargs):
+        captured.update(kwargs)
+        return original(container, **kwargs)
+
+    monkeypatch.setattr(rebalance_routes, "_build_rebalance_plan", _spy)
+
     response = client.post("/rebalance/execute", data={"restrict_overseas": "on"})
 
     assert response.status_code == 200
+    assert captured.get("restrict_overseas") is True

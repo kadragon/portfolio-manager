@@ -105,7 +105,7 @@ def view_rebalance(
 def execute_rebalance(
     request: Request,
     confirm: str = Form(default=""),
-    restrict_overseas: str = Form(default=""),
+    restrict_overseas: bool = Form(False),
 ) -> HTMLResponse:
     container = get_container(request)
     templates = get_templates(request)
@@ -119,7 +119,7 @@ def execute_rebalance(
 
     try:
         _summary, plan = _build_rebalance_plan(
-            container, restrict_overseas=(restrict_overseas == "on")
+            container, restrict_overseas=restrict_overseas
         )
         all_recs = plan.sell_recommendations + plan.buy_recommendations
 
