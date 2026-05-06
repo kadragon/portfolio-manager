@@ -57,11 +57,11 @@ Schema / lifecycle:
 
 ### PR #86 — [FEAT] Stage 2 — investor flow persistence layer + KisDomesticInvestorClient wiring (2026-05-05)
 
-- [ ] [debt] Consider `BigIntegerField` for KRW fields if DB backend changes — SQLite INTEGER is 8-byte and safe now, but portability concern if ever migrating to PostgreSQL/MySQL (source: Gemini) — `services/database.py:159-161`
-- [ ] [debt] Narrow `IntegrityError` catch in `InvestorFlowRepository.save` — broad catch also captures non-uniqueness constraint violations; same pattern exists in `StockPriceRepository` (source: Gemini) — `repositories/investor_flow_repository.py:51`
-- [ ] [debt] Align `DomesticInvestorFlow.date` (str) naming/type with repository's `flow_date` (date) — currently requires service-layer conversion; intentional design but naming divergence adds friction (source: Gemini) — `services/kis/kis_domestic_investor_client.py:19`
+- [x] [debt] Consider `BigIntegerField` for KRW fields if DB backend changes — promoted to `BigIntegerField` for Postgres/MySQL portability (#88)
+- [x] [debt] Narrow `IntegrityError` catch in `InvestorFlowRepository.save` — replaced with refetch-first pattern; same fix applied to `StockPriceRepository` (#88)
+- [x] [debt] Align `DomesticInvestorFlow.date` (str) naming/type with repository's `flow_date` (date) — renamed field, added `_parse_yyyymmdd` helper (#88)
 
 ### PR #87 — [FEAT] Add restrict-overseas toggle to rebalancing (2026-05-06)
 
-- [ ] [debt] `_calculate_sell_amounts_by_account_group` computes sell targets for restricted overseas groups unnecessarily — filter could be applied earlier to skip non-domestic groups when `restrict_overseas=True` (source: Claude+Gemini) — `rebalance_service.py:549`
-- [ ] [doc] Add comment to `is_domestic_ticker` documenting the 6-char heuristic assumption and known limitation (e.g., 6-char overseas tickers would be misclassified) (source: Claude) — `kis_market_detector.py`
+- [x] [debt] `_calculate_sell_amounts_by_account_group` computes sell targets for restricted overseas groups unnecessarily — added `restrict_overseas` + `positions` params; pre-builds eligible key set to skip overseas-only groups (#89)
+- [x] [doc] Add comment to `is_domestic_ticker` documenting the 6-char heuristic assumption and known limitation (e.g., 6-char overseas tickers would be misclassified) — extended docstring (#89)
