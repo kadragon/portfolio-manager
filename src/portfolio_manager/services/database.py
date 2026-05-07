@@ -8,6 +8,7 @@ from uuid import uuid4
 from portfolio_manager.core.time import now_kst
 
 from peewee import (
+    BigIntegerField,
     DateField,
     DateTimeField,
     DecimalField,
@@ -156,9 +157,9 @@ class InvestorFlowModel(BaseModel):
     foreign_net_qty = IntegerField(default=0)
     institution_net_qty = IntegerField(default=0)
     individual_net_qty = IntegerField(default=0)
-    foreign_net_krw = IntegerField(default=0)
-    institution_net_krw = IntegerField(default=0)
-    individual_net_krw = IntegerField(default=0)
+    foreign_net_krw = BigIntegerField(default=0)
+    institution_net_krw = BigIntegerField(default=0)
+    individual_net_krw = BigIntegerField(default=0)
     created_at = DateTimeField(default=now_kst)
     updated_at = DateTimeField(default=now_kst)
 

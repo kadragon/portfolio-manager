@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import date
 from uuid import uuid4
 
-from peewee import IntegrityError
-
 from portfolio_manager.core.time import now_kst
 from portfolio_manager.models.investor_flow import InvestorFlow
 from portfolio_manager.services.database import InvestorFlowModel
@@ -37,6 +35,9 @@ class InvestorFlowRepository:
         individual_net_krw: int,
     ) -> InvestorFlow:
         now = now_kst()
+        key_filter = (InvestorFlowModel.ticker == ticker) & (
+            InvestorFlowModel.flow_date == flow_date
+        )
         fields = dict(
             ticker=ticker,
             flow_date=flow_date,
@@ -47,18 +48,14 @@ class InvestorFlowRepository:
             institution_net_krw=institution_net_krw,
             individual_net_krw=individual_net_krw,
         )
-        try:
+        if InvestorFlowModel.get_or_none(key_filter) is not None:
+            InvestorFlowModel.update(**fields, updated_at=now).where(
+                key_filter
+            ).execute()
+            row = InvestorFlowModel.get(key_filter)
+        else:
             row = InvestorFlowModel.create(
                 id=uuid4(), created_at=now, updated_at=now, **fields
-            )
-        except IntegrityError:
-            InvestorFlowModel.update(**fields, updated_at=now).where(
-                (InvestorFlowModel.ticker == ticker)
-                & (InvestorFlowModel.flow_date == flow_date)
-            ).execute()
-            row = InvestorFlowModel.get(
-                (InvestorFlowModel.ticker == ticker)
-                & (InvestorFlowModel.flow_date == flow_date)
             )
         return self._to_domain(row)
 

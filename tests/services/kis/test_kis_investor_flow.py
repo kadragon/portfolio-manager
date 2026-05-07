@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 import httpx
 
@@ -71,7 +73,7 @@ def test_investor_flow_request_uses_headers_and_params():
 
     assert result == [
         DomesticInvestorFlow(
-            date="20260503",
+            flow_date=date(2026, 5, 3),
             foreign_net_qty=1000,
             institution_net_qty=-500,
             individual_net_qty=0,
@@ -80,7 +82,7 @@ def test_investor_flow_request_uses_headers_and_params():
             individual_net_krw=0,
         ),
         DomesticInvestorFlow(
-            date="20260502",
+            flow_date=date(2026, 5, 2),
             foreign_net_qty=200,
             institution_net_qty=300,
             individual_net_qty=0,
@@ -125,7 +127,7 @@ def test_investor_flow_handles_missing_optional_fields():
 
     assert result == [
         DomesticInvestorFlow(
-            date="20260501",
+            flow_date=date(2026, 5, 1),
             foreign_net_qty=50,
             institution_net_qty=0,
             individual_net_qty=0,
@@ -183,7 +185,7 @@ def test_investor_flow_handles_space_padded_integers():
 
     assert result == [
         DomesticInvestorFlow(
-            date="20260501",
+            flow_date=date(2026, 5, 1),
             foreign_net_qty=1000,
             institution_net_qty=0,
             individual_net_qty=0,
@@ -261,7 +263,7 @@ def test_investor_flow_parses_individual_investor_fields():
 
     assert result == [
         DomesticInvestorFlow(
-            date="20260503",
+            flow_date=date(2026, 5, 3),
             foreign_net_qty=100,
             institution_net_qty=200,
             individual_net_qty=300,
@@ -270,3 +272,25 @@ def test_investor_flow_parses_individual_investor_fields():
             individual_net_krw=3000000,
         )
     ]
+
+
+def test_investor_flow_date_missing_falls_back_to_date_min():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json={
+                "rt_cd": "0",
+                "output": [
+                    {
+                        # stck_bsop_date absent — should parse to date.min
+                        "frgn_ntby_qty": "10",
+                    }
+                ],
+            },
+        )
+
+    kis = _make_client(handler)
+    result = kis.fetch_daily_flow("005930")
+
+    assert len(result) == 1
+    assert result[0].flow_date == date.min

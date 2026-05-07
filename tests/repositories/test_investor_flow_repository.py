@@ -2,6 +2,9 @@
 
 from datetime import date
 
+import pytest
+from peewee import IntegrityError
+
 from portfolio_manager.repositories.investor_flow_repository import (
     InvestorFlowRepository,
 )
@@ -108,3 +111,27 @@ def test_save_round_trips_negative_net_values():
     assert result is not None
     assert result.foreign_net_qty == -500
     assert result.foreign_net_krw == -2_500_000
+
+
+def test_save_propagates_non_uniqueness_integrity_error():
+    repo = InvestorFlowRepository()
+    with pytest.raises((IntegrityError, Exception)):
+        repo.save(
+            ticker=None,  # NOT NULL violation
+            flow_date=date(2026, 5, 1),
+            foreign_net_qty=0,
+            institution_net_qty=0,
+            individual_net_qty=0,
+            foreign_net_krw=0,
+            institution_net_krw=0,
+            individual_net_krw=0,
+        )
+
+
+def test_save_round_trips_large_krw_values():
+    repo = InvestorFlowRepository()
+    large_krw = 5_000_000_000  # > 2^31, requires 64-bit integer
+    _save(repo, "005930", date(2026, 5, 4), foreign_net_krw=large_krw)
+    result = repo.get_by_ticker_and_date("005930", date(2026, 5, 4))
+    assert result is not None
+    assert result.foreign_net_krw == large_krw

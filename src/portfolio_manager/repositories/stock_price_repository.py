@@ -6,8 +6,6 @@ from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 
-from peewee import IntegrityError
-
 from portfolio_manager.core.time import now_kst
 from portfolio_manager.models.stock_price import StockPrice
 from portfolio_manager.services.database import StockPriceModel
@@ -38,7 +36,21 @@ class StockPriceRepository:
     ) -> StockPrice:
         """Upsert cached price for a ticker and date."""
         now = now_kst()
-        try:
+        key_filter = (StockPriceModel.ticker == ticker) & (
+            StockPriceModel.price_date == price_date
+        )
+        existing = StockPriceModel.get_or_none(key_filter)
+        if existing is not None:
+            preserved_name = name if name else existing.name
+            StockPriceModel.update(
+                price=price,
+                currency=currency,
+                name=preserved_name,
+                exchange=exchange,
+                updated_at=now,
+            ).where(key_filter).execute()
+            row = StockPriceModel.get(key_filter)
+        else:
             row = StockPriceModel.create(
                 id=uuid4(),
                 ticker=ticker,
@@ -49,26 +61,6 @@ class StockPriceRepository:
                 exchange=exchange,
                 created_at=now,
                 updated_at=now,
-            )
-        except IntegrityError:
-            existing = StockPriceModel.get(
-                (StockPriceModel.ticker == ticker)
-                & (StockPriceModel.price_date == price_date)
-            )
-            preserved_name = name if name else existing.name
-            StockPriceModel.update(
-                price=price,
-                currency=currency,
-                name=preserved_name,
-                exchange=exchange,
-                updated_at=now,
-            ).where(
-                (StockPriceModel.ticker == ticker)
-                & (StockPriceModel.price_date == price_date)
-            ).execute()
-            row = StockPriceModel.get(
-                (StockPriceModel.ticker == ticker)
-                & (StockPriceModel.price_date == price_date)
             )
         return self._to_domain(row)
 
