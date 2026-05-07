@@ -269,6 +269,8 @@ class RebalanceService:
             accounts=accounts,
             account_group_state=account_group_state,
             account_aum=account_aum,
+            positions=positions,
+            restrict_overseas=restrict_overseas,
         )
 
         (
@@ -552,13 +554,28 @@ class RebalanceService:
         accounts: list[Account],
         account_group_state: dict[tuple[UUID, str], _AccountGroupState],
         account_aum: dict[UUID, Decimal],
+        positions: list[_AccountPosition],
+        restrict_overseas: bool = False,
     ) -> dict[tuple[UUID, str], Decimal]:
+        eligible_keys: set[tuple[UUID, str]] | None = None
+        if restrict_overseas:
+            eligible_keys = {
+                (p.account_id, p.rebalance_group_name)
+                for p in positions
+                if is_domestic_ticker(p.ticker)
+            }
+
         sell: dict[tuple[UUID, str], Decimal] = {}
         for account in accounts:
             aum = account_aum[account.id]
             if aum <= 0:
                 continue
             for group_name in _GROUP_ORDER:
+                if (
+                    eligible_keys is not None
+                    and (account.id, group_name) not in eligible_keys
+                ):
+                    continue
                 state = account_group_state[(account.id, group_name)]
                 if not state.is_upper_breached:
                     continue

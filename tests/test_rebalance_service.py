@@ -966,3 +966,40 @@ def test_restrict_overseas_off_includes_overseas_sells() -> None:
 
     sell_groups = {rec.rebalance_group_name for rec in plan.sell_recommendations}
     assert "해외성장" in sell_groups, "플래그 미설정 시 해외성장 SELL 추천이 있어야 함"
+
+
+def test_restrict_overseas_skips_sell_calc_for_overseas_only_group() -> None:
+    # 해외성장 upper-breached (35% vs 30% target+5% upper), but all positions are
+    # overseas (QQQ).  With restrict_overseas=True, no sell should be generated for
+    # 해외성장 — confirming the early-exit in _calculate_sell_amounts_by_account_group.
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    values = {
+        "국내성장": Decimal("300"),
+        "국내배당": Decimal("150"),
+        "해외성장": Decimal("350"),  # 35% vs upper 30% — upper-breached
+        "해외안정": Decimal("100"),
+        "해외배당": Decimal("100"),
+    }
+    summary = make_summary(groups, stocks, values)
+    account = make_account("A", Decimal("0"))
+    holdings_by_account = make_holdings_by_account(
+        [account],
+        stocks,
+        {"A": {k: v for k, v in values.items()}},
+    )
+
+    service = RebalanceService()
+    plan = service.build_plan(
+        summary=summary,
+        accounts=[account],
+        holdings_by_account=holdings_by_account,
+        groups=groups,
+        stocks=list(stocks.values()),
+        restrict_overseas=True,
+    )
+
+    sell_groups = {rec.rebalance_group_name for rec in plan.sell_recommendations}
+    assert "해외성장" not in sell_groups, (
+        "해외 전용 그룹(해외성장)은 restrict_overseas=True 시 SELL 제외돼야 함"
+    )
