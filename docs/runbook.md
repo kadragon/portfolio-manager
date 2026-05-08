@@ -110,8 +110,8 @@ Harness garbage collection. Runs ruff + pyright + arch tests + bandit, plus harn
 | `OLLAMA_TIMEOUT_SEC` | No | Per-request timeout in seconds (default `60`) | `120` |
 | `OLLAMA_NUM_CTX` | No | Override context window size | `8192` |
 
-\* App runs without KIS credentials — price fetching and account sync are disabled.  
-† At least one of `USD_KRW_RATE` or `EXIM_AUTH_KEY` is needed for overseas stock valuation.  
+\* App runs without KIS credentials — price fetching and account sync are disabled.
+† At least one of `USD_KRW_RATE` or `EXIM_AUTH_KEY` is needed for overseas stock valuation.
 ‡ `OLLAMA_MODEL` unset ⇒ `/insights` page renders a "service unavailable" banner. A running `ollama serve` is required when the variable is set; app startup does not block on the Ollama server.
 
 KIS token files are cached in `.data/kis_token_{key_id}.json`. Mount `.data/` in Docker to persist tokens across restarts (avoids rate-limit violations on restart).
@@ -120,44 +120,44 @@ KIS token files are cached in `.data/kis_token_{key_id}.json`. Mount `.data/` in
 
 ### KIS token issuance fails on startup
 
-**Symptom:** `Could not initialize price service: ...` in startup logs.  
-**Cause:** Invalid credentials, wrong `KIS_ENV`, or rate limit hit (1 token/min).  
+**Symptom:** `Could not initialize price service: ...` in startup logs.
+**Cause:** Invalid credentials, wrong `KIS_ENV`, or rate limit hit (1 token/min).
 **Fix:** Check `KIS_APP_KEY` / `KIS_APP_SECRET` / `KIS_ENV`. Wait 60 seconds if rate-limited. Token is cached in `.data/` — if the file is stale or corrupted, delete it.
 
 ### CSS not updating in browser
 
-**Symptom:** Template changes don't reflect in browser.  
-**Cause:** `make css-watch` not running, or `bin/tailwindcss` not downloaded.  
+**Symptom:** Template changes don't reflect in browser.
+**Cause:** `make css-watch` not running, or `bin/tailwindcss` not downloaded.
 **Fix:** Run `make setup` first, then `make css-watch`.
 
 ### Coverage below 85%
 
-**Symptom:** `FAIL Required test coverage of 85% not reached.`  
-**Cause:** New code added without tests.  
+**Symptom:** `FAIL Required test coverage of 85% not reached.`
+**Cause:** New code added without tests.
 **Fix:** Write tests for the uncovered lines shown in the coverage report. Run `uv run pytest --cov-report=term-missing` to see exact lines.
 
 ### pre-commit hook fails on pyright
 
-**Symptom:** `error: Cannot find implementation or declaration file for module '...'`  
-**Cause:** New dependency not installed, or `.venv` out of sync.  
+**Symptom:** `error: Cannot find implementation or declaration file for module '...'`
+**Cause:** New dependency not installed, or `.venv` out of sync.
 **Fix:** Run `uv sync` to reinstall, then re-commit.
 
 ### Docker: `.data` permission error on Linux
 
-**Symptom:** `PermissionError: [Errno 13] Permission denied: '.data/kis_token_1.json'`  
-**Cause:** Container created files as root, host user can't write.  
+**Symptom:** `PermissionError: [Errno 13] Permission denied: '.data/kis_token_1.json'`
+**Cause:** Container created files as root, host user can't write.
 **Fix:** `sudo chown -R "$(id -u):$(id -g)" .data && LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose up -d --build web`
 
 ### `/insights` shows "AI 인사이트 서비스가 설정되지 않았습니다"
 
-**Symptom:** The AI 인사이트 tab banners a setup warning.  
-**Cause:** `OLLAMA_MODEL` is unset, price service failed to start (no KIS key), or the Ollama server is unreachable.  
+**Symptom:** The AI 인사이트 tab banners a setup warning.
+**Cause:** `OLLAMA_MODEL` is unset, price service failed to start (no KIS key), or the Ollama server is unreachable.
 **Fix:** Start `ollama serve`, pull the desired model (`ollama pull <tag>`), set `OLLAMA_MODEL` in `.env`, and restart. Network failures while the page is open surface as warning banners under each tab — the page stays functional with Python-computed numbers.
 
 ### In-memory DB not reset between tests
 
-**Symptom:** Tests pass individually but fail when run together (state leaks).  
-**Cause:** Test fixture not scoped correctly, or shared container instance.  
+**Symptom:** Tests pass individually but fail when run together (state leaks).
+**Cause:** Test fixture not scoped correctly, or shared container instance.
 **Fix:** Use `function`-scoped `test_container` fixture. Check `tests/conftest.py`.
 
 ### Timezone / KST migration

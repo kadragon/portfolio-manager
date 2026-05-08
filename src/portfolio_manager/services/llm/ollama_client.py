@@ -22,6 +22,7 @@ class ToolCall:
 
     name: str
     arguments: dict[str, Any]
+    id: str = ""
 
 
 @dataclass
@@ -148,5 +149,6 @@ def _parse_tool_calls(raw_tool_calls: Any) -> list[ToolCall]:
                 arguments = {}
         if not isinstance(arguments, dict):
             arguments = {}
-        parsed.append(ToolCall(name=name, arguments=arguments))
+        call_id = str(entry.get("id") or "").strip()
+        parsed.append(ToolCall(name=name, arguments=arguments, id=call_id))
     return parsed
