@@ -39,6 +39,7 @@ from portfolio_manager.services.llm.prompt_templates import (
     qa_user_prompt,
     rebalance_xai_user_prompt,
 )
+from portfolio_manager.services.group_summary import compute_group_summary
 from portfolio_manager.services.portfolio_service import PortfolioService
 from portfolio_manager.services.rebalance_service import RebalancePlan, RebalanceService
 
@@ -202,24 +203,17 @@ class PortfolioInsightService:
             key=lambda c: c.contribution_krw,
         )[:_MAX_CONTRIBUTORS]
 
-        total_stock = summary.total_stock_value
-        group_weights: list[GroupWeightInfo] = []
-        for group in self._group_repository.list_all():
-            current_value = value_by_group.get(group.name, Decimal("0"))
-            current_pct = (
-                current_value / total_stock * Decimal("100")
-                if total_stock > 0
-                else Decimal("0")
+        group_weights: list[GroupWeightInfo] = [
+            GroupWeightInfo(
+                name=row.group.name,
+                current_percentage=row.actual_pct,
+                target_percentage=row.target_pct,
+                diff_percentage=row.diff_pct,
             )
-            target_pct = Decimal(str(group.target_percentage))
-            group_weights.append(
-                GroupWeightInfo(
-                    name=group.name,
-                    current_percentage=current_pct,
-                    target_percentage=target_pct,
-                    diff_percentage=current_pct - target_pct,
-                )
+            for row in compute_group_summary(
+                summary, all_groups=self._group_repository.list_all()
             )
+        ]
 
         return NarrativeSnapshot(
             period=period,
@@ -502,31 +496,20 @@ class PortfolioInsightService:
         summary = self._portfolio_service.get_portfolio_summary(
             include_change_rates=False
         )
-        value_by_group: dict[str, Decimal] = defaultdict(Decimal)
-        for group, holding in summary.holdings:
-            if holding.value_krw is not None:
-                value_by_group[group.name] += holding.value_krw
-
-        total_stock = summary.total_stock_value
-        groups = []
-        for group in self._group_repository.list_all():
-            value = value_by_group.get(group.name, Decimal("0"))
-            current_pct = (
-                value / total_stock * Decimal("100")
-                if total_stock > 0
-                else Decimal("0")
-            )
-            target_pct = Decimal(str(group.target_percentage))
-            groups.append(
-                {
-                    "name": group.name,
-                    "current_value_krw": value,
-                    "current_percentage": current_pct,
-                    "target_percentage": target_pct,
-                    "diff_percentage": current_pct - target_pct,
-                }
-            )
-        return {"groups": groups, "total_stock_value_krw": total_stock}
+        rows = compute_group_summary(
+            summary, all_groups=self._group_repository.list_all()
+        )
+        groups = [
+            {
+                "name": row.group.name,
+                "current_value_krw": row.total,
+                "current_percentage": row.actual_pct,
+                "target_percentage": row.target_pct,
+                "diff_percentage": row.diff_pct,
+            }
+            for row in rows
+        ]
+        return {"groups": groups, "total_stock_value_krw": summary.total_stock_value}
 
     def _tool_top_movers(self, *, period: str, n: int) -> dict[str, Any]:
         summary = self._portfolio_service.get_portfolio_summary(
