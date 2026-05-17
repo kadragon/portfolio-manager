@@ -117,11 +117,11 @@ def test_portfolio_summary_holdings_sorted_by_value_krw_descending():
 
 def test_group_summary_table_sorted_by_total_value_descending():
     """Web dashboard group summary should be sorted by total value descending."""
+    from portfolio_manager.services.group_summary import compute_group_summary
     from portfolio_manager.services.portfolio_service import (
         PortfolioSummary,
         StockHoldingWithPrice,
     )
-    from portfolio_manager.web.routes.dashboard import _compute_group_summary
 
     # Setup groups with different total values
     now = datetime.now()
@@ -201,8 +201,12 @@ def test_group_summary_table_sorted_by_total_value_descending():
         ),
     ]
 
-    summary = PortfolioSummary(holdings=holdings, total_value=Decimal("900000"))
-    rows = _compute_group_summary(summary)
+    summary = PortfolioSummary(
+        holdings=holdings,
+        total_value=Decimal("900000"),
+        total_stock_value=Decimal("900000"),
+    )
+    rows = compute_group_summary(summary)
 
-    ordered_names = [row["group"].name for row in rows]
+    ordered_names = [row.group.name for row in rows]
     assert ordered_names == ["BigGroup", "MediumGroup", "SmallGroup"]
