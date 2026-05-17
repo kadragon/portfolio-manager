@@ -45,6 +45,20 @@ Invariants. (1)(3) enforced by `pytest tests/arch/`. (2)(4) enforced by pytest c
 - HTMX 라우트는 `HX-Request` 헤더로 partial/full 응답 분기. 일관성 유지.
 - Tailwind CSS는 standalone CLI (`bin/tailwindcss`). Node.js 불필요. `make css-watch`로 개발.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`kadragon/portfolio-manager`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default label vocabulary (needs-triage / needs-info / ready-for-agent / ready-for-human / wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — `CONTEXT.md` at repo root + `docs/adr/`. See `docs/agents/domain.md`.
+
 ## Language Policy
 
 - 코드, 커밋, docs/: English
