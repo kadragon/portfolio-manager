@@ -30,9 +30,10 @@ def compute_group_summary(
     group_by_id: dict[str, Group] = {}
 
     for group, h in summary.holdings:
+        if h.value_krw is None:
+            continue
         key = str(group.id)
-        value = h.value_krw if h.value_krw is not None else h.value
-        totals[key] = totals.get(key, Decimal("0")) + value
+        totals[key] = totals.get(key, Decimal("0")) + h.value_krw
         group_by_id[key] = group
 
     if all_groups is not None:

@@ -130,8 +130,8 @@ def test_all_groups_includes_zero_holding_groups():
     assert empty_row.diff_pct == Decimal("-40")
 
 
-def test_value_krw_fallback_to_value():
-    """Holdings with value_krw=None use value (quantity * price) instead."""
+def test_value_krw_none_skipped():
+    """Holdings with value_krw=None are excluded — mixing currencies corrupts KRW totals."""
     g = _group("A")
     s = Stock(id=uuid4(), ticker="T", group_id=g.id, created_at=None, updated_at=None)  # type: ignore[arg-type]
     h = StockHoldingWithPrice(
@@ -150,4 +150,4 @@ def test_value_krw_fallback_to_value():
 
     rows = compute_group_summary(summary)
 
-    assert rows[0].total == Decimal("500000")  # 10 * 50000
+    assert rows == []

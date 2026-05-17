@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections import defaultdict
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
@@ -170,12 +169,8 @@ class PortfolioInsightService:
         )
 
         contributors: list[ContributorInfo] = []
-        value_by_group: dict[str, Decimal] = defaultdict(Decimal)
 
         for group, holding in summary.holdings:
-            if holding.value_krw is not None:
-                value_by_group[group.name] += holding.value_krw
-
             change = Decimal("0")
             if holding.change_rates:
                 change = holding.change_rates.get(rate_label, Decimal("0"))
