@@ -16,27 +16,14 @@ router = APIRouter(prefix="/rebalance")
 def _build_rebalance_plan(
     container, restrict_overseas: bool = False
 ) -> tuple[PortfolioSummary, RebalancePlan]:
-    portfolio_service = container.get_portfolio_service()
-    summary = portfolio_service.get_portfolio_summary(include_change_rates=False)
-
-    accounts = container.account_repository.list_all()
-    holdings_by_account = {
-        account.id: container.holding_repository.list_by_account(account.id)
-        for account in accounts
-    }
-    groups = container.group_repository.list_all()
-    stocks = container.stock_repository.list_all()
-
-    rebalance_service = RebalanceService()
-    plan = rebalance_service.build_plan(
-        summary=summary,
-        accounts=accounts,
-        holdings_by_account=holdings_by_account,
-        groups=groups,
-        stocks=stocks,
+    return RebalanceService().build_plan_from_repos(
+        portfolio_service=container.get_portfolio_service(),
+        account_repository=container.account_repository,
+        holding_repository=container.holding_repository,
+        group_repository=container.group_repository,
+        stock_repository=container.stock_repository,
         restrict_overseas=restrict_overseas,
     )
-    return summary, plan
 
 
 @router.get("", response_class=HTMLResponse)

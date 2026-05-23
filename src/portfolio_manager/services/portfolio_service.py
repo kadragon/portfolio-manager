@@ -130,67 +130,73 @@ class PortfolioService:
         stocks_by_group = self._get_stocks_by_group_id()
         aggregated_holdings = self.holding_repository.get_aggregated_holdings_by_stock()
 
+        # Pass 1: fetch prices without side effects
+        # items: (group, stock, quantity, price, currency, name, exchange)
+        priced: list[tuple[Group, Stock, Decimal, Decimal, str, str, str | None]] = []
+        for group in groups:
+            for stock in stocks_by_group.get(str(group.id), []):
+                quantity = aggregated_holdings.get(stock.id, Decimal("0"))
+                if quantity > 0:
+                    price, currency, name, exchange = (
+                        self.price_service.get_stock_price(
+                            stock.ticker, preferred_exchange=stock.exchange
+                        )
+                    )
+                    priced.append(
+                        (group, stock, quantity, price, currency, name, exchange)
+                    )
+
+        # Validate before any side effects
+        if self.exchange_rate_service is None and any(
+            entry[4] == "USD" for entry in priced
+        ):
+            raise ValueError("Exchange rate service is required for USD")
+
         holdings = []
         total_stock_value = Decimal("0")
         usd_krw_rate: Decimal | None = None
 
-        for group in groups:
-            stocks = stocks_by_group.get(str(group.id), [])
-            for stock in stocks:
-                quantity = aggregated_holdings.get(stock.id, Decimal("0"))
-                if quantity > 0:
-                    (
-                        price,
-                        currency,
-                        name,
-                        exchange,
-                    ) = self.price_service.get_stock_price(
-                        stock.ticker, preferred_exchange=stock.exchange
-                    )
-                    try:
-                        name = self.stock_service.persist_name(stock, name)
-                    except Exception:
-                        logger.warning(
-                            "stock_service.persist_name failed for %s",
-                            stock.ticker,
-                            exc_info=True,
-                        )
-                        name = name or stock.name or ""
-                    value_krw: Decimal | None = None
-                    holding_value = quantity * price
-                    if currency == "USD":
-                        if self.exchange_rate_service is None:
-                            raise ValueError(
-                                "Exchange rate service is required for USD"
-                            )
-                        if usd_krw_rate is None:
-                            usd_krw_rate = self.exchange_rate_service.get_usd_krw_rate()
-                        value_krw = holding_value * usd_krw_rate
-                    else:
-                        value_krw = holding_value
-                    change_rates = None
-                    if include_change_rates:
-                        change_rates = self.price_service.get_stock_change_rates(
-                            stock.ticker,
-                            preferred_exchange=stock.exchange,
-                            periods=change_rate_periods
-                            if change_rate_periods is not None
-                            else ("1y", "6m", "1m"),
-                        )
-                    if exchange and exchange != stock.exchange:
-                        self.stock_repository.update_exchange(stock.id, exchange)
-                    holding_with_price = StockHoldingWithPrice(
-                        stock=stock,
-                        quantity=quantity,
-                        price=price,
-                        currency=currency,
-                        name=name,
-                        value_krw=value_krw,
-                        change_rates=change_rates,
-                    )
-                    holdings.append((group, holding_with_price))
-                    if value_krw is not None:
-                        total_stock_value += value_krw
+        # Pass 2: compute values + side effects
+        for group, stock, quantity, price, currency, name, exchange in priced:
+            try:
+                name = self.stock_service.persist_name(stock, name)
+            except Exception:
+                logger.warning(
+                    "stock_service.persist_name failed for %s",
+                    stock.ticker,
+                    exc_info=True,
+                )
+                name = name or stock.name or ""
+            holding_value = quantity * price
+            if currency == "USD":
+                if usd_krw_rate is None:
+                    usd_krw_rate = self.exchange_rate_service.get_usd_krw_rate()  # type: ignore[union-attr]
+                value_krw: Decimal | None = holding_value * usd_krw_rate
+            else:
+                value_krw = holding_value
+            change_rates = None
+            if include_change_rates:
+                change_rates = self.price_service.get_stock_change_rates(
+                    stock.ticker,
+                    preferred_exchange=stock.exchange,
+                    periods=change_rate_periods
+                    if change_rate_periods is not None
+                    else ("1y", "6m", "1m"),
+                )
+            if exchange and exchange != stock.exchange:
+                self.stock_repository.update_exchange(stock.id, exchange)
+            holding_with_price = StockHoldingWithPrice(
+                stock=stock,
+                quantity=quantity,
+                price=price,
+                currency=currency,
+                name=name,
+                value_krw=value_krw,
+                change_rates=change_rates,
+            )
+            holdings.append((group, holding_with_price))
+            if value_krw is not None:
+                total_stock_value += value_krw
 
         total_cash_balance = Decimal("0")
         total_invested = Decimal("0")
