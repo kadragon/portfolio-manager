@@ -13,8 +13,15 @@ from portfolio_manager.models.rebalance import (
     RebalanceAction,
     RebalanceRecommendation,
 )
+from portfolio_manager.repositories.account_repository import AccountRepository
+from portfolio_manager.repositories.group_repository import GroupRepository
+from portfolio_manager.repositories.holding_repository import HoldingRepository
+from portfolio_manager.repositories.stock_repository import StockRepository
 from portfolio_manager.services.kis.kis_market_detector import is_domestic_ticker
-from portfolio_manager.services.portfolio_service import PortfolioSummary
+from portfolio_manager.services.portfolio_service import (
+    PortfolioService,
+    PortfolioSummary,
+)
 
 _PERCENT_BASE = Decimal("100")
 _REGION_BAND = Decimal("5")
@@ -318,6 +325,39 @@ class RebalanceService:
             total_assets_krw=total_assets,
             account_summaries=account_summaries,
         )
+
+    def build_plan_from_repos(
+        self,
+        *,
+        portfolio_service: PortfolioService,
+        account_repository: AccountRepository,
+        holding_repository: HoldingRepository,
+        group_repository: GroupRepository,
+        stock_repository: StockRepository,
+        restrict_overseas: bool = False,
+    ) -> tuple[PortfolioSummary, RebalancePlan]:
+        """Assemble inputs from repositories and return (summary, plan).
+
+        Uses per-account holdings (list_by_account) — a different shape from the
+        aggregated holdings in get_portfolio_summary; the two reads are not interchangeable.
+        """
+        summary = portfolio_service.get_portfolio_summary(include_change_rates=False)
+        accounts = account_repository.list_all()
+        holdings_by_account = {
+            account.id: holding_repository.list_by_account(account.id)
+            for account in accounts
+        }
+        groups = group_repository.list_all()
+        stocks = stock_repository.list_all()
+        plan = self.build_plan(
+            summary=summary,
+            accounts=accounts,
+            holdings_by_account=holdings_by_account,
+            groups=groups,
+            stocks=stocks,
+            restrict_overseas=restrict_overseas,
+        )
+        return summary, plan
 
     def _build_target_by_group(self, groups: list[Group]) -> dict[str, Decimal]:
         target_by_group: dict[str, Decimal] = {
