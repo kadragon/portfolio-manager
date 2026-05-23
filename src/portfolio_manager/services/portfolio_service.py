@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from portfolio_manager.models import Group, Stock
 from portfolio_manager.repositories.account_repository import AccountRepository
@@ -22,6 +22,16 @@ if TYPE_CHECKING:
     from portfolio_manager.services.stock_service import StockService
 
 logger = logging.getLogger(__name__)
+
+
+class _PricedRow(NamedTuple):
+    group: "Group"
+    stock: "Stock"
+    quantity: Decimal
+    price: Decimal
+    currency: str
+    name: str
+    exchange: "str | None"
 
 
 @dataclass
@@ -131,8 +141,7 @@ class PortfolioService:
         aggregated_holdings = self.holding_repository.get_aggregated_holdings_by_stock()
 
         # Pass 1: fetch prices without side effects
-        # items: (group, stock, quantity, price, currency, name, exchange)
-        priced: list[tuple[Group, Stock, Decimal, Decimal, str, str, str | None]] = []
+        priced: list[_PricedRow] = []
         for group in groups:
             for stock in stocks_by_group.get(str(group.id), []):
                 quantity = aggregated_holdings.get(stock.id, Decimal("0"))
@@ -143,12 +152,14 @@ class PortfolioService:
                         )
                     )
                     priced.append(
-                        (group, stock, quantity, price, currency, name, exchange)
+                        _PricedRow(
+                            group, stock, quantity, price, currency, name, exchange
+                        )
                     )
 
-        # Validate before any side effects
+        # Validate before any DB side effects (persist_name, update_exchange)
         if self.exchange_rate_service is None and any(
-            entry[4] == "USD" for entry in priced
+            row.currency == "USD" for row in priced
         ):
             raise ValueError("Exchange rate service is required for USD")
 

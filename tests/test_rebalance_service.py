@@ -968,6 +968,65 @@ def test_restrict_overseas_off_includes_overseas_sells() -> None:
     assert "해외성장" in sell_groups, "플래그 미설정 시 해외성장 SELL 추천이 있어야 함"
 
 
+def test_build_plan_from_repos_wires_dependencies() -> None:
+    groups = make_standard_groups()
+    stocks = make_standard_stocks(groups)
+    account = make_account("A", Decimal("1000"))
+    holding = make_holding(account.id, list(stocks.values())[0].id, Decimal("10"))
+    summary = make_summary(
+        groups,
+        stocks,
+        {
+            "국내성장": Decimal("400"),
+            "국내배당": Decimal("150"),
+            "해외성장": Decimal("250"),
+            "해외안정": Decimal("100"),
+            "해외배당": Decimal("100"),
+        },
+    )
+
+    captured: dict = {}
+
+    class _FakePortfolioService:
+        def get_portfolio_summary(
+            self, *, include_change_rates: bool
+        ) -> PortfolioSummary:
+            captured["include_change_rates"] = include_change_rates
+            return summary
+
+    class _FakeAccountRepo:
+        def list_all(self) -> list:
+            return [account]
+
+    class _FakeHoldingRepo:
+        def list_by_account(self, account_id) -> list:
+            captured["holding_account_id"] = account_id
+            return [holding]
+
+    class _FakeGroupRepo:
+        def list_all(self) -> list:
+            return groups
+
+    class _FakeStockRepo:
+        def list_all(self) -> list:
+            return list(stocks.values())
+
+    service = RebalanceService()
+    result_summary, plan = service.build_plan_from_repos(
+        portfolio_service=_FakePortfolioService(),  # type: ignore[arg-type]
+        account_repository=_FakeAccountRepo(),  # type: ignore[arg-type]
+        holding_repository=_FakeHoldingRepo(),  # type: ignore[arg-type]
+        group_repository=_FakeGroupRepo(),  # type: ignore[arg-type]
+        stock_repository=_FakeStockRepo(),  # type: ignore[arg-type]
+        restrict_overseas=True,
+    )
+
+    assert captured["include_change_rates"] is False
+    assert captured["holding_account_id"] == account.id
+    assert result_summary is summary
+    assert isinstance(plan, RebalancePlan)
+
+
 def test_restrict_overseas_skips_sell_calc_for_overseas_only_group() -> None:
     # 해외성장 upper-breached (35% vs 30% target+5% upper), but all positions are
     # overseas (QQQ).  With restrict_overseas=True, no sell should be generated for

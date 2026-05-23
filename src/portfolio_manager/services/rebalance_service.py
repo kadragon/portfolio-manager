@@ -336,7 +336,11 @@ class RebalanceService:
         stock_repository: StockRepository,
         restrict_overseas: bool = False,
     ) -> tuple[PortfolioSummary, RebalancePlan]:
-        """Assemble inputs from repositories and return (summary, plan)."""
+        """Assemble inputs from repositories and return (summary, plan).
+
+        Uses per-account holdings (list_by_account) — a different shape from the
+        aggregated holdings in get_portfolio_summary; the two reads are not interchangeable.
+        """
         summary = portfolio_service.get_portfolio_summary(include_change_rates=False)
         accounts = account_repository.list_all()
         holdings_by_account = {

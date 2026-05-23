@@ -6,6 +6,13 @@ Schema / lifecycle:
 
 # Tasks — Deferred from PR reviews
 
+## Review Backlog
+
+### PR #97 — [REFACTOR] Move rebalance data assembly into service; guard USD conversion (2026-05-23)
+
+- [ ] [debt] `RebalanceService()` instantiated per-request in `rebalance.py:_build_rebalance_plan` — inconsistent with container injection pattern; expose `container.rebalance_service` — `web/routes/rebalance.py:19`
+- [ ] [debt] `portfolio_insight_service._build_rebalance_plan` duplicates `RebalanceService.build_plan_from_repos` — delegate to `self._rebalance_service.build_plan_from_repos(...)` — `services/portfolio_insight_service.py:294`
+
 ## From PR #69 (feat/per-account-rebalance) — 2026-04-24
 
 - ~~**Optimize `_pick_next_group` sort key**~~ — Skipped. Sort key (`need_by_group[g]`) mutates every iteration; a priority queue would need decrease-key + stale-entry handling for a 5-element collection. O(5 log 5) per iteration is effectively free. (`rebalance_service.py:866-868`)
