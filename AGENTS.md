@@ -11,6 +11,8 @@ FastAPI + HTMX 포트폴리오 관리 앱. SQLite + Peewee ORM, KIS Open Trading
 | `docs/runbook.md` | 빌드/테스트/배포 명령어 필요 시, 실패 디버깅 시 |
 | `docs/workflows.md` | 구현 사이클 시작 시, 컨텍스트 관리 전략 필요 시 |
 | `docs/docker.md` | Docker 실행/트러블슈팅 시 |
+| `docs/delegation.md` | 서브에이전트 위임 패턴, spawn 계약, 라우팅 테이블 |
+| `docs/eval-criteria.md` | 평가 기준, Sprint Contract, 완료 정의 |
 
 ## Golden Principles
 
@@ -31,6 +33,10 @@ Invariants. (1)(3) enforced by `pytest tests/arch/`. (2)(4) enforced by pytest c
 4. **Secrets via `.env` only** — No hardcoded credentials, keys, or tokens in source. Enforced by bandit in pre-commit + CI.
 
 5. **Commit messages use `[TYPE]` prefix** — `[FEAT]` · `[FIX]` · `[REFACTOR]` · `[DOCS]` · `[CONSTRAINT]` · `[HARNESS]` · `[PLAN]`. Convention — not yet mechanically enforced.
+
+## Delegation
+
+See `docs/delegation.md` — hard stops, spawn contract, routing table.
 
 ## Context Management
 
@@ -57,9 +63,21 @@ Default label vocabulary (needs-triage / needs-info / ready-for-agent / ready-fo
 
 ### Domain docs
 
-Single-context — `CONTEXT.md` at repo root + `docs/adr/`. See `docs/agents/domain.md`.
+Single-context — `CONTEXT.md` at repo root + `docs/adr/README.md`. See `docs/agents/domain.md`.
 
 ## Language Policy
 
 - 코드, 커밋, docs/: English
 - 사용자 커뮤니케이션: Korean
+
+## Maintenance
+
+Update AGENTS.md **only** when ALL conditions met:
+1. Info not discoverable from code, config, or `docs/`
+2. Operationally significant — affects build, test, deploy, or runtime safety
+3. Would likely cause agent mistakes if undocumented
+4. Stable — not task-specific or temporary
+
+**Never add:** architecture summaries, directory overviews, style conventions already enforced by linter, temporary notes, task-specific instructions. Move long content to `docs/*.md` with a pointer here.
+
+**Size target:** ≤100 lines. Hard warn >200 — split to `docs/` immediately.
