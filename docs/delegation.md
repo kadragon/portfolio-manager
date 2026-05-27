@@ -10,7 +10,6 @@ Delegate when work is **separable** — self-contained task with clear I/O and a
 |---------|--------|
 | Same failure 2× | `advisor` tool → if unresolved: `codex:rescue` |
 | Task has 2+ valid interpretations | Grill protocol (one question at a time) before any code |
-| Bounded task with clear I/O | `codex:rescue` with full spawn contract |
 | External blocker (auth, credentials, network) | Pause and report to user |
 
 ### Background Gates (non-blocking — prefer delegation)
@@ -20,7 +19,7 @@ Delegate when work is **separable** — self-contained task with clear I/O and a
 | Deep root-cause investigation | `codex:rescue` |
 | Second implementation pass | `codex:rescue` |
 | Multi-file refactor with clear scope | `codex:rescue` |
-| Search across many files | `Explore` agent |
+| Search across many files | `Explore` agent (or `codex:rescue` if unavailable) |
 
 ## Spawn Prompt Contract
 

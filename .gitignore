@@ -7,6 +7,9 @@ htmlcov/
 .env
 .data/
 .serena/
+.antigravitycli/
+.claude/*.lock
+.claude/worktrees/
 
 *.egg-info/
 

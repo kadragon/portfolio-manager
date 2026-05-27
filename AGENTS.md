@@ -36,14 +36,7 @@ Invariants. (1)(3) enforced by `pytest tests/arch/`. (2)(4) enforced by pytest c
 
 ## Delegation
 
-Read `docs/delegation.md` for full routing table and spawn contracts.
-
-**Hard stops — delegate before acting:**
-- Same failure 2×: `advisor` tool, then `codex:rescue` if unresolved
-- Task ambiguous (2+ interpretations): Grill protocol before any code
-- Substantial bounded work with clear I/O: `codex:rescue`
-
-**Spawn prompt must include:** goal · constraints · exit criterion · relevant files.
+See `docs/delegation.md` — hard stops, spawn contract, routing table.
 
 ## Context Management
 

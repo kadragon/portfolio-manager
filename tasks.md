@@ -8,6 +8,14 @@ Schema / lifecycle:
 
 ## Review Backlog
 
+### PR #100 — [HARNESS] Upgrade harness to Level 2 (2026-05-27)
+
+- [ ] [doc] `docs/delegation.md` Model Selection table — pin model versions or add note to resolve from `~/.claude/settings.json`; bare tier names (sonnet/opus) may drift on model upgrade (source: pr-review-toolkit:review-pr) — `docs/delegation.md:52`
+- [ ] [doc] `docs/adr/README.md` ADR template missing `## Options Considered` section — AGENTS.md says ADRs document "options considered" but template has only Context/Decision/Consequences (source: pr-review-toolkit:review-pr) — `docs/adr/README.md`
+- [ ] [doc] `docs/eval-criteria.md` Correctness criterion "How to test: Run the feature manually" — replace with specific pytest command or scenario list for CI-reproducibility (source: review) — `docs/eval-criteria.md:37`
+
+## Review Backlog
+
 ### PR #97 — [REFACTOR] Move rebalance data assembly into service; guard USD conversion (2026-05-23)
 
 - [ ] [debt] `RebalanceService()` instantiated per-request in `rebalance.py:_build_rebalance_plan` — inconsistent with container injection pattern; expose `container.rebalance_service` — `web/routes/rebalance.py:19`

@@ -17,7 +17,7 @@ Both generator and evaluator must agree before implementation starts. If no eval
 
 ## Evaluation Rubric
 
-For each criterion, score 1–5:
+For each criterion, score 1, 3, or 5 (odd only — even values are undefined):
 
 | Score | Meaning |
 |-------|---------|
