@@ -11,8 +11,8 @@
 
 <h1 class="text-lg font-semibold text-base-content mb-3">{{ account.name }} 보유 내역</h1>
 
-<section class="card bg-base-200 shadow-md">
-  <div class="card-body p-4">
+<section class="card bg-base-100">
+  <div class="card-body p-4 sm:p-6">
     <div id="holdings-bulk-feedback" role="status" aria-live="polite" aria-atomic="true"></div>
     <form id="bulk-holdings-form"
           hx-put="/accounts/{{ account.id }}/holdings/bulk"
@@ -20,7 +20,7 @@
           hx-swap="innerHTML"
           data-request-message="보유 수량을 일괄 저장하는 중…">
       <div class="overflow-x-auto" tabindex="0" aria-label="보유 내역 표 가로 스크롤 영역">
-        <table class="table table-zebra table-sm">
+        <table class="table table-sm">
           <caption>{{ account.name }} 계좌 보유 종목과 수량</caption>
           <thead>
             <tr>

@@ -12,8 +12,33 @@
 {% endif %}
 
 {% if summary %}
-  {# ── Investment Summary Stats ── #}
-  <div class="stats stats-vertical sm:stats-horizontal bg-base-200 shadow-md w-full mb-4 text-sm" role="region" aria-label="투자 요약">
+  {# ── Dark editorial hero — headline KPIs (DESIGN: hero-band-dark) ── #}
+  <section class="hero-dark px-6 py-7 sm:px-8 sm:py-8 mb-4"
+           role="region" aria-label="투자 요약">
+    <div class="flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
+      <div>
+        <p class="text-xs uppercase tracking-wider text-neutral-content/60">총자산</p>
+        <p class="text-3xl sm:text-4xl font-mono font-medium mt-1">{{ summary.total_assets | format_krw }}</p>
+      </div>
+      <dl class="flex gap-8 sm:gap-10">
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-neutral-content/60">수익률</dt>
+          <dd class="text-xl sm:text-2xl font-mono mt-1 {% if summary.return_rate is not none and summary.return_rate > 0 %}text-up-on-dark{% elif summary.return_rate is not none and summary.return_rate < 0 %}text-down-on-dark{% endif %}">
+            {% if summary.return_rate is not none %}{{ summary.return_rate | format_signed_percent }}{% else %}-{% endif %}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wider text-neutral-content/60">연환산</dt>
+          <dd class="text-xl sm:text-2xl font-mono mt-1 {% if summary.annualized_return_rate is not none and summary.annualized_return_rate > 0 %}text-up-on-dark{% elif summary.annualized_return_rate is not none and summary.annualized_return_rate < 0 %}text-down-on-dark{% endif %}">
+            {% if summary.annualized_return_rate is not none %}{{ summary.annualized_return_rate | format_signed_percent }}{% else %}-{% endif %}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  {# ── Supporting figures ── #}
+  <div class="stats stats-vertical sm:stats-horizontal bg-base-100 border border-base-300 w-full mb-4 text-sm" role="region" aria-label="자산 구성">
     <div class="stat py-3 px-4">
       <div class="stat-title text-xs">주식</div>
       <div class="stat-value text-base font-mono">{{ summary.total_stock_value | format_krw }}</div>
@@ -23,33 +48,17 @@
       <div class="stat-value text-base font-mono">{{ summary.total_cash_balance | format_krw }}</div>
     </div>
     <div class="stat py-3 px-4">
-      <div class="stat-title text-xs">총자산</div>
-      <div class="stat-value text-base font-mono text-primary">{{ summary.total_assets | format_krw }}</div>
-    </div>
-    <div class="stat py-3 px-4">
       <div class="stat-title text-xs">투자원금</div>
       <div class="stat-value text-base font-mono">{{ summary.total_invested | format_krw }}</div>
-    </div>
-    <div class="stat py-3 px-4">
-      <div class="stat-title text-xs">수익률</div>
-      <div class="stat-value text-base font-mono {% if summary.return_rate is not none and summary.return_rate > 0 %}text-success{% elif summary.return_rate is not none and summary.return_rate < 0 %}text-error{% endif %}">
-        {% if summary.return_rate is not none %}{{ summary.return_rate | format_signed_percent }}{% else %}-{% endif %}
-      </div>
-    </div>
-    <div class="stat py-3 px-4">
-      <div class="stat-title text-xs">연환산</div>
-      <div class="stat-value text-base font-mono {% if summary.annualized_return_rate is not none and summary.annualized_return_rate > 0 %}text-success{% elif summary.annualized_return_rate is not none and summary.annualized_return_rate < 0 %}text-error{% endif %}">
-        {% if summary.annualized_return_rate is not none %}{{ summary.annualized_return_rate | format_signed_percent }}{% else %}-{% endif %}
-      </div>
     </div>
   </div>
 
   {# ── Holdings Table ── #}
   {% set holdings_col_count = 9 %}
-  <div class="card bg-base-200 shadow-md">
-    <div class="card-body p-4">
+  <div class="card bg-base-100">
+    <div class="card-body p-4 sm:p-6">
       <div class="overflow-x-auto" tabindex="0" aria-label="보유 종목 표 가로 스크롤 영역">
-        <table class="table table-zebra table-sm" aria-describedby="dashboard-rate-periods">
+        <table class="table table-sm" aria-describedby="dashboard-rate-periods">
           <caption class="sr-only">그룹별 보유 종목, 현재가, 평가액과 기간 수익률</caption>
           <thead>
             <tr class="text-xs uppercase tracking-wider">
@@ -101,7 +110,7 @@
       {% if group_summary %}
       <div class="divider my-2"></div>
       <div class="overflow-x-auto" tabindex="0" aria-label="그룹 비중 요약 표 가로 스크롤 영역">
-        <table class="table table-zebra table-sm">
+        <table class="table table-sm">
           <caption class="sr-only">그룹별 평가액, 현재 비중, 목표 대비 차이와 권장 동작</caption>
           <thead>
             <tr class="text-xs uppercase tracking-wider">
@@ -143,10 +152,10 @@
 
 {% elif group_holdings %}
   {# ── Fallback: quantity-only table ── #}
-  <div class="card bg-base-200 shadow-md">
-    <div class="card-body p-4">
+  <div class="card bg-base-100">
+    <div class="card-body p-4 sm:p-6">
       <div class="overflow-x-auto" tabindex="0" aria-label="보유 종목 요약 표 가로 스크롤 영역">
-        <table class="table table-zebra table-sm">
+        <table class="table table-sm">
           <caption class="sr-only">가격 정보를 불러오지 못한 경우의 그룹별 보유 종목 요약</caption>
           <thead>
             <tr class="text-xs uppercase tracking-wider"><th>그룹</th><th>종목명</th><th>티커</th><th class="text-right">수량</th></tr>
@@ -179,7 +188,7 @@
 
 {% else %}
   {# ── Empty state ── #}
-  <div class="card bg-base-200 shadow-md">
+  <div class="card bg-base-100">
     <div class="card-body p-6 items-center text-center">
       <p class="text-base-content/60">포트폴리오 데이터를 불러올 수 없습니다. 먼저 그룹과 종목을 추가하세요.</p>
       <a href="/groups" class="btn btn-primary btn-sm mt-2">그룹 관리로 이동</a>

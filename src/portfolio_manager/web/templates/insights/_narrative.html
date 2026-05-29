@@ -16,7 +16,7 @@
           hx-indicator="#insights-indicator">주간</button>
 </div>
 
-<article class="card bg-base-200 shadow-md mb-4">
+<article class="card bg-base-100 mb-4">
   <div class="card-body p-4">
     <h2 class="text-sm font-semibold text-base-content mb-2">
       {% if narrative.snapshot.period == 'daily' %}일간 요약{% else %}주간 요약{% endif %}
@@ -32,7 +32,7 @@
 
 <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
   <article class="card bg-base-200">
-    <div class="card-body p-4">
+    <div class="card-body p-4 sm:p-6">
       <h3 class="text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-2">총자산</h3>
       <dl class="text-sm space-y-1">
         <div class="flex justify-between"><dt>총 평가금액</dt><dd class="font-mono">{{ narrative.snapshot.total_assets | format_krw }}</dd></div>
@@ -46,7 +46,7 @@
   </article>
 
   <article class="card bg-base-200">
-    <div class="card-body p-4">
+    <div class="card-body p-4 sm:p-6">
       <h3 class="text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-2">기여도 상위/하위</h3>
       {% if narrative.snapshot.top_contributors %}
       <p class="text-xs text-base-content/60 mb-1">상승 기여</p>
@@ -81,7 +81,7 @@
   <div class="card-body p-4">
     <h3 class="text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-2">그룹 비중</h3>
     <div class="overflow-x-auto">
-      <table class="table table-zebra table-sm">
+      <table class="table table-sm">
         <thead>
           <tr>
             <th class="text-xs uppercase tracking-wider">그룹</th>

@@ -25,11 +25,11 @@
 {% endif %}
 
 {% if plan %}
-<section class="card bg-base-200 shadow-md">
-  <div class="card-body p-4">
+<section class="card bg-base-100">
+  <div class="card-body p-4 sm:p-6">
     <h3 class="text-sm font-semibold text-base-content mb-2">진단 요약</h3>
     <div class="overflow-x-auto" tabindex="0" aria-label="지역 진단 요약 표 가로 스크롤 영역">
-      <table class="table table-zebra table-sm">
+      <table class="table table-sm">
         <caption>지역 비중 진단과 트리거 상태</caption>
         <thead>
           <tr>
@@ -64,7 +64,7 @@
     </div>
 
     <div class="overflow-x-auto" tabindex="0" aria-label="그룹 진단 요약 표 가로 스크롤 영역">
-      <table class="table table-zebra table-sm">
+      <table class="table table-sm">
         <caption>그룹별 목표 비중 대비 현재 상태</caption>
         <thead>
           <tr>
@@ -103,8 +103,8 @@
 {% if account_summaries %}
   {% for s in account_summaries %}
   {% if s.sell_recommendations or s.buy_recommendations or s.unmet_groups %}
-  <section class="card bg-base-200 shadow-md">
-    <div class="card-body p-4">
+  <section class="card bg-base-100">
+    <div class="card-body p-4 sm:p-6">
       <h3 class="text-base font-semibold text-base-content mb-2">{{ s.account_name }}</h3>
 
       <div class="flex flex-wrap gap-4 text-xs mb-3">
@@ -126,7 +126,7 @@
       {% if s.sell_recommendations %}
       <h4 class="text-sm font-semibold mb-1"><span class="badge badge-error badge-sm">매도</span> 추천</h4>
       <div class="overflow-x-auto mb-3" tabindex="0" aria-label="{{ s.account_name }} 매도 추천 표">
-        <table class="table table-zebra table-sm">
+        <table class="table table-sm">
           <caption>{{ s.account_name }} 매도 추천 종목</caption>
           <thead>
             <tr>
@@ -165,7 +165,7 @@
       {% if s.buy_recommendations %}
       <h4 class="text-sm font-semibold mb-1"><span class="badge badge-success badge-sm">매수</span> 추천</h4>
       <div class="overflow-x-auto" tabindex="0" aria-label="{{ s.account_name }} 매수 추천 표">
-        <table class="table table-zebra table-sm">
+        <table class="table table-sm">
           <caption>{{ s.account_name }} 매수 추천 종목</caption>
           <thead>
             <tr>
@@ -207,11 +207,11 @@
 {% else %}
   {# Fallback: flat tables for plans without account_summaries (e.g. test fixtures) #}
   {% if sell_recommendations %}
-  <section class="card bg-base-200 shadow-md">
-    <div class="card-body p-4">
+  <section class="card bg-base-100">
+    <div class="card-body p-4 sm:p-6">
       <h3 class="text-sm font-semibold text-base-content mb-2"><span class="badge badge-error badge-sm">매도</span> 추천</h3>
       <div class="overflow-x-auto" tabindex="0" aria-label="매도 추천 표 가로 스크롤 영역">
-        <table class="table table-zebra table-sm">
+        <table class="table table-sm">
           <caption>매도 추천 종목, 금액, 수량, 근거</caption>
           <thead>
             <tr>
@@ -252,11 +252,11 @@
   {% endif %}
 
   {% if buy_recommendations %}
-  <section class="card bg-base-200 shadow-md">
-    <div class="card-body p-4">
+  <section class="card bg-base-100">
+    <div class="card-body p-4 sm:p-6">
       <h3 class="text-sm font-semibold text-base-content mb-2"><span class="badge badge-success badge-sm">매수</span> 추천</h3>
       <div class="overflow-x-auto" tabindex="0" aria-label="매수 추천 표 가로 스크롤 영역">
-        <table class="table table-zebra table-sm">
+        <table class="table table-sm">
           <caption>매수 추천 종목, 금액, 수량, 근거</caption>
           <thead>
             <tr>
@@ -298,16 +298,16 @@
 {% endif %}
 
 {% if not sell_recommendations and not buy_recommendations and not error %}
-<section class="card bg-base-200 shadow-md">
-  <div class="card-body p-4">
+<section class="card bg-base-100">
+  <div class="card-body p-4 sm:p-6">
     <p>리밸런싱 추천이 없습니다. 현재 포트폴리오가 목표 비중에 가깝습니다.</p>
   </div>
 </section>
 {% endif %}
 
 {% if sell_recommendations or buy_recommendations %}
-<div id="execute-result" class="card bg-base-200 shadow-md">
-  <div class="card-body p-4">
+<div id="execute-result" class="card bg-base-100">
+  <div class="card-body p-4 sm:p-6">
     <form hx-post="/rebalance/execute"
           hx-target="#execute-result"
           hx-swap="outerHTML"
