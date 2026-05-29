@@ -39,7 +39,7 @@
   --color-info: #0052ff;
   --color-info-content: #ffffff;
 
-  --color-success: #05b169; /* semantic-up (gain) */
+  --color-success: #098551; /* semantic-up (gain) — darkened for WCAG AA (4.74:1 on white) */
   --color-success-content: #ffffff;
 
   --color-warning: #f4b000;

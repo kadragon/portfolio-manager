@@ -15,12 +15,12 @@
   {# ── Dark editorial hero — headline KPIs (DESIGN: hero-band-dark) ── #}
   <section class="hero-dark px-6 py-7 sm:px-8 sm:py-8 mb-4"
            role="region" aria-label="투자 요약">
-    <div class="flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
+    <dl class="flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
       <div>
-        <p class="text-xs uppercase tracking-wider text-neutral-content/60">총자산</p>
-        <p class="text-3xl sm:text-4xl font-mono font-medium mt-1">{{ summary.total_assets | format_krw }}</p>
+        <dt class="text-xs uppercase tracking-wider text-neutral-content/60">총자산</dt>
+        <dd class="text-3xl sm:text-4xl font-mono font-medium mt-1">{{ summary.total_assets | format_krw }}</dd>
       </div>
-      <dl class="flex gap-8 sm:gap-10">
+      <div class="flex gap-8 sm:gap-10">
         <div>
           <dt class="text-xs uppercase tracking-wider text-neutral-content/60">수익률</dt>
           <dd class="text-xl sm:text-2xl font-mono mt-1 {% if summary.return_rate is not none and summary.return_rate > 0 %}text-up-on-dark{% elif summary.return_rate is not none and summary.return_rate < 0 %}text-down-on-dark{% endif %}">
@@ -33,8 +33,8 @@
             {% if summary.annualized_return_rate is not none %}{{ summary.annualized_return_rate | format_signed_percent }}{% else %}-{% endif %}
           </dd>
         </div>
-      </dl>
-    </div>
+      </div>
+    </dl>
   </section>
 
   {# ── Supporting figures ── #}
