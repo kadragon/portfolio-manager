@@ -60,11 +60,13 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	var exchangeRate *services.ExchangeRateService
 
 	if setupKIS {
-		priceClient = buildKISClient(stockPrices)
+		priceClient = buildKISClient()
 		exchangeRate = buildExchangeRate()
 	}
 
 	priceService := services.NewPriceService(stockPrices, priceClient)
+	stockService := services.NewStockService(stocks, priceService)
+	_ = stockService // available for Phase 7+ handlers via Container if needed
 	portfolio := services.NewPortfolioService(groups, stocks, holdings, accounts, deposits, priceService, exchangeRate)
 
 	return &Container{
@@ -88,9 +90,7 @@ func (c *Container) Close() error {
 }
 
 // buildKISClient reads KIS env vars and returns a UnifiedPriceClient, or nil if keys are absent.
-func buildKISClient(stockPrices *repositories.StockPriceRepository) services.PriceClient {
-	_ = stockPrices // reserved for future write-through wiring in the client itself
-
+func buildKISClient() services.PriceClient {
 	appKey := strings.TrimSpace(os.Getenv("KIS_APP_KEY"))
 	appSecret := strings.TrimSpace(os.Getenv("KIS_APP_SECRET"))
 	if appKey == "" || appSecret == "" {
@@ -182,16 +182,26 @@ func buildKISClient(stockPrices *repositories.StockPriceRepository) services.Pri
 	return unified
 }
 
-// buildExchangeRate reads USD_KRW_RATE env var. Returns nil if not set.
+// buildExchangeRate reads USD_KRW_RATE or EXIM_AUTH_KEY env vars.
+// Priority: fixed rate > EXIM client > nil.
 func buildExchangeRate() *services.ExchangeRateService {
-	raw := strings.TrimSpace(os.Getenv("USD_KRW_RATE"))
-	if raw == "" {
-		return nil
+	if raw := strings.TrimSpace(os.Getenv("USD_KRW_RATE")); raw != "" {
+		rate, err := numeric.FromString(raw)
+		if err != nil {
+			log.Printf("invalid USD_KRW_RATE: %v", err)
+			return nil
+		}
+		return services.NewFixedExchangeRateService(rate)
 	}
-	rate, err := numeric.FromString(raw)
-	if err != nil {
-		log.Printf("invalid USD_KRW_RATE: %v", err)
-		return nil
+
+	if authKey := strings.TrimSpace(os.Getenv("EXIM_AUTH_KEY")); authKey != "" {
+		eximClient := &services.EximClient{
+			HTTPClient: &http.Client{Timeout: 10 * time.Second},
+			BaseURL:    "https://oapi.koreaexim.go.kr",
+			AuthKey:    authKey,
+		}
+		return services.NewEximExchangeRateService(eximClient)
 	}
-	return services.NewFixedExchangeRateService(rate)
+
+	return nil
 }

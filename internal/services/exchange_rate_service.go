@@ -1,19 +1,70 @@
 package services
 
-import "github.com/kadragon/portfolio-manager/internal/numeric"
+import (
+	"fmt"
+	"sync"
+
+	"github.com/kadragon/portfolio-manager/internal/datex"
+	"github.com/kadragon/portfolio-manager/internal/ktime"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
+)
+
+// EximRateClient fetches the USD/KRW rate from the Korea EXIM Bank API.
+type EximRateClient interface {
+	FetchUSDRate(searchDate string) (float64, error)
+}
 
 // ExchangeRateService provides USD/KRW exchange rates.
-// Phase 6 implements the fixed-rate variant; EXIM API client added later.
+// Supports a fixed rate or a live EXIM client with 7-day backoff and in-memory cache.
 type ExchangeRateService struct {
-	usdKRW numeric.Decimal
+	mu          sync.Mutex
+	fixedRate   *numeric.Decimal
+	eximClient  EximRateClient
+	cachedRates map[string]numeric.Decimal
 }
 
 // NewFixedExchangeRateService creates a service with a fixed USD/KRW rate.
 func NewFixedExchangeRateService(usdKRW numeric.Decimal) *ExchangeRateService {
-	return &ExchangeRateService{usdKRW: usdKRW}
+	return &ExchangeRateService{fixedRate: &usdKRW}
 }
 
-// GetUSDKRW returns the USD/KRW exchange rate.
+// NewEximExchangeRateService creates a service that fetches live USD/KRW rates from EXIM.
+func NewEximExchangeRateService(client EximRateClient) *ExchangeRateService {
+	return &ExchangeRateService{
+		eximClient:  client,
+		cachedRates: make(map[string]numeric.Decimal),
+	}
+}
+
+// GetUSDKRW returns the USD/KRW rate.
+// Fixed-rate services return immediately; EXIM services try today then up to 6 prior days.
 func (s *ExchangeRateService) GetUSDKRW() numeric.Decimal {
-	return s.usdKRW
+	if s.fixedRate != nil {
+		return *s.fixedRate
+	}
+	if s.eximClient == nil {
+		return numeric.Zero
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	today := datex.FromTime(ktime.NowKST())
+	for offset := 0; offset < 7; offset++ {
+		candidate := today.Time.AddDate(0, 0, -offset).Format("20060102")
+		if v, ok := s.cachedRates[candidate]; ok {
+			return v
+		}
+		raw, err := s.eximClient.FetchUSDRate(candidate)
+		if err != nil || raw == 0 {
+			continue
+		}
+		rate, parseErr := numeric.FromString(fmt.Sprintf("%g", raw))
+		if parseErr != nil {
+			continue
+		}
+		s.cachedRates[candidate] = rate
+		return rate
+	}
+	return numeric.Zero
 }
