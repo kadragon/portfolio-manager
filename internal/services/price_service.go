@@ -13,6 +13,9 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/repositories"
 )
 
+// supportedPeriods is the set of valid change-rate period labels.
+var supportedPeriods = map[string]bool{"1d": true, "1m": true, "6m": true, "1y": true}
+
 // orderToPrice maps order-form exchange codes to price-form codes (KIS convention).
 var orderToPrice = map[string]string{
 	"NAS": "NASD",
@@ -129,6 +132,114 @@ func (s *PriceService) loadCached(ctx context.Context, ticker string, date datex
 		}
 	}
 	return nil
+}
+
+// GetStockChangeRates returns rate-of-change (%) for each period in periods.
+// periods are labels from {"1d", "1m", "6m", "1y"}; invalid labels are ignored.
+// Returns nil when no live client is available.
+func (s *PriceService) GetStockChangeRates(ctx context.Context, ticker, preferredExchange string, periods []string) map[string]numeric.Decimal {
+	if s.client == nil {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(periods))
+	seen := map[string]bool{}
+	for _, p := range periods {
+		if supportedPeriods[p] && !seen[p] {
+			normalized = append(normalized, p)
+			seen[p] = true
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	currentPrice, currency, name, resolvedExchange := s.GetStockPrice(ctx, ticker, preferredExchange)
+	priceExchange := toPriceExchange(resolvedExchange)
+	today := datex.FromTime(s.todayProvider())
+
+	targetDates := computeTargetDates(today.Time)
+	result := make(map[string]numeric.Decimal, len(normalized))
+
+	for _, label := range normalized {
+		target := targetDates[label]
+		targetDate := datex.FromTime(target)
+
+		var pastClose numeric.Decimal
+		if cached := s.loadCached(ctx, ticker, targetDate); cached != nil && cached.Price.IsPositive() {
+			pastClose = cached.Price
+		} else {
+			raw, err := s.client.GetHistoricalClose(ticker, targetDate, priceExchange)
+			if err == nil && raw > 0 {
+				pastClose, _ = numeric.FromString(fmt.Sprintf("%g", raw))
+				exc := sql.NullString{}
+				if resolvedExchange != "" {
+					exc = sql.NullString{String: resolvedExchange, Valid: true}
+				}
+				_, _ = s.stockPrices.Save(ctx, ticker, targetDate, pastClose, currency, name, exc)
+			}
+		}
+
+		if pastClose.IsZero() {
+			result[label] = numeric.Zero
+			continue
+		}
+		// rate = (current - past) / past * 100
+		rate := numeric.Wrap(
+			currentPrice.Sub(pastClose.Decimal).Div(pastClose.Decimal).Mul(hundred.Decimal),
+		)
+		result[label] = rate
+	}
+	return result
+}
+
+// computeTargetDates builds the historical reference date for each period,
+// mirroring Python's shift_years / shift_months / adjust_to_previous_business_day.
+func computeTargetDates(today time.Time) map[string]time.Time {
+	return map[string]time.Time{
+		"1y": prevBizDay(shiftYears(today, 1)),
+		"6m": prevBizDay(shiftMonths(today, 6)),
+		"1m": prevBizDay(shiftMonths(today, 1)),
+		"1d": prevBizDay(today.AddDate(0, 0, -1)),
+	}
+}
+
+func shiftYears(t time.Time, years int) time.Time {
+	target := t.AddDate(-years, 0, 0)
+	// Clamp to last day of month if original day exceeds it.
+	y, m, _ := target.Date()
+	last := lastDayOfMonth(y, m)
+	d := t.Day()
+	if d > last {
+		d = last
+	}
+	return time.Date(y, m, d, 0, 0, 0, 0, target.Location())
+}
+
+func shiftMonths(t time.Time, months int) time.Time {
+	target := t.AddDate(0, -months, 0)
+	y, m, _ := target.Date()
+	last := lastDayOfMonth(y, m)
+	d := t.Day()
+	if d > last {
+		d = last
+	}
+	return time.Date(y, m, d, 0, 0, 0, 0, target.Location())
+}
+
+func lastDayOfMonth(year int, month time.Month) int {
+	// First day of next month minus one day.
+	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+}
+
+func prevBizDay(t time.Time) time.Time {
+	switch t.Weekday() {
+	case time.Saturday:
+		return t.AddDate(0, 0, -1)
+	case time.Sunday:
+		return t.AddDate(0, 0, -2)
+	}
+	return t
 }
 
 func toOrderExchange(e string) string {

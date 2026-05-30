@@ -169,15 +169,25 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context) (*models.Por
 			totalStockValue = numeric.Wrap(totalStockValue.Add(valueKRW.Decimal))
 
 			_ = exchange // stored in stock after Phase 8 sync
+
+			var changeRates map[string]numeric.Decimal
+			if s.priceService != nil {
+				changeRates = s.priceService.GetStockChangeRates(
+					ctx, stock.Ticker, preferredExchange,
+					[]string{"1y", "6m", "1m", "1d"},
+				)
+			}
+
 			pairs = append(pairs, models.GroupHoldingPair{
 				Group: group,
 				Holding: models.StockHoldingWithPrice{
-					Stock:    stock,
-					Quantity: qty,
-					Price:    price,
-					Currency: currency,
-					Name:     name,
-					ValueKRW: valueKRW,
+					Stock:       stock,
+					Quantity:    qty,
+					Price:       price,
+					Currency:    currency,
+					Name:        name,
+					ValueKRW:    valueKRW,
+					ChangeRates: changeRates,
 				},
 			})
 		}
