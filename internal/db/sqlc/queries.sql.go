@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/kadragon/portfolio-manager/internal/ktime"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
@@ -47,12 +48,62 @@ func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group
 	return i, err
 }
 
+const createStock = `-- name: CreateStock :one
+
+INSERT INTO stocks (id, ticker, group_id, exchange, created_at, updated_at, name)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name
+`
+
+type CreateStockParams struct {
+	ID        uuidx.UUID
+	Ticker    string
+	GroupID   uuidx.UUID
+	Exchange  sql.NullString
+	CreatedAt ktime.Time
+	UpdatedAt ktime.Time
+	Name      string
+}
+
+// Stock queries (Phase 2).
+func (q *Queries) CreateStock(ctx context.Context, arg CreateStockParams) (Stock, error) {
+	row := q.db.QueryRowContext(ctx, createStock,
+		arg.ID,
+		arg.Ticker,
+		arg.GroupID,
+		arg.Exchange,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Name,
+	)
+	var i Stock
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.GroupID,
+		&i.Exchange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+	)
+	return i, err
+}
+
 const deleteGroup = `-- name: DeleteGroup :exec
 DELETE FROM groups WHERE id = ?
 `
 
 func (q *Queries) DeleteGroup(ctx context.Context, id uuidx.UUID) error {
 	_, err := q.db.ExecContext(ctx, deleteGroup, id)
+	return err
+}
+
+const deleteStock = `-- name: DeleteStock :exec
+DELETE FROM stocks WHERE id = ?
+`
+
+func (q *Queries) DeleteStock(ctx context.Context, id uuidx.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteStock, id)
 	return err
 }
 
@@ -71,6 +122,79 @@ func (q *Queries) GetGroup(ctx context.Context, id uuidx.UUID) (Group, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getStockByID = `-- name: GetStockByID :one
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name FROM stocks WHERE id = ?
+`
+
+func (q *Queries) GetStockByID(ctx context.Context, id uuidx.UUID) (Stock, error) {
+	row := q.db.QueryRowContext(ctx, getStockByID, id)
+	var i Stock
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.GroupID,
+		&i.Exchange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+	)
+	return i, err
+}
+
+const getStockByTicker = `-- name: GetStockByTicker :one
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name FROM stocks WHERE ticker = ?
+`
+
+func (q *Queries) GetStockByTicker(ctx context.Context, ticker string) (Stock, error) {
+	row := q.db.QueryRowContext(ctx, getStockByTicker, ticker)
+	var i Stock
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.GroupID,
+		&i.Exchange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+	)
+	return i, err
+}
+
+const listAllStocks = `-- name: ListAllStocks :many
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name FROM stocks
+`
+
+func (q *Queries) ListAllStocks(ctx context.Context) ([]Stock, error) {
+	rows, err := q.db.QueryContext(ctx, listAllStocks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Stock{}
+	for rows.Next() {
+		var i Stock
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ticker,
+			&i.GroupID,
+			&i.Exchange,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listGroups = `-- name: ListGroups :many
@@ -92,6 +216,41 @@ func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
 			&i.TargetPercentage,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStocksByGroup = `-- name: ListStocksByGroup :many
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name FROM stocks WHERE group_id = ?
+`
+
+func (q *Queries) ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]Stock, error) {
+	rows, err := q.db.QueryContext(ctx, listStocksByGroup, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Stock{}
+	for rows.Next() {
+		var i Stock
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ticker,
+			&i.GroupID,
+			&i.Exchange,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Name,
 		); err != nil {
 			return nil, err
 		}
@@ -134,6 +293,110 @@ func (q *Queries) UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Group
 		&i.TargetPercentage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateStockExchange = `-- name: UpdateStockExchange :one
+UPDATE stocks SET exchange = ?, updated_at = ? WHERE id = ?
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name
+`
+
+type UpdateStockExchangeParams struct {
+	Exchange  sql.NullString
+	UpdatedAt ktime.Time
+	ID        uuidx.UUID
+}
+
+func (q *Queries) UpdateStockExchange(ctx context.Context, arg UpdateStockExchangeParams) (Stock, error) {
+	row := q.db.QueryRowContext(ctx, updateStockExchange, arg.Exchange, arg.UpdatedAt, arg.ID)
+	var i Stock
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.GroupID,
+		&i.Exchange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+	)
+	return i, err
+}
+
+const updateStockGroup = `-- name: UpdateStockGroup :one
+UPDATE stocks SET group_id = ?, updated_at = ? WHERE id = ?
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name
+`
+
+type UpdateStockGroupParams struct {
+	GroupID   uuidx.UUID
+	UpdatedAt ktime.Time
+	ID        uuidx.UUID
+}
+
+func (q *Queries) UpdateStockGroup(ctx context.Context, arg UpdateStockGroupParams) (Stock, error) {
+	row := q.db.QueryRowContext(ctx, updateStockGroup, arg.GroupID, arg.UpdatedAt, arg.ID)
+	var i Stock
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.GroupID,
+		&i.Exchange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+	)
+	return i, err
+}
+
+const updateStockName = `-- name: UpdateStockName :one
+UPDATE stocks SET name = ?, updated_at = ? WHERE id = ?
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name
+`
+
+type UpdateStockNameParams struct {
+	Name      string
+	UpdatedAt ktime.Time
+	ID        uuidx.UUID
+}
+
+func (q *Queries) UpdateStockName(ctx context.Context, arg UpdateStockNameParams) (Stock, error) {
+	row := q.db.QueryRowContext(ctx, updateStockName, arg.Name, arg.UpdatedAt, arg.ID)
+	var i Stock
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.GroupID,
+		&i.Exchange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+	)
+	return i, err
+}
+
+const updateStockTicker = `-- name: UpdateStockTicker :one
+UPDATE stocks SET ticker = ?, updated_at = ? WHERE id = ?
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name
+`
+
+type UpdateStockTickerParams struct {
+	Ticker    string
+	UpdatedAt ktime.Time
+	ID        uuidx.UUID
+}
+
+func (q *Queries) UpdateStockTicker(ctx context.Context, arg UpdateStockTickerParams) (Stock, error) {
+	row := q.db.QueryRowContext(ctx, updateStockTicker, arg.Ticker, arg.UpdatedAt, arg.ID)
+	var i Stock
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.GroupID,
+		&i.Exchange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
 	)
 	return i, err
 }

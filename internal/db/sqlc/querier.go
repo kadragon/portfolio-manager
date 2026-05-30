@@ -13,10 +13,21 @@ import (
 type Querier interface {
 	// Group queries (Phase 1).
 	CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error)
+	// Stock queries (Phase 2).
+	CreateStock(ctx context.Context, arg CreateStockParams) (Stock, error)
 	DeleteGroup(ctx context.Context, id uuidx.UUID) error
+	DeleteStock(ctx context.Context, id uuidx.UUID) error
 	GetGroup(ctx context.Context, id uuidx.UUID) (Group, error)
+	GetStockByID(ctx context.Context, id uuidx.UUID) (Stock, error)
+	GetStockByTicker(ctx context.Context, ticker string) (Stock, error)
+	ListAllStocks(ctx context.Context) ([]Stock, error)
 	ListGroups(ctx context.Context) ([]Group, error)
+	ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]Stock, error)
 	UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Group, error)
+	UpdateStockExchange(ctx context.Context, arg UpdateStockExchangeParams) (Stock, error)
+	UpdateStockGroup(ctx context.Context, arg UpdateStockGroupParams) (Stock, error)
+	UpdateStockName(ctx context.Context, arg UpdateStockNameParams) (Stock, error)
+	UpdateStockTicker(ctx context.Context, arg UpdateStockTickerParams) (Stock, error)
 }
 
 var _ Querier = (*Queries)(nil)

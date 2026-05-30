@@ -33,11 +33,17 @@ for _ in $(seq 1 30); do
 done
 
 GID="$(sqlite3 "$PY_DB" 'SELECT id FROM groups LIMIT 1;')"
-echo "group id: $GID"
+SID="$(sqlite3 "$PY_DB" "SELECT id FROM stocks WHERE group_id='$GID' LIMIT 1;")"
+echo "group id: $GID  stock id: ${SID:-<none>}"
 
-curl -s -o "$OUT/py_list.html"  "http://127.0.0.1:$PY_PORT/groups"
+curl -s -o "$OUT/py_list.html"       "http://127.0.0.1:$PY_PORT/groups"
 curl -s -H 'HX-Request: true' -o "$OUT/py_edit.html" "http://127.0.0.1:$PY_PORT/groups/$GID/edit"
-curl -s -o "$OUT/py_row.html"   "http://127.0.0.1:$PY_PORT/groups/$GID"
+curl -s -o "$OUT/py_row.html"        "http://127.0.0.1:$PY_PORT/groups/$GID"
+curl -s -o "$OUT/py_stocks.html"     "http://127.0.0.1:$PY_PORT/groups/$GID/stocks"
+if [ -n "$SID" ]; then
+  curl -s -o "$OUT/py_stock_row.html"  "http://127.0.0.1:$PY_PORT/groups/$GID/stocks/$SID"
+  curl -s -o "$OUT/py_stock_edit.html" "http://127.0.0.1:$PY_PORT/groups/$GID/stocks/$SID/edit"
+fi
 pkill -f "uvicorn portfolio_manager" 2>/dev/null
 sleep 1
 
@@ -49,16 +55,21 @@ for _ in $(seq 1 30); do
   sleep 0.5
 done
 
-curl -s -o "$OUT/go_list.html"  "http://127.0.0.1:$GO_PORT/groups"
+curl -s -o "$OUT/go_list.html"       "http://127.0.0.1:$GO_PORT/groups"
 curl -s -H 'HX-Request: true' -o "$OUT/go_edit.html" "http://127.0.0.1:$GO_PORT/groups/$GID/edit"
-curl -s -o "$OUT/go_row.html"   "http://127.0.0.1:$GO_PORT/groups/$GID"
+curl -s -o "$OUT/go_row.html"        "http://127.0.0.1:$GO_PORT/groups/$GID"
+curl -s -o "$OUT/go_stocks.html"     "http://127.0.0.1:$GO_PORT/groups/$GID/stocks"
+if [ -n "$SID" ]; then
+  curl -s -o "$OUT/go_stock_row.html"  "http://127.0.0.1:$GO_PORT/groups/$GID/stocks/$SID"
+  curl -s -o "$OUT/go_stock_edit.html" "http://127.0.0.1:$GO_PORT/groups/$GID/stocks/$SID/edit"
+fi
 kill -TERM "$GO_PID" 2>/dev/null
 GO_PID=""
 
 # --- compare ---
-python3 - "$OUT" <<'PY'
+python3 - "$OUT" "${SID:+has_stock}" <<'PY'
 import re, sys
-out = sys.argv[1]
+out, has_stock = sys.argv[1], len(sys.argv) > 2
 def norm(p):
     s = open(p, encoding="utf-8").read()
     # Whitespace adjacent to tag boundaries is cosmetic (Jinja keeps source
@@ -76,7 +87,10 @@ def norm(p):
     s = s.replace("&#39;", "'").replace("&#34;", '"').replace("&amp;", "&")
     return s.strip()
 rc = 0
-for name in ("list", "edit", "row"):
+pages = ["list", "edit", "row", "stocks"]
+if has_stock:
+    pages += ["stock_row", "stock_edit"]
+for name in pages:
     a, b = norm(f"{out}/py_{name}.html"), norm(f"{out}/go_{name}.html")
     if a == b:
         print(f"{name}: MATCH ({len(a)} bytes)")

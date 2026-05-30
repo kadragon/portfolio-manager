@@ -16,6 +16,7 @@ import (
 type Container struct {
 	DB     *sql.DB
 	Groups *repositories.GroupRepository
+	Stocks *repositories.StockRepository
 }
 
 // New opens the database at path (empty = default location) and builds the
@@ -34,6 +35,7 @@ func NewWithQueries(sqlDB *sql.DB, q *sqlc.Queries) *Container {
 	return &Container{
 		DB:     sqlDB,
 		Groups: repositories.NewGroupRepository(q),
+		Stocks: repositories.NewStockRepository(q),
 	}
 }
 
