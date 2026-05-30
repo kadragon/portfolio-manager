@@ -30,7 +30,7 @@ func (h *DashboardHandler) index(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	if h.c.Portfolio != nil && h.c.Portfolio.HasPriceService() {
-		summary, err := h.c.Portfolio.GetPortfolioSummary(ctx)
+		summary, err := h.c.Portfolio.GetPortfolioSummary(ctx, true)
 		if err == nil {
 			groupSummary := services.ComputeGroupSummary(summary)
 			return templates.DashboardPage(summary, groupSummary, nil, "").Render(ctx, c.Response().Writer)

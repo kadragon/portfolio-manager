@@ -103,7 +103,8 @@ func (s *PortfolioService) GetHoldingsByGroup(ctx context.Context) ([]models.Gro
 
 // GetPortfolioSummary computes a full portfolio summary using DB-cached prices.
 // Returns ErrNoPriceService if no PriceService is configured.
-func (s *PortfolioService) GetPortfolioSummary(ctx context.Context) (*models.PortfolioSummary, error) {
+// Pass includeChangeRates=false to skip per-stock historical price fetches (rebalance path).
+func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChangeRates bool) (*models.PortfolioSummary, error) {
 	if s.priceService == nil {
 		return nil, ErrNoPriceService
 	}
@@ -171,7 +172,7 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context) (*models.Por
 			_ = exchange // stored in stock after Phase 8 sync
 
 			var changeRates map[string]numeric.Decimal
-			if s.priceService != nil {
+			if includeChangeRates && s.priceService != nil {
 				changeRates = s.priceService.GetStockChangeRates(
 					ctx, stock.Ticker, preferredExchange,
 					[]string{"1y", "6m", "1m", "1d"},

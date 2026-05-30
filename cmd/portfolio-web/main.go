@@ -63,6 +63,7 @@ func newServer(c *container.Container) *echo.Echo {
 	handlers.NewAccountHandler(c).Register(e)
 	handlers.NewHoldingHandler(c).Register(e)
 	handlers.NewDepositHandler(c).Register(e)
+	handlers.NewRebalanceHandler(c).Register(e)
 
 	return e
 }

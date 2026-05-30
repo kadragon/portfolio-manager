@@ -5,6 +5,7 @@
 package container
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/db"
 	"github.com/kadragon/portfolio-manager/internal/db/sqlc"
 	"github.com/kadragon/portfolio-manager/internal/kis"
+	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/repositories"
 	"github.com/kadragon/portfolio-manager/internal/services"
@@ -22,14 +24,18 @@ import (
 
 // Container holds shared dependencies for the web layer.
 type Container struct {
-	DB          *sql.DB
-	Groups      *repositories.GroupRepository
-	Stocks      *repositories.StockRepository
-	Accounts    *repositories.AccountRepository
-	Holdings    *repositories.HoldingRepository
-	Deposits    *repositories.DepositRepository
-	StockPrices *repositories.StockPriceRepository
-	Portfolio   *services.PortfolioService
+	DB                 *sql.DB
+	Groups             *repositories.GroupRepository
+	Stocks             *repositories.StockRepository
+	Accounts           *repositories.AccountRepository
+	Holdings           *repositories.HoldingRepository
+	Deposits           *repositories.DepositRepository
+	StockPrices        *repositories.StockPriceRepository
+	OrderExecutions    *repositories.OrderExecutionRepository
+	Portfolio          *services.PortfolioService
+	Rebalance          *services.RebalanceService
+	RebalanceExecution *services.RebalanceExecutionService
+	OrderClient        services.OrderClient // nil if KIS not configured
 }
 
 // New opens the database at path (empty = default location) and builds the
@@ -55,29 +61,39 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	holdings := repositories.NewHoldingRepository(q)
 	deposits := repositories.NewDepositRepository(q)
 	stockPrices := repositories.NewStockPriceRepository(q)
+	orderExecutions := repositories.NewOrderExecutionRepository(q)
 
 	var priceClient services.PriceClient
 	var exchangeRate *services.ExchangeRateService
+	var orderClient services.OrderClient
 
 	if setupKIS {
 		priceClient = buildKISClient()
 		exchangeRate = buildExchangeRate()
+		orderClient = buildOrderClient()
 	}
 
 	priceService := services.NewPriceService(stockPrices, priceClient)
-	stockService := services.NewStockService(stocks, priceService)
-	_ = stockService // available for Phase 7+ handlers via Container if needed
+	_ = services.NewStockService(stocks, priceService)
 	portfolio := services.NewPortfolioService(groups, stocks, holdings, accounts, deposits, priceService, exchangeRate)
+	rebalance := services.NewRebalanceService()
+
+	execRepo := &execRepoAdapter{r: orderExecutions}
+	rebalanceExecution := services.NewRebalanceExecutionService(orderClient, execRepo, nil)
 
 	return &Container{
-		DB:          sqlDB,
-		Groups:      groups,
-		Stocks:      stocks,
-		Accounts:    accounts,
-		Holdings:    holdings,
-		Deposits:    deposits,
-		StockPrices: stockPrices,
-		Portfolio:   portfolio,
+		DB:                 sqlDB,
+		Groups:             groups,
+		Stocks:             stocks,
+		Accounts:           accounts,
+		Holdings:           holdings,
+		Deposits:           deposits,
+		StockPrices:        stockPrices,
+		OrderExecutions:    orderExecutions,
+		Portfolio:          portfolio,
+		Rebalance:          rebalance,
+		RebalanceExecution: rebalanceExecution,
+		OrderClient:        orderClient,
 	}
 }
 
@@ -87,6 +103,21 @@ func (c *Container) Close() error {
 		return c.DB.Close()
 	}
 	return nil
+}
+
+// execRepoAdapter wraps OrderExecutionRepository to satisfy services.ExecutionRepo.
+type execRepoAdapter struct {
+	r *repositories.OrderExecutionRepository
+}
+
+func (a *execRepoAdapter) Create(
+	ctx context.Context,
+	ticker, side string,
+	quantity int,
+	currency, status, message, exchange string,
+	rawResponse map[string]any,
+) (models.OrderExecutionRecord, error) {
+	return a.r.Create(ctx, ticker, side, quantity, currency, status, message, exchange, rawResponse)
 }
 
 // buildKISClient reads KIS env vars and returns a UnifiedPriceClient, or nil if keys are absent.
@@ -180,6 +211,72 @@ func buildKISClient() services.PriceClient {
 
 	log.Printf("KIS price client initialized (env=%q)", env) //nolint:gosec // env is operator-controlled, not user input
 	return unified
+}
+
+// buildOrderClient reads KIS env vars and returns a UnifiedOrderClient, or nil if keys are absent.
+func buildOrderClient() services.OrderClient {
+	appKey := strings.TrimSpace(os.Getenv("KIS_APP_KEY"))
+	appSecret := strings.TrimSpace(os.Getenv("KIS_APP_SECRET"))
+	cano := strings.TrimSpace(os.Getenv("KIS_CANO"))
+	acntPrdtCd := strings.TrimSpace(os.Getenv("KIS_ACNT_PRDT_CD"))
+	if appKey == "" || appSecret == "" || cano == "" {
+		return nil
+	}
+	if acntPrdtCd == "" {
+		acntPrdtCd = "01"
+	}
+
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("KIS_ENV")))
+	if env == "" {
+		env = "real"
+	}
+	if i := strings.IndexByte(env, '/'); i >= 0 {
+		env = env[:i]
+	}
+
+	custType := strings.TrimSpace(os.Getenv("KIS_CUST_TYPE"))
+	if custType == "" {
+		custType = "P"
+	}
+
+	baseURL := "https://openapi.koreainvestment.com:9443"
+	if env == "demo" || env == "vps" || env == "paper" {
+		baseURL = "https://openapivts.koreainvestment.com:29443"
+	}
+
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	authClient := &kis.AuthClient{
+		HTTPClient: httpClient,
+		BaseURL:    baseURL,
+		AppKey:     appKey,
+		AppSecret:  appSecret,
+	}
+	store := kis.NewFileTokenStore(".data/kis_token_1.json")
+	manager := kis.NewTokenManager(store, authClient, time.Minute)
+
+	log.Printf("KIS order client initialized (env=%q)", env) //nolint:gosec // env is operator-controlled, not user input
+	return &kis.UnifiedOrderClient{
+		Domestic: &kis.DomesticOrderClient{
+			HTTP:       httpClient,
+			BaseURL:    baseURL,
+			AppKey:     appKey,
+			AppSecret:  appSecret,
+			CANO:       cano,
+			AcntPrdtCd: acntPrdtCd,
+			CustType:   custType,
+			Env:        env,
+			Manager:    manager,
+		},
+		Overseas: &kis.OverseasOrderClient{
+			HTTP:      httpClient,
+			BaseURL:   baseURL,
+			AppKey:    appKey,
+			AppSecret: appSecret,
+			CustType:  custType,
+			Env:       env,
+			Manager:   manager,
+		},
+	}
 }
 
 // buildExchangeRate reads USD_KRW_RATE or EXIM_AUTH_KEY env vars.

@@ -158,3 +158,13 @@ ON CONFLICT(ticker, price_date) DO UPDATE SET
     exchange=excluded.exchange,
     updated_at=excluded.updated_at
 RETURNING *;
+
+-- Phase 7 queries.
+
+-- name: CreateOrderExecution :one
+INSERT INTO order_executions (id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListRecentOrderExecutions :many
+SELECT * FROM order_executions ORDER BY created_at DESC LIMIT ?;

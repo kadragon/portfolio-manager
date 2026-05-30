@@ -1,6 +1,8 @@
 package kis
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -61,6 +63,56 @@ func GetWithRetry(
 		return nil, fmt.Errorf("KIS HTTP %d: %s", status, string(body))
 	}
 	return body, nil
+}
+
+// postWithRetry issues a POST request with a JSON body, retrying once on EGW00123.
+func postWithRetry(
+	client *http.Client,
+	url string,
+	payload any,
+	headers map[string]string,
+	manager *TokenManager,
+	appKey, appSecret, trID, custType string,
+) ([]byte, error) {
+	body, status, err := doPost(client, url, payload, headers)
+	if err != nil {
+		return nil, err
+	}
+	if IsTokenExpiredError(status, body) && manager != nil {
+		newToken, refreshErr := manager.RefreshToken()
+		if refreshErr != nil {
+			return nil, fmt.Errorf("KIS token refresh: %w", refreshErr)
+		}
+		body, status, err = doPost(client, url, payload, BuildHeaders(newToken, appKey, appSecret, trID, custType))
+		if err != nil {
+			return nil, err
+		}
+	}
+	if status >= 400 {
+		return nil, fmt.Errorf("KIS HTTP %d: %s", status, string(body))
+	}
+	return body, nil
+}
+
+func doPost(client *http.Client, url string, payload any, headers map[string]string) ([]byte, int, error) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, 0, err
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, err
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	return body, resp.StatusCode, err
 }
 
 func doGet(client *http.Client, url string, params, headers map[string]string) ([]byte, int, error) {

@@ -20,6 +20,8 @@ type Querier interface {
 	CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error)
 	// Holding queries (Phase 4).
 	CreateHolding(ctx context.Context, arg CreateHoldingParams) (Holding, error)
+	// Phase 7 queries.
+	CreateOrderExecution(ctx context.Context, arg CreateOrderExecutionParams) (OrderExecution, error)
 	// Stock queries (Phase 2).
 	CreateStock(ctx context.Context, arg CreateStockParams) (Stock, error)
 	DeleteAccount(ctx context.Context, id uuidx.UUID) error
@@ -45,6 +47,7 @@ type Querier interface {
 	ListDeposits(ctx context.Context) ([]Deposit, error)
 	ListGroups(ctx context.Context) ([]Group, error)
 	ListHoldingsByAccount(ctx context.Context, accountID uuidx.UUID) ([]Holding, error)
+	ListRecentOrderExecutions(ctx context.Context, limit int64) ([]OrderExecution, error)
 	ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]Stock, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNameCashParams) (Account, error)

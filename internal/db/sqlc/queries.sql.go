@@ -163,6 +163,56 @@ func (q *Queries) CreateHolding(ctx context.Context, arg CreateHoldingParams) (H
 	return i, err
 }
 
+const createOrderExecution = `-- name: CreateOrderExecution :one
+
+INSERT INTO order_executions (id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at
+`
+
+type CreateOrderExecutionParams struct {
+	ID          uuidx.UUID
+	Ticker      string
+	Side        string
+	Quantity    int64
+	Currency    string
+	Exchange    sql.NullString
+	Status      string
+	Message     string
+	RawResponse sql.NullString
+	CreatedAt   ktime.Time
+}
+
+// Phase 7 queries.
+func (q *Queries) CreateOrderExecution(ctx context.Context, arg CreateOrderExecutionParams) (OrderExecution, error) {
+	row := q.db.QueryRowContext(ctx, createOrderExecution,
+		arg.ID,
+		arg.Ticker,
+		arg.Side,
+		arg.Quantity,
+		arg.Currency,
+		arg.Exchange,
+		arg.Status,
+		arg.Message,
+		arg.RawResponse,
+		arg.CreatedAt,
+	)
+	var i OrderExecution
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.Side,
+		&i.Quantity,
+		&i.Currency,
+		&i.Exchange,
+		&i.Status,
+		&i.Message,
+		&i.RawResponse,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createStock = `-- name: CreateStock :one
 
 INSERT INTO stocks (id, ticker, group_id, exchange, created_at, updated_at, name)
@@ -637,6 +687,44 @@ func (q *Queries) ListHoldingsByAccount(ctx context.Context, accountID uuidx.UUI
 			&i.Quantity,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentOrderExecutions = `-- name: ListRecentOrderExecutions :many
+SELECT id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at FROM order_executions ORDER BY created_at DESC LIMIT ?
+`
+
+func (q *Queries) ListRecentOrderExecutions(ctx context.Context, limit int64) ([]OrderExecution, error) {
+	rows, err := q.db.QueryContext(ctx, listRecentOrderExecutions, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OrderExecution{}
+	for rows.Next() {
+		var i OrderExecution
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ticker,
+			&i.Side,
+			&i.Quantity,
+			&i.Currency,
+			&i.Exchange,
+			&i.Status,
+			&i.Message,
+			&i.RawResponse,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
