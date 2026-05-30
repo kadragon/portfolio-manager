@@ -86,3 +86,23 @@ DELETE FROM accounts WHERE id = ?;
 
 -- name: DeleteHoldingsByAccount :exec
 DELETE FROM holdings WHERE account_id = ?;
+
+-- Holding queries (Phase 4).
+
+-- name: CreateHolding :one
+INSERT INTO holdings (id, account_id, stock_id, quantity, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListHoldingsByAccount :many
+SELECT * FROM holdings WHERE account_id = ?;
+
+-- name: GetHoldingByID :one
+SELECT * FROM holdings WHERE id = ?;
+
+-- name: UpdateHolding :one
+UPDATE holdings SET quantity = ?, updated_at = ? WHERE id = ?
+RETURNING *;
+
+-- name: DeleteHolding :exec
+DELETE FROM holdings WHERE id = ?;

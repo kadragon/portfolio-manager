@@ -86,6 +86,44 @@ func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group
 	return i, err
 }
 
+const createHolding = `-- name: CreateHolding :one
+
+INSERT INTO holdings (id, account_id, stock_id, quantity, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING id, account_id, stock_id, quantity, created_at, updated_at
+`
+
+type CreateHoldingParams struct {
+	ID        uuidx.UUID
+	AccountID uuidx.UUID
+	StockID   uuidx.UUID
+	Quantity  numeric.Decimal
+	CreatedAt ktime.Time
+	UpdatedAt ktime.Time
+}
+
+// Holding queries (Phase 4).
+func (q *Queries) CreateHolding(ctx context.Context, arg CreateHoldingParams) (Holding, error) {
+	row := q.db.QueryRowContext(ctx, createHolding,
+		arg.ID,
+		arg.AccountID,
+		arg.StockID,
+		arg.Quantity,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Holding
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.StockID,
+		&i.Quantity,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createStock = `-- name: CreateStock :one
 
 INSERT INTO stocks (id, ticker, group_id, exchange, created_at, updated_at, name)
@@ -145,6 +183,15 @@ func (q *Queries) DeleteGroup(ctx context.Context, id uuidx.UUID) error {
 	return err
 }
 
+const deleteHolding = `-- name: DeleteHolding :exec
+DELETE FROM holdings WHERE id = ?
+`
+
+func (q *Queries) DeleteHolding(ctx context.Context, id uuidx.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteHolding, id)
+	return err
+}
+
 const deleteHoldingsByAccount = `-- name: DeleteHoldingsByAccount :exec
 DELETE FROM holdings WHERE account_id = ?
 `
@@ -193,6 +240,24 @@ func (q *Queries) GetGroup(ctx context.Context, id uuidx.UUID) (Group, error) {
 		&i.ID,
 		&i.Name,
 		&i.TargetPercentage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getHoldingByID = `-- name: GetHoldingByID :one
+SELECT id, account_id, stock_id, quantity, created_at, updated_at FROM holdings WHERE id = ?
+`
+
+func (q *Queries) GetHoldingByID(ctx context.Context, id uuidx.UUID) (Holding, error) {
+	row := q.db.QueryRowContext(ctx, getHoldingByID, id)
+	var i Holding
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.StockID,
+		&i.Quantity,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -340,6 +405,40 @@ func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
 	return items, nil
 }
 
+const listHoldingsByAccount = `-- name: ListHoldingsByAccount :many
+SELECT id, account_id, stock_id, quantity, created_at, updated_at FROM holdings WHERE account_id = ?
+`
+
+func (q *Queries) ListHoldingsByAccount(ctx context.Context, accountID uuidx.UUID) ([]Holding, error) {
+	rows, err := q.db.QueryContext(ctx, listHoldingsByAccount, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Holding{}
+	for rows.Next() {
+		var i Holding
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.StockID,
+			&i.Quantity,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStocksByGroup = `-- name: ListStocksByGroup :many
 SELECT id, ticker, group_id, exchange, created_at, updated_at, name FROM stocks WHERE group_id = ?
 `
@@ -471,6 +570,31 @@ func (q *Queries) UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Group
 		&i.ID,
 		&i.Name,
 		&i.TargetPercentage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateHolding = `-- name: UpdateHolding :one
+UPDATE holdings SET quantity = ?, updated_at = ? WHERE id = ?
+RETURNING id, account_id, stock_id, quantity, created_at, updated_at
+`
+
+type UpdateHoldingParams struct {
+	Quantity  numeric.Decimal
+	UpdatedAt ktime.Time
+	ID        uuidx.UUID
+}
+
+func (q *Queries) UpdateHolding(ctx context.Context, arg UpdateHoldingParams) (Holding, error) {
+	row := q.db.QueryRowContext(ctx, updateHolding, arg.Quantity, arg.UpdatedAt, arg.ID)
+	var i Holding
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.StockID,
+		&i.Quantity,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
