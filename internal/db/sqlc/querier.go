@@ -31,11 +31,16 @@ type Querier interface {
 	GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, error)
 	GetDepositByDate(ctx context.Context, depositDate datex.Date) (Deposit, error)
 	GetDepositByID(ctx context.Context, id uuidx.UUID) (Deposit, error)
+	GetFirstDepositDate(ctx context.Context) (datex.Date, error)
 	GetGroup(ctx context.Context, id uuidx.UUID) (Group, error)
 	GetHoldingByID(ctx context.Context, id uuidx.UUID) (Holding, error)
+	GetLatestStockPriceByTicker(ctx context.Context, ticker string) (StockPrice, error)
 	GetStockByID(ctx context.Context, id uuidx.UUID) (Stock, error)
 	GetStockByTicker(ctx context.Context, ticker string) (Stock, error)
+	GetStockPriceByTickerAndDate(ctx context.Context, arg GetStockPriceByTickerAndDateParams) (StockPrice, error)
 	ListAccounts(ctx context.Context) ([]Account, error)
+	// Phase 6 queries.
+	ListAllHoldings(ctx context.Context) ([]Holding, error)
 	ListAllStocks(ctx context.Context) ([]Stock, error)
 	ListDeposits(ctx context.Context) ([]Deposit, error)
 	ListGroups(ctx context.Context) ([]Group, error)
@@ -51,6 +56,7 @@ type Querier interface {
 	UpdateStockGroup(ctx context.Context, arg UpdateStockGroupParams) (Stock, error)
 	UpdateStockName(ctx context.Context, arg UpdateStockNameParams) (Stock, error)
 	UpdateStockTicker(ctx context.Context, arg UpdateStockTickerParams) (Stock, error)
+	UpsertStockPrice(ctx context.Context, arg UpsertStockPriceParams) (StockPrice, error)
 }
 
 var _ Querier = (*Queries)(nil)

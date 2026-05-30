@@ -3,9 +3,69 @@ package templates
 import (
 	"html"
 
+	"github.com/kadragon/portfolio-manager/internal/accountformat"
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/web/format"
 )
+
+// rateColorClassForMap returns a CSS class for a change-rate value. Returns "" if period absent.
+func rateColorClassForMap(rates map[string]numeric.Decimal, period string) string {
+	rate, ok := rates[period]
+	if !ok {
+		return ""
+	}
+	if rate.IsPositive() {
+		return "text-success"
+	}
+	if rate.IsNegative() {
+		return "text-error"
+	}
+	return ""
+}
+
+// rateColorClassForDark returns dark-theme CSS class for a change-rate value.
+func rateColorClassForDark(rate *numeric.Decimal) string {
+	if rate == nil {
+		return ""
+	}
+	if rate.IsPositive() {
+		return "text-up-on-dark"
+	}
+	if rate.IsNegative() {
+		return "text-down-on-dark"
+	}
+	return ""
+}
+
+// signedRateHTML returns an HTML snippet: formatted signed percent, or the dim dash span.
+// safe to use with templ.Raw().
+func signedRateHTML(rates map[string]numeric.Decimal, period string) string {
+	rate, ok := rates[period]
+	if !ok {
+		return `<span class="text-base-content/30">-</span>`
+	}
+	return html.EscapeString(accountformat.FormatSignedPercent(rate))
+}
+
+// diffColorClass returns a CSS class for a diff value (positive=error, negative=success).
+func diffColorClass(d numeric.Decimal) string {
+	if d.IsPositive() {
+		return "text-error"
+	}
+	if d.IsNegative() {
+		return "text-success"
+	}
+	return ""
+}
+
+// stockName returns name if non-empty, else ticker.
+func stockName(name, ticker string) string {
+	if name != "" {
+		return name
+	}
+	return ticker
+}
 
 // depositFormHTML renders the inline deposit edit form row (deposits/_form.html).
 // The form spans multiple <td> cells — raw HTML required for the same reason as

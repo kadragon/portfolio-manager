@@ -60,6 +60,7 @@ curl -s -o "$OUT/py_deposits.html" "http://127.0.0.1:$PY_PORT/deposits"
 if [ -n "$DID" ]; then
   curl -s -o "$OUT/py_deposit_row.html" "http://127.0.0.1:$PY_PORT/deposits/$DID"
 fi
+curl -s -o "$OUT/py_dashboard.html" "http://127.0.0.1:$PY_PORT/"
 pkill -f "uvicorn portfolio_manager" 2>/dev/null
 sleep 1
 
@@ -92,6 +93,7 @@ curl -s -o "$OUT/go_deposits.html" "http://127.0.0.1:$GO_PORT/deposits"
 if [ -n "$DID" ]; then
   curl -s -o "$OUT/go_deposit_row.html" "http://127.0.0.1:$GO_PORT/deposits/$DID"
 fi
+curl -s -o "$OUT/go_dashboard.html" "http://127.0.0.1:$GO_PORT/"
 kill -TERM "$GO_PID" 2>/dev/null
 GO_PID=""
 
@@ -138,8 +140,39 @@ if has_account:
 pages += ["deposits"]
 if has_deposit:
     pages += ["deposit_row"]
+pages += ["dashboard"]
+def norm_dashboard(s):
+    # Dashboard: Python uses live KIS prices/names; Go uses DB-cached values.
+    # Mask price/rate/name values so parity checks structure + holdings membership.
+    s = re.sub(r'₩[\d,]+', '₩PRICE', s)
+    s = re.sub(r'\$[\d,]+\.\d+', '$PRICE', s)
+    # Signed and unsigned percent values (rates, target%, diff%)
+    s = re.sub(r'[+\-−]?\d+\.\d+%', 'N%', s)
+    # Absent-rate cell (Go): normalize "-" span to match a formatted rate
+    s = s.replace('<span class="text-base-content/30">-</span>', 'N%')
+    # Color classes driven by sign of rate/diff (Python colors based on value)
+    for cls in ('text-success', 'text-error', 'text-up-on-dark', 'text-down-on-dark'):
+        s = s.replace(' ' + cls, '')
+    # Remove trailing space left in class attrs: class="foo "  →  class="foo"
+    s = re.sub(r'"([^"]*) "', r'"\1"', s)
+    # Stock name column in summary table: Python uses KIS short name, Go uses DB name.
+    # Pattern: <td><code>TICKER</code></td><td>NAME</td>  →  normalize NAME away.
+    s = re.sub(r'(<td><code[^>]*>[^<]*</code></td>)<td>[^<]*</td>', r'\1<td>STKNAME</td>', s)
+    # Group summary "권장 동작" badges depend on actual vs target allocation,
+    # which differs between live prices (Python) and DB-cached (Go). Normalize away.
+    s = re.sub(r'<span class="badge[^"]*">[^<]*</span>', '<span class="badge">ACTION</span>', s)
+    # Sort tbody rows canonically: Python sorts holdings by value_krw DESC (live price),
+    # Go by value_krw DESC (DB-cache price). After masking values, sort alphabetically
+    # so both sides have the same canonical order.
+    def sort_tbody(m):
+        rows = re.findall(r'(<tr>.*?</tr>)', m.group(1), re.DOTALL)
+        return '<tbody>' + ''.join(sorted(rows)) + '</tbody>'
+    s = re.sub(r'<tbody>(.*?)</tbody>', sort_tbody, s, flags=re.DOTALL)
+    return s
 for name in pages:
     a, b = norm(f"{out}/py_{name}.html"), norm(f"{out}/go_{name}.html")
+    if name == "dashboard":
+        a, b = norm_dashboard(a), norm_dashboard(b)
     if a == b:
         print(f"{name}: MATCH ({len(a)} bytes)")
     else:

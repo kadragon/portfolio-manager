@@ -90,6 +90,44 @@ func (r *HoldingRepository) Delete(ctx context.Context, id uuidx.UUID) error {
 	return r.q.DeleteHolding(ctx, id)
 }
 
+// ListAll returns every holding across all accounts.
+func (r *HoldingRepository) ListAll(ctx context.Context) ([]models.Holding, error) {
+	rows, err := r.q.ListAllHoldings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]models.Holding, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toHolding(row))
+	}
+	return out, nil
+}
+
+// GetAggregatedByStock returns total quantity per stock_id across all accounts,
+// including only stocks with quantity > 0.
+func (r *HoldingRepository) GetAggregatedByStock(ctx context.Context) (map[uuidx.UUID]numeric.Decimal, error) {
+	rows, err := r.q.ListAllHoldings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[uuidx.UUID]numeric.Decimal)
+	for _, row := range rows {
+		h := toHolding(row)
+		if existing, ok := m[h.StockID]; ok {
+			m[h.StockID] = numeric.Wrap(existing.Add(h.Quantity.Decimal))
+		} else {
+			m[h.StockID] = h.Quantity
+		}
+	}
+	// Remove zero-quantity entries.
+	for k, v := range m {
+		if v.IsZero() {
+			delete(m, k)
+		}
+	}
+	return m, nil
+}
+
 // BulkUpdateByAccount validates that all updates belong to the account, then
 // applies each update sequentially. Parity with Python: validation completes
 // before any write; no transaction needed at this scale.

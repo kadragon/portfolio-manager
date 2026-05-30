@@ -112,6 +112,18 @@ func (r *DepositRepository) Delete(ctx context.Context, id uuidx.UUID) error {
 	return r.q.DeleteDeposit(ctx, id)
 }
 
+// GetFirstDepositDate returns the earliest deposit_date, or nil if no deposits exist.
+func (r *DepositRepository) GetFirstDepositDate(ctx context.Context) (*datex.Date, error) {
+	d, err := r.q.GetFirstDepositDate(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
 func toDeposit(row sqlc.Deposit) models.Deposit {
 	return models.Deposit{
 		ID:          row.ID,

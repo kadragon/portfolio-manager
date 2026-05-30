@@ -1,0 +1,242 @@
+package templates
+
+import (
+	"fmt"
+
+	"github.com/kadragon/portfolio-manager/internal/accountformat"
+	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
+)
+
+// DashboardPage renders the dashboard (/).
+// summary: full price summary (nil when price service unavailable)
+// groupSummary: group allocation rows (non-nil only when summary != nil)
+// groupHoldings: fallback quantity-only data (non-nil when no price service)
+// errorMsg: optional error string
+templ DashboardPage(summary *models.PortfolioSummary, groupSummary []models.GroupSummaryRow, groupHoldings []models.GroupHoldings, errorMsg string) {
+	@Base("대시보드 — 포트폴리오 매니저", "dashboard") {
+		<h1 class="text-lg font-semibold text-base-content mb-3">대시보드</h1>
+		<p id="dashboard-rate-periods" class="sr-only">1Y는 1년, 6M은 6개월, 1M은 1개월 수익률을 의미합니다.</p>
+		if errorMsg != "" {
+			<div class="alert alert-error mb-4 text-sm py-2" role="alert" aria-live="polite">
+				<span>{ errorMsg }</span>
+			</div>
+		}
+		if summary != nil {
+			@dashboardSummary(summary, groupSummary)
+		} else if len(groupHoldings) > 0 {
+			@dashboardFallback(groupHoldings)
+		} else {
+			@dashboardEmpty()
+		}
+	}
+}
+
+templ dashboardSummary(summary *models.PortfolioSummary, groupSummary []models.GroupSummaryRow) {
+	<section class="hero-dark px-6 py-7 sm:px-8 sm:py-8 mb-4" role="region" aria-label="투자 요약">
+		<dl class="flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
+			<div>
+				<dt class="text-xs uppercase tracking-wider text-neutral-content/60">총자산</dt>
+				<dd class="text-3xl sm:text-4xl font-mono font-medium mt-1">{ accountformat.FormatKRW(summary.TotalAssets) }</dd>
+			</div>
+			<div class="flex gap-8 sm:gap-10">
+				<div>
+					<dt class="text-xs uppercase tracking-wider text-neutral-content/60">수익률</dt>
+					<dd class={ "text-xl sm:text-2xl font-mono mt-1 " + rateColorClassForDark(summary.ReturnRate) }>
+						if summary.ReturnRate != nil {
+							{ accountformat.FormatSignedPercent(*summary.ReturnRate) }
+						} else {
+							-
+						}
+					</dd>
+				</div>
+				<div>
+					<dt class="text-xs uppercase tracking-wider text-neutral-content/60">연환산</dt>
+					<dd class={ "text-xl sm:text-2xl font-mono mt-1 " + rateColorClassForDark(summary.AnnualizedReturnRate) }>
+						if summary.AnnualizedReturnRate != nil {
+							{ accountformat.FormatSignedPercent(*summary.AnnualizedReturnRate) }
+						} else {
+							-
+						}
+					</dd>
+				</div>
+			</div>
+		</dl>
+	</section>
+	<div class="stats stats-vertical sm:stats-horizontal bg-base-100 border border-base-300 w-full mb-4 text-sm" role="region" aria-label="자산 구성">
+		<div class="stat py-3 px-4">
+			<div class="stat-title text-xs">주식</div>
+			<div class="stat-value text-base font-mono">{ accountformat.FormatKRW(summary.TotalStockValue) }</div>
+		</div>
+		<div class="stat py-3 px-4">
+			<div class="stat-title text-xs">예수금</div>
+			<div class="stat-value text-base font-mono">{ accountformat.FormatKRW(summary.TotalCashBalance) }</div>
+		</div>
+		<div class="stat py-3 px-4">
+			<div class="stat-title text-xs">투자원금</div>
+			<div class="stat-value text-base font-mono">{ accountformat.FormatKRW(summary.TotalInvested) }</div>
+		</div>
+	</div>
+	<div class="card bg-base-100">
+		<div class="card-body p-4 sm:p-6">
+			<div class="overflow-x-auto" tabindex="0" aria-label="보유 종목 표 가로 스크롤 영역">
+				<table class="table table-sm" aria-describedby="dashboard-rate-periods">
+					<caption class="sr-only">그룹별 보유 종목, 현재가, 평가액과 기간 수익률</caption>
+					<thead>
+						<tr class="text-xs uppercase tracking-wider">
+							<th>그룹</th>
+							<th>티커</th>
+							<th>종목명</th>
+							<th class="text-right">수량</th>
+							<th class="text-right">현재가</th>
+							<th class="text-right">평가액 (KRW)</th>
+							<th class="text-right"><abbr title="1년 수익률">1Y</abbr></th>
+							<th class="text-right"><abbr title="6개월 수익률">6M</abbr></th>
+							<th class="text-right"><abbr title="1개월 수익률">1M</abbr></th>
+						</tr>
+					</thead>
+					<tbody>
+						if len(summary.Holdings) == 0 {
+							<tr><td colspan="9" class="text-center text-base-content/40">보유 종목이 없습니다.</td></tr>
+						} else {
+							for _, pair := range summary.Holdings {
+								@holdingRow(pair)
+							}
+						}
+					</tbody>
+				</table>
+			</div>
+			if len(groupSummary) > 0 {
+				<div class="divider my-2"></div>
+				<div class="overflow-x-auto" tabindex="0" aria-label="그룹 비중 요약 표 가로 스크롤 영역">
+					<table class="table table-sm">
+						<caption class="sr-only">그룹별 평가액, 현재 비중, 목표 대비 차이와 권장 동작</caption>
+						<thead>
+							<tr class="text-xs uppercase tracking-wider">
+								<th>그룹</th>
+								<th class="text-right">평가액</th>
+								<th class="text-right">현재 비중</th>
+								<th class="text-right">목표 비중</th>
+								<th class="text-right">차이</th>
+								<th>권장 동작</th>
+								<th class="text-right">조정 금액</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, row := range groupSummary {
+								@groupSummaryRow(row)
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	</div>
+}
+
+templ holdingRow(pair models.GroupHoldingPair) {
+	<tr>
+		<th scope="row" class="font-semibold">{ pair.Group.Name }</th>
+		<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ pair.Holding.Stock.Ticker }</code></td>
+		<td>{ stockName(pair.Holding.Name, pair.Holding.Stock.Ticker) }</td>
+		<td class="text-right font-mono">{ holdingQty(pair.Holding) }</td>
+		<td class="text-right font-mono">{ holdingPrice(pair.Holding) }</td>
+		<td class="text-right font-mono">
+			if pair.Holding.ValueKRW != nil {
+				{ accountformat.FormatKRW(*pair.Holding.ValueKRW) }
+			} else {
+				-
+			}
+		</td>
+		<td class={ "text-right font-mono " + rateColorClassForMap(pair.Holding.ChangeRates, "1y") }>
+			@templ.Raw(signedRateHTML(pair.Holding.ChangeRates, "1y"))
+		</td>
+		<td class={ "text-right font-mono " + rateColorClassForMap(pair.Holding.ChangeRates, "6m") }>
+			@templ.Raw(signedRateHTML(pair.Holding.ChangeRates, "6m"))
+		</td>
+		<td class={ "text-right font-mono " + rateColorClassForMap(pair.Holding.ChangeRates, "1m") }>
+			@templ.Raw(signedRateHTML(pair.Holding.ChangeRates, "1m"))
+		</td>
+	</tr>
+}
+
+func holdingQty(sh models.StockHoldingWithPrice) string {
+	if sh.Currency == "KRW" {
+		return sh.Quantity.String()
+	}
+	return fmt.Sprintf("%d", sh.Quantity.IntPart())
+}
+
+func holdingPrice(sh models.StockHoldingWithPrice) string {
+	if sh.Currency == "KRW" {
+		return accountformat.FormatKRW(sh.Price)
+	}
+	return accountformat.FormatUSD(sh.Price)
+}
+
+templ groupSummaryRow(row models.GroupSummaryRow) {
+	<tr>
+		<th scope="row" class="font-semibold">{ row.Group.Name }</th>
+		<td class="text-right font-mono">{ accountformat.FormatKRW(row.Total) }</td>
+		<td class="text-right font-mono">{ accountformat.FormatPercent(row.ActualPct) }</td>
+		<td class="text-right font-mono">{ accountformat.FormatPercent(row.TargetPct) }</td>
+		<td class={ "text-right font-mono " + diffColorClass(row.DiffPct) }>
+			{ accountformat.FormatSignedPercent(row.DiffPct) }
+		</td>
+		<td>
+			if row.DiffVal.IsPositive() {
+				<span class="badge badge-error badge-sm">매도</span>
+			} else if row.DiffVal.IsNegative() {
+				<span class="badge badge-success badge-sm">매수</span>
+			} else {
+				<span class="text-base-content/40">유지</span>
+			}
+		</td>
+		<td class={ "text-right font-mono " + diffColorClass(row.DiffVal) }>
+			{ accountformat.FormatKRW(numeric.Wrap(row.DiffVal.Abs())) }
+		</td>
+	</tr>
+}
+
+templ dashboardFallback(groupHoldings []models.GroupHoldings) {
+	<div class="card bg-base-100">
+		<div class="card-body p-4 sm:p-6">
+			<div class="overflow-x-auto" tabindex="0" aria-label="보유 종목 요약 표 가로 스크롤 영역">
+				<table class="table table-sm">
+					<caption class="sr-only">가격 정보를 불러오지 못한 경우의 그룹별 보유 종목 요약</caption>
+					<thead>
+						<tr class="text-xs uppercase tracking-wider"><th>그룹</th><th>종목명</th><th>티커</th><th class="text-right">수량</th></tr>
+					</thead>
+					<tbody>
+						for _, gh := range groupHoldings {
+							if len(gh.StockHoldings) > 0 {
+								for _, sh := range gh.StockHoldings {
+									<tr>
+										<th scope="row" class="font-semibold">{ gh.Group.Name }</th>
+										<td>{ stockName(sh.Stock.Name, sh.Stock.Ticker) }</td>
+										<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ sh.Stock.Ticker }</code></td>
+										<td class="text-right font-mono">{ sh.Quantity.String() }</td>
+									</tr>
+								}
+							} else {
+								<tr>
+									<th scope="row" class="font-semibold">{ gh.Group.Name }</th>
+									<td colspan="2" class="text-base-content/40">보유 종목이 없습니다.</td>
+								</tr>
+							}
+						}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+}
+
+templ dashboardEmpty() {
+	<div class="card bg-base-100">
+		<div class="card-body p-6 items-center text-center">
+			<p class="text-base-content/60">포트폴리오 데이터를 불러올 수 없습니다. 먼저 그룹과 종목을 추가하세요.</p>
+			<a href="/groups" class="btn btn-primary btn-sm mt-2">그룹 관리로 이동</a>
+		</div>
+	</div>
+}

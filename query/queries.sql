@@ -133,3 +133,28 @@ RETURNING *;
 
 -- name: DeleteDeposit :exec
 DELETE FROM deposits WHERE id = ?;
+
+-- Phase 6 queries.
+
+-- name: ListAllHoldings :many
+SELECT * FROM holdings;
+
+-- name: GetFirstDepositDate :one
+SELECT deposit_date FROM deposits ORDER BY deposit_date ASC LIMIT 1;
+
+-- name: GetStockPriceByTickerAndDate :one
+SELECT * FROM stock_prices WHERE ticker = ? AND price_date = ?;
+
+-- name: GetLatestStockPriceByTicker :one
+SELECT * FROM stock_prices WHERE ticker = ? ORDER BY price_date DESC LIMIT 1;
+
+-- name: UpsertStockPrice :one
+INSERT INTO stock_prices (id, ticker, price, currency, name, exchange, price_date, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(ticker, price_date) DO UPDATE SET
+    price=excluded.price,
+    currency=excluded.currency,
+    name=CASE WHEN excluded.name != '' THEN excluded.name ELSE stock_prices.name END,
+    exchange=excluded.exchange,
+    updated_at=excluded.updated_at
+RETURNING *;

@@ -313,6 +313,17 @@ func (q *Queries) GetDepositByID(ctx context.Context, id uuidx.UUID) (Deposit, e
 	return i, err
 }
 
+const getFirstDepositDate = `-- name: GetFirstDepositDate :one
+SELECT deposit_date FROM deposits ORDER BY deposit_date ASC LIMIT 1
+`
+
+func (q *Queries) GetFirstDepositDate(ctx context.Context) (datex.Date, error) {
+	row := q.db.QueryRowContext(ctx, getFirstDepositDate)
+	var deposit_date datex.Date
+	err := row.Scan(&deposit_date)
+	return deposit_date, err
+}
+
 const getGroup = `-- name: GetGroup :one
 SELECT id, name, target_percentage, created_at, updated_at FROM groups WHERE id = ?
 `
@@ -342,6 +353,27 @@ func (q *Queries) GetHoldingByID(ctx context.Context, id uuidx.UUID) (Holding, e
 		&i.AccountID,
 		&i.StockID,
 		&i.Quantity,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getLatestStockPriceByTicker = `-- name: GetLatestStockPriceByTicker :one
+SELECT id, ticker, price, currency, name, exchange, price_date, created_at, updated_at FROM stock_prices WHERE ticker = ? ORDER BY price_date DESC LIMIT 1
+`
+
+func (q *Queries) GetLatestStockPriceByTicker(ctx context.Context, ticker string) (StockPrice, error) {
+	row := q.db.QueryRowContext(ctx, getLatestStockPriceByTicker, ticker)
+	var i StockPrice
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.Price,
+		&i.Currency,
+		&i.Name,
+		&i.Exchange,
+		&i.PriceDate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -386,6 +418,32 @@ func (q *Queries) GetStockByTicker(ctx context.Context, ticker string) (Stock, e
 	return i, err
 }
 
+const getStockPriceByTickerAndDate = `-- name: GetStockPriceByTickerAndDate :one
+SELECT id, ticker, price, currency, name, exchange, price_date, created_at, updated_at FROM stock_prices WHERE ticker = ? AND price_date = ?
+`
+
+type GetStockPriceByTickerAndDateParams struct {
+	Ticker    string
+	PriceDate datex.Date
+}
+
+func (q *Queries) GetStockPriceByTickerAndDate(ctx context.Context, arg GetStockPriceByTickerAndDateParams) (StockPrice, error) {
+	row := q.db.QueryRowContext(ctx, getStockPriceByTickerAndDate, arg.Ticker, arg.PriceDate)
+	var i StockPrice
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.Price,
+		&i.Currency,
+		&i.Name,
+		&i.Exchange,
+		&i.PriceDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listAccounts = `-- name: ListAccounts :many
 SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id FROM accounts
 `
@@ -407,6 +465,42 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 			&i.UpdatedAt,
 			&i.KisAccountNo,
 			&i.KisApiKeyID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllHoldings = `-- name: ListAllHoldings :many
+
+SELECT id, account_id, stock_id, quantity, created_at, updated_at FROM holdings
+`
+
+// Phase 6 queries.
+func (q *Queries) ListAllHoldings(ctx context.Context) ([]Holding, error) {
+	rows, err := q.db.QueryContext(ctx, listAllHoldings)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Holding{}
+	for rows.Next() {
+		var i Holding
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.StockID,
+			&i.Quantity,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -883,6 +977,57 @@ func (q *Queries) UpdateStockTicker(ctx context.Context, arg UpdateStockTickerPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Name,
+	)
+	return i, err
+}
+
+const upsertStockPrice = `-- name: UpsertStockPrice :one
+INSERT INTO stock_prices (id, ticker, price, currency, name, exchange, price_date, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(ticker, price_date) DO UPDATE SET
+    price=excluded.price,
+    currency=excluded.currency,
+    name=CASE WHEN excluded.name != '' THEN excluded.name ELSE stock_prices.name END,
+    exchange=excluded.exchange,
+    updated_at=excluded.updated_at
+RETURNING id, ticker, price, currency, name, exchange, price_date, created_at, updated_at
+`
+
+type UpsertStockPriceParams struct {
+	ID        uuidx.UUID
+	Ticker    string
+	Price     numeric.Decimal
+	Currency  string
+	Name      string
+	Exchange  sql.NullString
+	PriceDate datex.Date
+	CreatedAt ktime.Time
+	UpdatedAt ktime.Time
+}
+
+func (q *Queries) UpsertStockPrice(ctx context.Context, arg UpsertStockPriceParams) (StockPrice, error) {
+	row := q.db.QueryRowContext(ctx, upsertStockPrice,
+		arg.ID,
+		arg.Ticker,
+		arg.Price,
+		arg.Currency,
+		arg.Name,
+		arg.Exchange,
+		arg.PriceDate,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i StockPrice
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.Price,
+		&i.Currency,
+		&i.Name,
+		&i.Exchange,
+		&i.PriceDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

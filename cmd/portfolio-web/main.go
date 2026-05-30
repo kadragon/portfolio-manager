@@ -19,9 +19,6 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/web/handlers"
 )
 
-// dashboardPlaceholder stands in for "/" until the dashboard slice (Phase 6).
-const dashboardPlaceholder = `<!doctype html><html lang="ko"><head><meta charset="UTF-8"><title>포트폴리오 매니저</title></head><body><p>대시보드는 이후 단계에서 구현됩니다. <a href="/groups">그룹</a></p></body></html>`
-
 func main() {
 	c, err := container.New("")
 	if err != nil {
@@ -60,10 +57,7 @@ func newServer(c *container.Container) *echo.Echo {
 	e.Use(middleware.Recover())
 	e.Static("/static", staticDir())
 
-	e.GET("/", func(c echo.Context) error {
-		return c.HTML(http.StatusOK, dashboardPlaceholder)
-	})
-
+	handlers.NewDashboardHandler(c).Register(e)
 	handlers.NewGroupHandler(c).Register(e)
 	handlers.NewStockHandler(c).Register(e)
 	handlers.NewAccountHandler(c).Register(e)
