@@ -8,13 +8,17 @@ Strategy: **clean replace** (Go replaces `src/` at cutover). Python kept on disk
 
 | Phase | State |
 |-------|-------|
-| 0 — scaffold + DB-compat types | ✅ committed (`[HARNESS] Phase 0`) |
-| 1 — groups slice (full stack) | ✅ committed (`[FEAT] Phase 1`) |
-| 2 — stocks | ⬜ next |
-| 3 — accounts · 4 — holdings · 5 — deposits | ⬜ |
-| 6 — portfolio/price/exchange/dashboard | ⬜ |
-| 7 — rebalance · 8 — KIS sync · 9 — insights/LLM | ⬜ |
-| 10 — cutover | ⬜ |
+| 0 — scaffold + DB-compat types | ✅ |
+| 1 — groups slice (full stack) | ✅ |
+| 2 — stocks | ✅ |
+| 3 — accounts | ✅ |
+| 4 — holdings | ✅ |
+| 5 — deposits | ✅ |
+| 6 — portfolio/price/exchange/dashboard | ✅ |
+| 7 — rebalance | ✅ (`b7a73e4`) |
+| 8 — KIS account sync | ✅ (`a9f7826`) |
+| 9 — insights/LLM | ⬜ see `backlog.md` |
+| 10 — cutover | ⬜ see `backlog.md` |
 
 ## Stack (locked)
 

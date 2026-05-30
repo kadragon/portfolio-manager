@@ -1,5 +1,37 @@
 # Backlog
 
+## Python → Go rewrite (Phase 9–10)
+
+Branch `feat/go-rewrite`. Phases 0–8 done. Companion: `handoff-go-rewrite.md`.
+
+### Phase 9 — Insights / LLM
+
+Python oracle: `web/routes/insights.py`, `services/portfolio_insight_service.py`,
+`services/llm/ollama_client.py`, `services/llm/prompt_templates.py`, templates
+`insights/view.html`, `_narrative.html`, `_rebalance_xai.html`, `_qa.html`.
+
+- [ ] `OllamaClient.chat` — POST /api/chat, tools, format json, `OllamaUnavailableError`
+- [ ] prompt templates (Korean): narrative / rebalance-xai / qa / qa-json-fallback + 4 tool schemas
+- [ ] `PortfolioInsightService` — `generate_narrative(daily/weekly)`, `explain_rebalance`, `answer_question` (4 tools: group_summary/top_movers/holding_value/deposit_history, 3-iter cap, JSON fallback)
+- [ ] `GET /insights`, `GET /insights/narrative?period=`, `GET /insights/rebalance-xai`, `POST /insights/qa`
+- [ ] templ view + 3 partials; register; parity (mock Ollama)
+- [ ] env: `OLLAMA_MODEL`/`HOST`/`TIMEOUT_SEC`/`NUM_CTX`
+
+### Phase 10 — Cutover
+
+- [ ] full `ServiceContainer` env wiring complete + `close()` lifecycle
+- [ ] move `src/.../web/static` + tailwind input → `internal/web/static`; update Makefile css paths + `staticDir()`
+- [ ] Dockerfile → multi-stage Go (`CGO_ENABLED=0`, scratch/alpine); docker-compose → Go binary
+- [ ] pre-commit → golangci-lint + `go test` + `templ generate --check` + `sqlc diff` (drop ruff/pyright/bandit/pytest)
+- [ ] CI (`.github/workflows/ci.yml`) → Go-only; coverage gate 85% (exclude generated: `internal/db/sqlc`, `*_templ.go`, `cmd`)
+- [ ] rewrite `docs/*.md` + `AGENTS.md` golden principles for Go toolchain
+- [ ] `.claude/settings.local.json` permissions: `uv run`/pytest → go/golangci
+- [ ] DELETE `src/`, `tests/` (py), `pyproject.toml`, `uv.lock`, `.venv`, `.bandit`, `.pre-commit-config.yaml` (py hooks)
+- [ ] final 38-route parity sweep + `docker compose up` smoke
+- [ ] remove `scripts/parity_check.sh` + `handoff-go-rewrite.md` + `TASKS-go-rewrite.md` (oracle gone)
+
+---
+
 - [x] [harness] Define dormant `tasks.md` schema/status for no-active-sprint sessions
 
 ## Review follow-ups from PR #65
