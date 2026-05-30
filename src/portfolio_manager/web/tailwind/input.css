@@ -3,53 +3,56 @@
 
 @source "../templates/**/*.html";
 
-/* ── Custom Portfolio Dark Theme ──
+/* ── Portfolio Theme — Coinbase Light ──
    Defined as CSS variables matching DaisyUI's theme system.
    Applied via <html data-theme="portfolio"> in base.html.
-   Colors in oklch for perceptual uniformity.
+   Token values trace to DESIGN.md (Coinbase design analysis):
+   white canvas + ink + soft-gray elevation, Coinbase Blue as the
+   single brand voltage, near-black for dark editorial bands.
 ── */
 [data-theme="portfolio"] {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* Base: deep navy-charcoal backgrounds */
-  --color-base-100: oklch(10% 0.015 250);
-  --color-base-200: oklch(15% 0.015 250);
-  --color-base-300: oklch(18% 0.02 250);
-  --color-base-content: oklch(83% 0.01 250);
+  /* Surfaces — white canvas + soft-gray elevation bands */
+  --color-base-100: #ffffff; /* canvas — page floor */
+  --color-base-200: #f7f7f7; /* surface-soft — cards, alternating bands */
+  --color-base-300: #eef0f3; /* surface-strong — chips, secondary fills, hairlines */
+  --color-base-content: #0a0b0d; /* ink — body + headings */
 
-  /* Primary: vivid blue */
-  --color-primary: oklch(65% 0.19 255);
-  --color-primary-content: oklch(98% 0.005 255);
+  /* Primary — Coinbase Blue, reserved for CTAs/links only */
+  --color-primary: #0052ff;
+  --color-primary-content: #ffffff;
 
-  /* Secondary: soft blue-gray */
-  --color-secondary: oklch(55% 0.06 250);
-  --color-secondary-content: oklch(95% 0.005 250);
+  /* Secondary — cool body gray */
+  --color-secondary: #5b616e;
+  --color-secondary-content: #ffffff;
 
-  /* Accent: amber gold */
-  --color-accent: oklch(76% 0.145 75);
-  --color-accent-content: oklch(15% 0.03 75);
+  /* Accent — illustrative yellow (sparing) */
+  --color-accent: #f4b000;
+  --color-accent-content: #0a0b0d;
 
-  /* Neutral */
-  --color-neutral: oklch(22% 0.02 250);
-  --color-neutral-content: oklch(85% 0.01 250);
+  /* Neutral — near-black, drives dark editorial bands/heroes */
+  --color-neutral: #0a0b0d;
+  --color-neutral-content: #ffffff;
 
   /* Semantic */
-  --color-info: oklch(65% 0.19 255);
-  --color-info-content: oklch(98% 0.005 255);
+  --color-info: #0052ff;
+  --color-info-content: #ffffff;
 
-  --color-success: oklch(75% 0.155 165);
-  --color-success-content: oklch(15% 0.03 165);
+  --color-success: #098551; /* semantic-up (gain) — darkened for WCAG AA (4.74:1 on white) */
+  --color-success-content: #ffffff;
 
-  --color-warning: oklch(76% 0.145 75);
-  --color-warning-content: oklch(15% 0.03 75);
+  --color-warning: #f4b000;
+  --color-warning-content: #0a0b0d;
 
-  --color-error: oklch(63% 0.2 25);
-  --color-error-content: oklch(98% 0.005 25);
+  --color-error: #cf202f; /* semantic-down (loss) */
+  --color-error-content: #ffffff;
 
-  /* Radius */
-  --radius-selector: 0.375rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
+  /* Radius — pill for interactive selectors/badges, 12px inputs, 24px cards.
+     Buttons forced to full pill via the .btn override below. */
+  --radius-selector: 9999px;
+  --radius-field: 0.75rem; /* 12px — text inputs, selects */
+  --radius-box: 1.5rem;    /* 24px — cards, alerts, modals */
 
   /* Sizing */
   --size-selector: 0.25rem;
@@ -58,8 +61,8 @@
   /* Border */
   --border: 1px;
 
-  /* Depth and texture */
-  --depth: 1;
+  /* Depth and texture — flat; one soft shadow tier applied via .card */
+  --depth: 0;
   --noise: 0;
 }
 
@@ -72,6 +75,38 @@
     font-family: "JetBrains Mono", "D2Coding", monospace;
     font-variant-numeric: tabular-nums;
   }
+}
+
+/* ── Coinbase component overrides ──
+   Unlayered so they win over DaisyUI's @layer rules. */
+
+/* Every CTA is a full pill (DESIGN: rounded.pill 100px). Inputs keep --radius-field (12px). */
+.btn {
+  border-radius: 9999px;
+}
+
+/* Cards: flat with one soft shadow tier + hairline (DESIGN: single shadow tier, hairline borders). */
+.card {
+  box-shadow:
+    0 1px 2px rgba(10, 11, 13, 0.04),
+    0 4px 12px rgba(10, 11, 13, 0.04);
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+}
+
+/* Dark editorial hero band — the signature Coinbase pattern. */
+.hero-dark {
+  background-color: var(--color-neutral);
+  color: var(--color-neutral-content);
+  border-radius: var(--radius-box);
+}
+/* Lightened trading semantics for use on the dark hero band, where
+   #05b169 / #cf202f lose contrast against near-black. */
+.text-up-on-dark {
+  color: #1edb8e;
+}
+.text-down-on-dark {
+  color: #ff6b75;
 }
 
 /* ── HTMX transition animations ── */

@@ -1,5 +1,5 @@
-<div id="execute-result" class="card bg-base-200 shadow-md" role="status" aria-live="polite" aria-atomic="true">
-  <div class="card-body p-4">
+<div id="execute-result" class="card bg-base-100" role="status" aria-live="polite" aria-atomic="true">
+  <div class="card-body p-4 sm:p-6">
     <div class="alert alert-{{ 'success' if success else 'error' }} text-sm py-2">{{ message }}</div>
 
     {% if result %}
@@ -22,7 +22,7 @@
     {% if failed_execs %}
     <h4 class="text-sm font-semibold text-base-content mb-1">실패한 주문</h4>
     <div class="overflow-x-auto" tabindex="0" aria-label="실패한 주문 표 가로 스크롤 영역">
-      <table class="table table-zebra table-sm">
+      <table class="table table-sm">
         <caption>실패한 주문과 오류 코드</caption>
         <thead>
           <tr>

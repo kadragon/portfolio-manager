@@ -4,15 +4,15 @@
 {% block content %}
 <h1 class="text-lg font-semibold text-base-content mb-3">입금 내역</h1>
 
-<div class="stats stats-vertical sm:stats-horizontal bg-base-200 shadow-md w-full mb-4 text-sm">
+<div class="stats stats-vertical sm:stats-horizontal bg-base-100 border border-base-300 w-full mb-4 text-sm">
   <div class="stat py-3 px-4">
     <span class="stat-title text-xs">총투자원금</span>
     <span class="stat-value text-base font-mono">{{ total | format_krw }}</span>
   </div>
 </div>
 
-<section class="card bg-base-200 shadow-md">
-  <div class="card-body p-4">
+<section class="card bg-base-100">
+  <div class="card-body p-4 sm:p-6">
     <form hx-post="/deposits"
           hx-target="#deposits-body"
           hx-swap="afterbegin"
@@ -39,7 +39,7 @@
     </form>
 
     <div class="overflow-x-auto border-t border-base-300 pt-3 mt-3" tabindex="0" aria-label="입금 내역 표 가로 스크롤 영역">
-      <table class="table table-zebra table-sm">
+      <table class="table table-sm">
         <caption>날짜별 입금 금액과 메모</caption>
         <thead>
           <tr>
