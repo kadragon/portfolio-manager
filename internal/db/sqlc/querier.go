@@ -11,18 +11,26 @@ import (
 )
 
 type Querier interface {
+	// Account queries (Phase 3).
+	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	// Group queries (Phase 1).
 	CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error)
 	// Stock queries (Phase 2).
 	CreateStock(ctx context.Context, arg CreateStockParams) (Stock, error)
+	DeleteAccount(ctx context.Context, id uuidx.UUID) error
 	DeleteGroup(ctx context.Context, id uuidx.UUID) error
+	DeleteHoldingsByAccount(ctx context.Context, accountID uuidx.UUID) error
 	DeleteStock(ctx context.Context, id uuidx.UUID) error
+	GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, error)
 	GetGroup(ctx context.Context, id uuidx.UUID) (Group, error)
 	GetStockByID(ctx context.Context, id uuidx.UUID) (Stock, error)
 	GetStockByTicker(ctx context.Context, ticker string) (Stock, error)
+	ListAccounts(ctx context.Context) ([]Account, error)
 	ListAllStocks(ctx context.Context) ([]Stock, error)
 	ListGroups(ctx context.Context) ([]Group, error)
 	ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]Stock, error)
+	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
+	UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNameCashParams) (Account, error)
 	UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Group, error)
 	UpdateStockExchange(ctx context.Context, arg UpdateStockExchangeParams) (Stock, error)
 	UpdateStockGroup(ctx context.Context, arg UpdateStockGroupParams) (Stock, error)

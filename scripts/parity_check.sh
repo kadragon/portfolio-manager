@@ -34,7 +34,8 @@ done
 
 GID="$(sqlite3 "$PY_DB" 'SELECT id FROM groups LIMIT 1;')"
 SID="$(sqlite3 "$PY_DB" "SELECT id FROM stocks WHERE group_id='$GID' LIMIT 1;")"
-echo "group id: $GID  stock id: ${SID:-<none>}"
+AID="$(sqlite3 "$PY_DB" 'SELECT id FROM accounts LIMIT 1;')"
+echo "group id: $GID  stock id: ${SID:-<none>}  account id: ${AID:-<none>}"
 
 curl -s -o "$OUT/py_list.html"       "http://127.0.0.1:$PY_PORT/groups"
 curl -s -H 'HX-Request: true' -o "$OUT/py_edit.html" "http://127.0.0.1:$PY_PORT/groups/$GID/edit"
@@ -43,6 +44,11 @@ curl -s -o "$OUT/py_stocks.html"     "http://127.0.0.1:$PY_PORT/groups/$GID/stoc
 if [ -n "$SID" ]; then
   curl -s -o "$OUT/py_stock_row.html"  "http://127.0.0.1:$PY_PORT/groups/$GID/stocks/$SID"
   curl -s -o "$OUT/py_stock_edit.html" "http://127.0.0.1:$PY_PORT/groups/$GID/stocks/$SID/edit"
+fi
+curl -s -o "$OUT/py_accounts.html"  "http://127.0.0.1:$PY_PORT/accounts"
+if [ -n "$AID" ]; then
+  curl -s -o "$OUT/py_account_row.html"  "http://127.0.0.1:$PY_PORT/accounts/$AID"
+  curl -s -o "$OUT/py_account_edit.html" "http://127.0.0.1:$PY_PORT/accounts/$AID/edit"
 fi
 pkill -f "uvicorn portfolio_manager" 2>/dev/null
 sleep 1
@@ -63,13 +69,20 @@ if [ -n "$SID" ]; then
   curl -s -o "$OUT/go_stock_row.html"  "http://127.0.0.1:$GO_PORT/groups/$GID/stocks/$SID"
   curl -s -o "$OUT/go_stock_edit.html" "http://127.0.0.1:$GO_PORT/groups/$GID/stocks/$SID/edit"
 fi
+curl -s -o "$OUT/go_accounts.html"  "http://127.0.0.1:$GO_PORT/accounts"
+if [ -n "$AID" ]; then
+  curl -s -o "$OUT/go_account_row.html"  "http://127.0.0.1:$GO_PORT/accounts/$AID"
+  curl -s -o "$OUT/go_account_edit.html" "http://127.0.0.1:$GO_PORT/accounts/$AID/edit"
+fi
 kill -TERM "$GO_PID" 2>/dev/null
 GO_PID=""
 
 # --- compare ---
-python3 - "$OUT" "${SID:+has_stock}" <<'PY'
+python3 - "$OUT" "${SID:+has_stock}" "${AID:+has_account}" <<'PY'
 import re, sys
-out, has_stock = sys.argv[1], len(sys.argv) > 2
+out = sys.argv[1]
+has_stock   = "has_stock"   in sys.argv[2:]
+has_account = "has_account" in sys.argv[2:]
 def norm(p):
     s = open(p, encoding="utf-8").read()
     # Whitespace adjacent to tag boundaries is cosmetic (Jinja keeps source
@@ -85,11 +98,17 @@ def norm(p):
     # Entity equivalence: inside a double-quoted attribute, a literal ' (Jinja)
     # and &#39; (templ auto-escaping) parse to the same DOM string value.
     s = s.replace("&#39;", "'").replace("&#34;", '"').replace("&amp;", "&")
+    # KIS API key selector (Phase 8): Python renders it when >1 key set is
+    # configured in env; Go omits it until Phase 8.  Strip from both sides.
+    s = re.sub(r'<label[^>]*>API 키 세트</label><select[^>]*>.*?</select>', '', s)
     return s.strip()
 rc = 0
 pages = ["list", "edit", "row", "stocks"]
 if has_stock:
     pages += ["stock_row", "stock_edit"]
+pages += ["accounts"]
+if has_account:
+    pages += ["account_row", "account_edit"]
 for name in pages:
     a, b = norm(f"{out}/py_{name}.html"), norm(f"{out}/go_{name}.html")
     if a == b:

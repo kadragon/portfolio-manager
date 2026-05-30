@@ -14,9 +14,10 @@ import (
 
 // Container holds shared dependencies for the web layer.
 type Container struct {
-	DB     *sql.DB
-	Groups *repositories.GroupRepository
-	Stocks *repositories.StockRepository
+	DB       *sql.DB
+	Groups   *repositories.GroupRepository
+	Stocks   *repositories.StockRepository
+	Accounts *repositories.AccountRepository
 }
 
 // New opens the database at path (empty = default location) and builds the
@@ -33,9 +34,10 @@ func New(path string) (*Container, error) {
 // handle (used by tests with an in-memory database).
 func NewWithQueries(sqlDB *sql.DB, q *sqlc.Queries) *Container {
 	return &Container{
-		DB:     sqlDB,
-		Groups: repositories.NewGroupRepository(q),
-		Stocks: repositories.NewStockRepository(q),
+		DB:       sqlDB,
+		Groups:   repositories.NewGroupRepository(q),
+		Stocks:   repositories.NewStockRepository(q),
+		Accounts: repositories.NewAccountRepository(q),
 	}
 }
 

@@ -10,8 +10,46 @@ import (
 	"database/sql"
 
 	"github.com/kadragon/portfolio-manager/internal/ktime"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
+
+const createAccount = `-- name: CreateAccount :one
+
+INSERT INTO accounts (id, name, cash_balance, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id
+`
+
+type CreateAccountParams struct {
+	ID          uuidx.UUID
+	Name        string
+	CashBalance numeric.Decimal
+	CreatedAt   ktime.Time
+	UpdatedAt   ktime.Time
+}
+
+// Account queries (Phase 3).
+func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error) {
+	row := q.db.QueryRowContext(ctx, createAccount,
+		arg.ID,
+		arg.Name,
+		arg.CashBalance,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CashBalance,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.KisAccountNo,
+		&i.KisApiKeyID,
+	)
+	return i, err
+}
 
 const createGroup = `-- name: CreateGroup :one
 
@@ -89,12 +127,30 @@ func (q *Queries) CreateStock(ctx context.Context, arg CreateStockParams) (Stock
 	return i, err
 }
 
+const deleteAccount = `-- name: DeleteAccount :exec
+DELETE FROM accounts WHERE id = ?
+`
+
+func (q *Queries) DeleteAccount(ctx context.Context, id uuidx.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteAccount, id)
+	return err
+}
+
 const deleteGroup = `-- name: DeleteGroup :exec
 DELETE FROM groups WHERE id = ?
 `
 
 func (q *Queries) DeleteGroup(ctx context.Context, id uuidx.UUID) error {
 	_, err := q.db.ExecContext(ctx, deleteGroup, id)
+	return err
+}
+
+const deleteHoldingsByAccount = `-- name: DeleteHoldingsByAccount :exec
+DELETE FROM holdings WHERE account_id = ?
+`
+
+func (q *Queries) DeleteHoldingsByAccount(ctx context.Context, accountID uuidx.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteHoldingsByAccount, accountID)
 	return err
 }
 
@@ -105,6 +161,25 @@ DELETE FROM stocks WHERE id = ?
 func (q *Queries) DeleteStock(ctx context.Context, id uuidx.UUID) error {
 	_, err := q.db.ExecContext(ctx, deleteStock, id)
 	return err
+}
+
+const getAccountByID = `-- name: GetAccountByID :one
+SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id FROM accounts WHERE id = ?
+`
+
+func (q *Queries) GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, error) {
+	row := q.db.QueryRowContext(ctx, getAccountByID, id)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CashBalance,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.KisAccountNo,
+		&i.KisApiKeyID,
+	)
+	return i, err
 }
 
 const getGroup = `-- name: GetGroup :one
@@ -160,6 +235,41 @@ func (q *Queries) GetStockByTicker(ctx context.Context, ticker string) (Stock, e
 		&i.Name,
 	)
 	return i, err
+}
+
+const listAccounts = `-- name: ListAccounts :many
+SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id FROM accounts
+`
+
+func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
+	rows, err := q.db.QueryContext(ctx, listAccounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Account{}
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CashBalance,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.KisAccountNo,
+			&i.KisApiKeyID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAllStocks = `-- name: ListAllStocks :many
@@ -263,6 +373,76 @@ func (q *Queries) ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateAccount = `-- name: UpdateAccount :one
+UPDATE accounts
+SET name = ?, cash_balance = ?, kis_account_no = ?, kis_api_key_id = ?, updated_at = ?
+WHERE id = ?
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id
+`
+
+type UpdateAccountParams struct {
+	Name         string
+	CashBalance  numeric.Decimal
+	KisAccountNo sql.NullString
+	KisApiKeyID  sql.NullInt64
+	UpdatedAt    ktime.Time
+	ID           uuidx.UUID
+}
+
+func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error) {
+	row := q.db.QueryRowContext(ctx, updateAccount,
+		arg.Name,
+		arg.CashBalance,
+		arg.KisAccountNo,
+		arg.KisApiKeyID,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CashBalance,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.KisAccountNo,
+		&i.KisApiKeyID,
+	)
+	return i, err
+}
+
+const updateAccountNameCash = `-- name: UpdateAccountNameCash :one
+UPDATE accounts SET name = ?, cash_balance = ?, updated_at = ? WHERE id = ?
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id
+`
+
+type UpdateAccountNameCashParams struct {
+	Name        string
+	CashBalance numeric.Decimal
+	UpdatedAt   ktime.Time
+	ID          uuidx.UUID
+}
+
+func (q *Queries) UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNameCashParams) (Account, error) {
+	row := q.db.QueryRowContext(ctx, updateAccountNameCash,
+		arg.Name,
+		arg.CashBalance,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CashBalance,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.KisAccountNo,
+		&i.KisApiKeyID,
+	)
+	return i, err
 }
 
 const updateGroup = `-- name: UpdateGroup :one
