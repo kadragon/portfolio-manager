@@ -36,7 +36,8 @@ GID="$(sqlite3 "$PY_DB" 'SELECT id FROM groups LIMIT 1;')"
 SID="$(sqlite3 "$PY_DB" "SELECT id FROM stocks WHERE group_id='$GID' LIMIT 1;")"
 AID="$(sqlite3 "$PY_DB" 'SELECT id FROM accounts LIMIT 1;')"
 HID="$(sqlite3 "$PY_DB" "SELECT id FROM holdings WHERE account_id='$AID' LIMIT 1;")"
-echo "group id: $GID  stock id: ${SID:-<none>}  account id: ${AID:-<none>}  holding id: ${HID:-<none>}"
+DID="$(sqlite3 "$PY_DB" 'SELECT id FROM deposits LIMIT 1;')"
+echo "group id: $GID  stock id: ${SID:-<none>}  account id: ${AID:-<none>}  holding id: ${HID:-<none>}  deposit id: ${DID:-<none>}"
 
 curl -s -o "$OUT/py_list.html"       "http://127.0.0.1:$PY_PORT/groups"
 curl -s -H 'HX-Request: true' -o "$OUT/py_edit.html" "http://127.0.0.1:$PY_PORT/groups/$GID/edit"
@@ -54,6 +55,10 @@ if [ -n "$AID" ]; then
   if [ -n "$HID" ]; then
     curl -s -o "$OUT/py_holding_row.html" "http://127.0.0.1:$PY_PORT/accounts/$AID/holdings/$HID"
   fi
+fi
+curl -s -o "$OUT/py_deposits.html" "http://127.0.0.1:$PY_PORT/deposits"
+if [ -n "$DID" ]; then
+  curl -s -o "$OUT/py_deposit_row.html" "http://127.0.0.1:$PY_PORT/deposits/$DID"
 fi
 pkill -f "uvicorn portfolio_manager" 2>/dev/null
 sleep 1
@@ -83,16 +88,21 @@ if [ -n "$AID" ]; then
     curl -s -o "$OUT/go_holding_row.html" "http://127.0.0.1:$GO_PORT/accounts/$AID/holdings/$HID"
   fi
 fi
+curl -s -o "$OUT/go_deposits.html" "http://127.0.0.1:$GO_PORT/deposits"
+if [ -n "$DID" ]; then
+  curl -s -o "$OUT/go_deposit_row.html" "http://127.0.0.1:$GO_PORT/deposits/$DID"
+fi
 kill -TERM "$GO_PID" 2>/dev/null
 GO_PID=""
 
 # --- compare ---
-python3 - "$OUT" "${SID:+has_stock}" "${AID:+has_account}" "${HID:+has_holding}" <<'PY'
+python3 - "$OUT" "${SID:+has_stock}" "${AID:+has_account}" "${HID:+has_holding}" "${DID:+has_deposit}" <<'PY'
 import re, sys
 out = sys.argv[1]
 has_stock   = "has_stock"   in sys.argv[2:]
 has_account = "has_account" in sys.argv[2:]
 has_holding = "has_holding" in sys.argv[2:]
+has_deposit = "has_deposit" in sys.argv[2:]
 def norm(p):
     s = open(p, encoding="utf-8").read()
     # Whitespace adjacent to tag boundaries is cosmetic (Jinja keeps source
@@ -125,6 +135,9 @@ if has_account:
     pages += ["account_row", "account_edit", "holdings_page"]
     if has_holding:
         pages += ["holding_row"]
+pages += ["deposits"]
+if has_deposit:
+    pages += ["deposit_row"]
 for name in pages:
     a, b = norm(f"{out}/py_{name}.html"), norm(f"{out}/go_{name}.html")
     if a == b:

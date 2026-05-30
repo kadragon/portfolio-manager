@@ -7,12 +7,15 @@ package sqlc
 import (
 	"context"
 
+	"github.com/kadragon/portfolio-manager/internal/datex"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
 type Querier interface {
 	// Account queries (Phase 3).
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	// Deposit queries (Phase 5).
+	CreateDeposit(ctx context.Context, arg CreateDepositParams) (Deposit, error)
 	// Group queries (Phase 1).
 	CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error)
 	// Holding queries (Phase 4).
@@ -20,22 +23,28 @@ type Querier interface {
 	// Stock queries (Phase 2).
 	CreateStock(ctx context.Context, arg CreateStockParams) (Stock, error)
 	DeleteAccount(ctx context.Context, id uuidx.UUID) error
+	DeleteDeposit(ctx context.Context, id uuidx.UUID) error
 	DeleteGroup(ctx context.Context, id uuidx.UUID) error
 	DeleteHolding(ctx context.Context, id uuidx.UUID) error
 	DeleteHoldingsByAccount(ctx context.Context, accountID uuidx.UUID) error
 	DeleteStock(ctx context.Context, id uuidx.UUID) error
 	GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, error)
+	GetDepositByDate(ctx context.Context, depositDate datex.Date) (Deposit, error)
+	GetDepositByID(ctx context.Context, id uuidx.UUID) (Deposit, error)
 	GetGroup(ctx context.Context, id uuidx.UUID) (Group, error)
 	GetHoldingByID(ctx context.Context, id uuidx.UUID) (Holding, error)
 	GetStockByID(ctx context.Context, id uuidx.UUID) (Stock, error)
 	GetStockByTicker(ctx context.Context, ticker string) (Stock, error)
 	ListAccounts(ctx context.Context) ([]Account, error)
 	ListAllStocks(ctx context.Context) ([]Stock, error)
+	ListDeposits(ctx context.Context) ([]Deposit, error)
 	ListGroups(ctx context.Context) ([]Group, error)
 	ListHoldingsByAccount(ctx context.Context, accountID uuidx.UUID) ([]Holding, error)
 	ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]Stock, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNameCashParams) (Account, error)
+	UpdateDeposit(ctx context.Context, arg UpdateDepositParams) (Deposit, error)
+	UpdateDepositWithoutNote(ctx context.Context, arg UpdateDepositWithoutNoteParams) (Deposit, error)
 	UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Group, error)
 	UpdateHolding(ctx context.Context, arg UpdateHoldingParams) (Holding, error)
 	UpdateStockExchange(ctx context.Context, arg UpdateStockExchangeParams) (Stock, error)

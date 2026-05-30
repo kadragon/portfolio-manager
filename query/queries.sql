@@ -106,3 +106,30 @@ RETURNING *;
 
 -- name: DeleteHolding :exec
 DELETE FROM holdings WHERE id = ?;
+
+-- Deposit queries (Phase 5).
+
+-- name: CreateDeposit :one
+INSERT INTO deposits (id, amount, deposit_date, note, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListDeposits :many
+SELECT * FROM deposits ORDER BY deposit_date DESC;
+
+-- name: GetDepositByID :one
+SELECT * FROM deposits WHERE id = ?;
+
+-- name: GetDepositByDate :one
+SELECT * FROM deposits WHERE deposit_date = ?;
+
+-- name: UpdateDeposit :one
+UPDATE deposits SET amount = ?, deposit_date = ?, note = ?, updated_at = ? WHERE id = ?
+RETURNING *;
+
+-- name: UpdateDepositWithoutNote :one
+UPDATE deposits SET amount = ?, deposit_date = ?, updated_at = ? WHERE id = ?
+RETURNING *;
+
+-- name: DeleteDeposit :exec
+DELETE FROM deposits WHERE id = ?;

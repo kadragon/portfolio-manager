@@ -68,6 +68,7 @@ func newServer(c *container.Container) *echo.Echo {
 	handlers.NewStockHandler(c).Register(e)
 	handlers.NewAccountHandler(c).Register(e)
 	handlers.NewHoldingHandler(c).Register(e)
+	handlers.NewDepositHandler(c).Register(e)
 
 	return e
 }

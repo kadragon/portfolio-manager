@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/kadragon/portfolio-manager/internal/datex"
 	"github.com/kadragon/portfolio-manager/internal/ktime"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
@@ -47,6 +48,44 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.UpdatedAt,
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
+	)
+	return i, err
+}
+
+const createDeposit = `-- name: CreateDeposit :one
+
+INSERT INTO deposits (id, amount, deposit_date, note, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING id, amount, deposit_date, note, created_at, updated_at
+`
+
+type CreateDepositParams struct {
+	ID          uuidx.UUID
+	Amount      numeric.Decimal
+	DepositDate datex.Date
+	Note        sql.NullString
+	CreatedAt   ktime.Time
+	UpdatedAt   ktime.Time
+}
+
+// Deposit queries (Phase 5).
+func (q *Queries) CreateDeposit(ctx context.Context, arg CreateDepositParams) (Deposit, error) {
+	row := q.db.QueryRowContext(ctx, createDeposit,
+		arg.ID,
+		arg.Amount,
+		arg.DepositDate,
+		arg.Note,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Deposit
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.DepositDate,
+		&i.Note,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -174,6 +213,15 @@ func (q *Queries) DeleteAccount(ctx context.Context, id uuidx.UUID) error {
 	return err
 }
 
+const deleteDeposit = `-- name: DeleteDeposit :exec
+DELETE FROM deposits WHERE id = ?
+`
+
+func (q *Queries) DeleteDeposit(ctx context.Context, id uuidx.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteDeposit, id)
+	return err
+}
+
 const deleteGroup = `-- name: DeleteGroup :exec
 DELETE FROM groups WHERE id = ?
 `
@@ -225,6 +273,42 @@ func (q *Queries) GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, e
 		&i.UpdatedAt,
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
+	)
+	return i, err
+}
+
+const getDepositByDate = `-- name: GetDepositByDate :one
+SELECT id, amount, deposit_date, note, created_at, updated_at FROM deposits WHERE deposit_date = ?
+`
+
+func (q *Queries) GetDepositByDate(ctx context.Context, depositDate datex.Date) (Deposit, error) {
+	row := q.db.QueryRowContext(ctx, getDepositByDate, depositDate)
+	var i Deposit
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.DepositDate,
+		&i.Note,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getDepositByID = `-- name: GetDepositByID :one
+SELECT id, amount, deposit_date, note, created_at, updated_at FROM deposits WHERE id = ?
+`
+
+func (q *Queries) GetDepositByID(ctx context.Context, id uuidx.UUID) (Deposit, error) {
+	row := q.db.QueryRowContext(ctx, getDepositByID, id)
+	var i Deposit
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.DepositDate,
+		&i.Note,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -358,6 +442,40 @@ func (q *Queries) ListAllStocks(ctx context.Context) ([]Stock, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeposits = `-- name: ListDeposits :many
+SELECT id, amount, deposit_date, note, created_at, updated_at FROM deposits ORDER BY deposit_date DESC
+`
+
+func (q *Queries) ListDeposits(ctx context.Context) ([]Deposit, error) {
+	rows, err := q.db.QueryContext(ctx, listDeposits)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Deposit{}
+	for rows.Next() {
+		var i Deposit
+		if err := rows.Scan(
+			&i.ID,
+			&i.Amount,
+			&i.DepositDate,
+			&i.Note,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -540,6 +658,70 @@ func (q *Queries) UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNa
 		&i.UpdatedAt,
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
+	)
+	return i, err
+}
+
+const updateDeposit = `-- name: UpdateDeposit :one
+UPDATE deposits SET amount = ?, deposit_date = ?, note = ?, updated_at = ? WHERE id = ?
+RETURNING id, amount, deposit_date, note, created_at, updated_at
+`
+
+type UpdateDepositParams struct {
+	Amount      numeric.Decimal
+	DepositDate datex.Date
+	Note        sql.NullString
+	UpdatedAt   ktime.Time
+	ID          uuidx.UUID
+}
+
+func (q *Queries) UpdateDeposit(ctx context.Context, arg UpdateDepositParams) (Deposit, error) {
+	row := q.db.QueryRowContext(ctx, updateDeposit,
+		arg.Amount,
+		arg.DepositDate,
+		arg.Note,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i Deposit
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.DepositDate,
+		&i.Note,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateDepositWithoutNote = `-- name: UpdateDepositWithoutNote :one
+UPDATE deposits SET amount = ?, deposit_date = ?, updated_at = ? WHERE id = ?
+RETURNING id, amount, deposit_date, note, created_at, updated_at
+`
+
+type UpdateDepositWithoutNoteParams struct {
+	Amount      numeric.Decimal
+	DepositDate datex.Date
+	UpdatedAt   ktime.Time
+	ID          uuidx.UUID
+}
+
+func (q *Queries) UpdateDepositWithoutNote(ctx context.Context, arg UpdateDepositWithoutNoteParams) (Deposit, error) {
+	row := q.db.QueryRowContext(ctx, updateDepositWithoutNote,
+		arg.Amount,
+		arg.DepositDate,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i Deposit
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.DepositDate,
+		&i.Note,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

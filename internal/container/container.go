@@ -19,6 +19,7 @@ type Container struct {
 	Stocks   *repositories.StockRepository
 	Accounts *repositories.AccountRepository
 	Holdings *repositories.HoldingRepository
+	Deposits *repositories.DepositRepository
 }
 
 // New opens the database at path (empty = default location) and builds the
@@ -40,6 +41,7 @@ func NewWithQueries(sqlDB *sql.DB, q *sqlc.Queries) *Container {
 		Stocks:   repositories.NewStockRepository(q),
 		Accounts: repositories.NewAccountRepository(q),
 		Holdings: repositories.NewHoldingRepository(q),
+		Deposits: repositories.NewDepositRepository(q),
 	}
 }
 
