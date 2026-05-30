@@ -1,0 +1,61 @@
+version: "2"
+
+linters:
+  enable:
+    - depguard      # layer boundaries (GP-1, GP-3)
+    - gosec         # security scan (GP-4: no hardcoded secrets), replaces bandit
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  settings:
+    depguard:
+      rules:
+        services:
+          files:
+            - "**/internal/services/**"
+          deny:
+            - pkg: "github.com/kadragon/portfolio-manager/internal/web"
+              desc: "GP-3: services must not import web"
+            - pkg: "github.com/kadragon/portfolio-manager/internal/db"
+              desc: "GP-1: only repositories access the database"
+        repositories:
+          files:
+            - "**/internal/repositories/**"
+          deny:
+            - pkg: "github.com/kadragon/portfolio-manager/internal/web"
+              desc: "GP-3: repositories must not import web"
+            - pkg: "github.com/kadragon/portfolio-manager/internal/services"
+              desc: "GP-3: repositories must not import services"
+    errcheck:
+      # Closing a DB handle on a cleanup/error path has nothing to recover.
+      exclude-functions:
+        - (*database/sql.DB).Close
+    staticcheck:
+      # QF1008 (drop embedded field in selector) is stylistic; keeping the
+      # embedded field name (e.g. d.Decimal.String()) is clearer here.
+      checks:
+        - "all"
+        - "-QF1008"
+  exclusions:
+    rules:
+      # Generated code is exempt from the security and dead-code scanners.
+      - path: internal/db/sqlc/
+        linters:
+          - gosec
+          - unused
+      - path: _test\.go
+        linters:
+          - gosec
+      # db.Open's MkdirAll uses an operator-controlled path (PORTFOLIO_DB_PATH
+      # or the computed project default), never untrusted request input.
+      - path: internal/db/db\.go
+        text: "G703"
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

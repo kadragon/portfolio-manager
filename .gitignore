@@ -17,3 +17,12 @@ htmlcov/
 bin/
 # DaisyUI CSS bundle (downloaded)
 src/portfolio_manager/web/tailwind/daisyui.css
+
+# Go
+/portfolio-web
+coverage.out
+coverage.txt
+# templ generated output (regenerated via `make go-gen`); sqlc output IS committed
+*_templ.go
+# The user's global gitignore excludes *.templ; re-include the source templates.
+!*.templ
