@@ -11,7 +11,9 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/kadragon/portfolio-manager/internal/container"
+	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
+	"github.com/kadragon/portfolio-manager/internal/services"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 	"github.com/kadragon/portfolio-manager/internal/web/templates"
 )
@@ -35,6 +37,7 @@ func (h *AccountHandler) Register(e *echo.Echo) {
 	e.GET("/accounts/:id/edit", h.editForm)
 	e.PUT("/accounts/:id", h.update)
 	e.DELETE("/accounts/:id", h.delete)
+	e.POST("/accounts/:id/sync", h.syncAccount)
 }
 
 func (h *AccountHandler) list(c echo.Context) error {
@@ -195,6 +198,70 @@ func (h *AccountHandler) delete(c echo.Context) error {
 		return err
 	}
 	return c.NoContent(http.StatusOK)
+}
+
+func (h *AccountHandler) syncAccount(c echo.Context) error {
+	ctx := c.Request().Context()
+	id, err := uuidx.Parse(c.Param("id"))
+	if err != nil {
+		return renderSyncResult(c, id.String(), false, "잘못된 계좌 ID입니다.", nil, false)
+	}
+
+	if h.c.AccountSync == nil {
+		return renderSyncResult(c, id.String(), false,
+			"KIS 계좌 동기화 서비스가 설정되지 않았습니다. (.env에 KIS_CANO/KIS_ACNT_PRDT_CD 확인)", nil, false)
+	}
+
+	confirmEmpty := strings.ToLower(c.FormValue("confirm_empty")) == "true"
+
+	account, err := h.c.Accounts.GetByID(ctx, id)
+	if err != nil || account == nil {
+		return renderSyncResult(c, id.String(), false, "계좌를 찾을 수 없습니다.", nil, false)
+	}
+
+	var cano, acntPrdtCd string
+	if account.KisAccountNo != nil && *account.KisAccountNo != "" {
+		cano, acntPrdtCd, err = normalizeKisAccountNo(*account.KisAccountNo)
+		if err != nil {
+			return renderSyncResult(c, id.String(), false, err.Error(), nil, false)
+		}
+	} else if h.c.KisCano != "" {
+		cano = h.c.KisCano
+		acntPrdtCd = h.c.KisAcntPrdtCd
+	} else {
+		return renderSyncResult(c, id.String(), false, "이 계좌에는 KIS 계좌번호가 설정되지 않았습니다.", nil, false)
+	}
+
+	syncResult, err := h.c.AccountSync.SyncAccount(ctx, *account, cano, acntPrdtCd, confirmEmpty)
+	if err != nil {
+		if services.IsKisEmptySnapshotError(err) {
+			return renderSyncResult(c, id.String(), false,
+				"동기화 중단: "+err.Error(), nil, !confirmEmpty)
+		}
+		msg := fmt.Sprintf("동기화 실패: %s", html.EscapeString(err.Error()))
+		return renderSyncResult(c, id.String(), false, msg, nil, false)
+	}
+	return renderSyncResult(c, id.String(), true, "KIS 계좌 동기화 완료", &syncResult, false)
+}
+
+func renderSyncResult(c echo.Context, accountIDStr string, success bool, message string, result *models.KisAccountSyncResult, showConfirmEmpty bool) error {
+	return templates.SyncResultPartial(accountIDStr, success, message, result, showConfirmEmpty).Render(c.Request().Context(), c.Response().Writer)
+}
+
+// normalizeKisAccountNo extracts the 8-digit account number and 2-digit product code
+// from a KIS account number string (e.g. "12345678-01" or "1234567801").
+func normalizeKisAccountNo(s string) (cano, acntPrdtCd string, err error) {
+	var digits strings.Builder
+	for _, ch := range s {
+		if ch >= '0' && ch <= '9' {
+			digits.WriteRune(ch)
+		}
+	}
+	d := digits.String()
+	if len(d) != 10 {
+		return "", "", fmt.Errorf("KIS 계좌번호 형식이 올바르지 않습니다 (8자리-2자리)")
+	}
+	return d[:8], d[8:], nil
 }
 
 func parseCashBalance(s string) numeric.Decimal {

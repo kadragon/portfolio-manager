@@ -35,7 +35,10 @@ type Container struct {
 	Portfolio          *services.PortfolioService
 	Rebalance          *services.RebalanceService
 	RebalanceExecution *services.RebalanceExecutionService
-	OrderClient        services.OrderClient // nil if KIS not configured
+	OrderClient        services.OrderClient            // nil if KIS not configured
+	AccountSync        *services.KisAccountSyncService // nil if KIS not configured
+	KisCano            string
+	KisAcntPrdtCd      string
 }
 
 // New opens the database at path (empty = default location) and builds the
@@ -66,11 +69,23 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	var priceClient services.PriceClient
 	var exchangeRate *services.ExchangeRateService
 	var orderClient services.OrderClient
+	var accountSync *services.KisAccountSyncService
+	kisCano := ""
+	kisAcntPrdtCd := ""
 
 	if setupKIS {
 		priceClient = buildKISClient()
 		exchangeRate = buildExchangeRate()
 		orderClient = buildOrderClient()
+
+		kisCano = strings.TrimSpace(os.Getenv("KIS_CANO"))
+		kisAcntPrdtCd = strings.TrimSpace(os.Getenv("KIS_ACNT_PRDT_CD"))
+		if kisAcntPrdtCd == "" {
+			kisAcntPrdtCd = "01"
+		}
+		if balanceClient := buildBalanceClient(); balanceClient != nil {
+			accountSync = services.NewKisAccountSyncService(accounts, holdings, stocks, groups, balanceClient, ".data/kis_sync.log")
+		}
 	}
 
 	priceService := services.NewPriceService(stockPrices, priceClient)
@@ -94,6 +109,9 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		Rebalance:          rebalance,
 		RebalanceExecution: rebalanceExecution,
 		OrderClient:        orderClient,
+		AccountSync:        accountSync,
+		KisCano:            kisCano,
+		KisAcntPrdtCd:      kisAcntPrdtCd,
 	}
 }
 
@@ -276,6 +294,55 @@ func buildOrderClient() services.OrderClient {
 			Env:       env,
 			Manager:   manager,
 		},
+	}
+}
+
+// buildBalanceClient reads KIS env vars and returns a DomesticBalanceClient, or nil if keys are absent.
+func buildBalanceClient() services.BalanceClient {
+	appKey := strings.TrimSpace(os.Getenv("KIS_APP_KEY"))
+	appSecret := strings.TrimSpace(os.Getenv("KIS_APP_SECRET"))
+	cano := strings.TrimSpace(os.Getenv("KIS_CANO"))
+	if appKey == "" || appSecret == "" || cano == "" {
+		return nil
+	}
+
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("KIS_ENV")))
+	if env == "" {
+		env = "real"
+	}
+	if i := strings.IndexByte(env, '/'); i >= 0 {
+		env = env[:i]
+	}
+
+	custType := strings.TrimSpace(os.Getenv("KIS_CUST_TYPE"))
+	if custType == "" {
+		custType = "P"
+	}
+
+	baseURL := "https://openapi.koreainvestment.com:9443"
+	if env == "demo" || env == "vps" || env == "paper" {
+		baseURL = "https://openapivts.koreainvestment.com:29443"
+	}
+
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	authClient := &kis.AuthClient{
+		HTTPClient: httpClient,
+		BaseURL:    baseURL,
+		AppKey:     appKey,
+		AppSecret:  appSecret,
+	}
+	store := kis.NewFileTokenStore(".data/kis_token_1.json")
+	manager := kis.NewTokenManager(store, authClient, time.Minute)
+
+	log.Printf("KIS balance client initialized (env=%q)", env) //nolint:gosec // env is operator-controlled, not user input
+	return &kis.DomesticBalanceClient{
+		HTTP:      httpClient,
+		BaseURL:   baseURL,
+		AppKey:    appKey,
+		AppSecret: appSecret,
+		CustType:  custType,
+		Env:       env,
+		Manager:   manager,
 	}
 }
 

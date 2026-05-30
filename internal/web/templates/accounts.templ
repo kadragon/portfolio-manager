@@ -160,6 +160,92 @@ templ AccountForm(account models.Account, availableKisKeyIDs []int64, errorMessa
 	<tr id={ "sync-result-" + account.ID.String() }></tr>
 }
 
+// SyncResultPartial renders the KIS sync result row (hx-swap outerHTML).
+// result may be nil on failure.
+templ SyncResultPartial(accountID string, success bool, message string, result *models.KisAccountSyncResult, showConfirmEmpty bool) {
+	<tr id={ "sync-result-" + accountID }>
+		<td colspan="3">
+			<div
+				class={ "alert text-sm py-2 " + syncAlertClass(success) }
+				role="status"
+				aria-live="polite"
+				aria-atomic="true"
+			>
+				<div class="w-full">
+					<p class="font-semibold">{ message }</p>
+					if !success && showConfirmEmpty {
+						<button
+							type="button"
+							class="btn btn-xs btn-warning mt-2"
+							hx-post={ "/accounts/" + accountID + "/sync" }
+							hx-vals='{"confirm_empty": "true"}'
+							hx-target={ "#sync-result-" + accountID }
+							hx-swap="outerHTML"
+						>전량 매도 확정 — 재동기화</button>
+					}
+					if result != nil {
+						<div class="mt-1 text-xs opacity-80 space-y-0.5">
+							if !result.CashBalance.Equal(result.OldCashBalance.Decimal) {
+								<p>예수금: { accountformat.FormatKRW(result.OldCashBalance) } → { accountformat.FormatKRW(result.CashBalance) }</p>
+							} else {
+								<p>예수금: { accountformat.FormatKRW(result.CashBalance) } (변동 없음)</p>
+							}
+							<p>
+								보유 종목: { fmt.Sprintf("%d", result.HoldingCount) }건
+								if result.CreatedStockCount > 0 {
+									(신규 종목 { fmt.Sprintf("%d", result.CreatedStockCount) }건 생성)
+								}
+							</p>
+							if len(result.HoldingChanges) > 0 {
+								<ul class="list-none mt-1 space-y-0.5">
+									for _, ch := range result.HoldingChanges {
+										<li>{ syncChangeText(ch) }</li>
+									}
+								</ul>
+							} else {
+								<p>보유 내역 변동 없음</p>
+							}
+						</div>
+					}
+				</div>
+			</div>
+		</td>
+	</tr>
+}
+
+func syncAlertClass(success bool) string {
+	if success {
+		return "alert-success"
+	}
+	return "alert-error"
+}
+
+func syncChangeText(ch models.HoldingSyncDetail) string {
+	switch ch.Action {
+	case "created":
+		if ch.NewQuantity != nil {
+			return "+ " + ch.Ticker + ": " + ch.NewQuantity.String() + "주 추가"
+		}
+		return "+ " + ch.Ticker + " 추가"
+	case "updated":
+		old := ""
+		nw := ""
+		if ch.OldQuantity != nil {
+			old = ch.OldQuantity.String()
+		}
+		if ch.NewQuantity != nil {
+			nw = ch.NewQuantity.String()
+		}
+		return "~ " + ch.Ticker + ": " + old + " → " + nw + "주"
+	case "deleted":
+		if ch.OldQuantity != nil {
+			return "- " + ch.Ticker + ": " + ch.OldQuantity.String() + "주 삭제"
+		}
+		return "- " + ch.Ticker + " 삭제"
+	}
+	return ch.Ticker + " " + ch.Action
+}
+
 templ AccountsPage(accounts []models.Account) {
 	@Base("계좌 — 포트폴리오 매니저", "accounts") {
 		<h1 class="text-lg font-semibold text-base-content mb-3">계좌</h1>
