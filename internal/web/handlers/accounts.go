@@ -219,13 +219,7 @@ func (h *AccountHandler) syncAccount(c echo.Context) error {
 		return renderSyncResult(c, id.String(), false, "계좌를 찾을 수 없습니다.", nil, false)
 	}
 
-	// Route to key-specific sync service; fall back to key-1 (AccountSync).
-	syncSvc := h.c.AccountSync
-	if account.KisAPIKeyID != nil {
-		if s, ok := h.c.AccountSyncByKeyID[*account.KisAPIKeyID]; ok {
-			syncSvc = s
-		}
-	}
+	syncSvc := h.c.SyncServiceForKeyID(account.KisAPIKeyID)
 	if syncSvc == nil {
 		return renderSyncResult(c, id.String(), false,
 			"KIS 계좌 동기화 서비스가 설정되지 않았습니다. (.env에 KIS_CANO/KIS_ACNT_PRDT_CD 확인)", nil, false)

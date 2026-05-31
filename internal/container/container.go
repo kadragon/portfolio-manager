@@ -100,7 +100,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 			}
 		}
 
-		if accountSync != nil || len(accountSyncByKeyID) > 1 {
+		if accountSync != nil || len(accountSyncByKeyID) > 0 {
 			rebalanceSync = &rebalanceSyncAdapter{
 				accounts:    accounts,
 				sync:        accountSync,
@@ -177,12 +177,7 @@ func (a *rebalanceSyncAdapter) SyncAccount() error {
 		return err
 	}
 	for _, account := range accounts {
-		svc := a.sync
-		if account.KisAPIKeyID != nil {
-			if s, ok := a.syncByKeyID[*account.KisAPIKeyID]; ok {
-				svc = s
-			}
-		}
+		svc := resolveSyncService(a.sync, a.syncByKeyID, account.KisAPIKeyID)
 		if svc == nil {
 			continue
 		}
@@ -203,6 +198,28 @@ func (a *rebalanceSyncAdapter) SyncAccount() error {
 		}
 	}
 	return nil
+}
+
+// SyncServiceForKeyID returns the KisAccountSyncService for the given kis_api_key_id,
+// falling back to AccountSync (key-1). Logs a warning when keyID is set but not found.
+func (c *Container) SyncServiceForKeyID(keyID *int64) *services.KisAccountSyncService {
+	return resolveSyncService(c.AccountSync, c.AccountSyncByKeyID, keyID)
+}
+
+func resolveSyncService(
+	defaultSync *services.KisAccountSyncService,
+	byKeyID map[int64]*services.KisAccountSyncService,
+	keyID *int64,
+) *services.KisAccountSyncService {
+	if keyID != nil {
+		if s, ok := byKeyID[*keyID]; ok {
+			return s
+		}
+		if *keyID != 1 {
+			log.Printf("warn: no sync service for KisAPIKeyID=%d, falling back to key-1", *keyID)
+		}
+	}
+	return defaultSync
 }
 
 func parseKISAccountNo(raw string) (cano, acntPrdtCd string) {
