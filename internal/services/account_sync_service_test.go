@@ -3,6 +3,7 @@ package services_test
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/kadragon/portfolio-manager/internal/models"
@@ -19,7 +20,7 @@ type mockBalanceClient struct {
 	calls    int
 }
 
-func (m *mockBalanceClient) FetchAccountSnapshot(cano, acntPrdtCd string) (models.KisAccountSnapshot, error) {
+func (m *mockBalanceClient) FetchAccountSnapshot(_, _ string) (models.KisAccountSnapshot, error) {
 	m.calls++
 	return m.snapshot, m.err
 }
@@ -425,5 +426,81 @@ func TestSyncAccount_SnapshotErrorPropagated(t *testing.T) {
 	_, err := svc.SyncAccount(context.Background(), account, "12345678", "01", false)
 	if err == nil || err.Error() != "KIS API down" {
 		t.Errorf("want 'KIS API down', got %v", err)
+	}
+}
+
+func TestKisEmptySnapshotError_Error(t *testing.T) {
+	// Obtain a populated KisEmptySnapshotError via the guard path (msg is unexported).
+	account := makeTestAccount()
+	stockID := newTestUUID()
+	holdingID := newTestUUID()
+
+	bc := &mockBalanceClient{snapshot: models.KisAccountSnapshot{}}
+	hlds := &mockSyncHoldingRepo{
+		existing: []models.Holding{{ID: holdingID, AccountID: account.ID, StockID: stockID, Quantity: mustDecimal("5")}},
+	}
+	svc := makeSyncSvc(bc, &mockSyncAccountRepo{}, hlds, &mockSyncStockRepo{}, &mockSyncGroupRepo{})
+
+	_, err := svc.SyncAccount(context.Background(), account, "12345678", "01", false)
+	if err == nil {
+		t.Fatal("want KisEmptySnapshotError, got nil")
+	}
+	if !services.IsKisEmptySnapshotError(err) {
+		t.Errorf("want IsKisEmptySnapshotError=true, got false for %T: %v", err, err)
+	}
+	if err.Error() == "" {
+		t.Error("want non-empty Error() string")
+	}
+}
+
+func TestValidateAccount_OK(t *testing.T) {
+	bc := &mockBalanceClient{snapshot: models.KisAccountSnapshot{}}
+	svc := makeSyncSvc(bc, &mockSyncAccountRepo{}, &mockSyncHoldingRepo{}, &mockSyncStockRepo{}, &mockSyncGroupRepo{})
+
+	err := svc.ValidateAccount("12345678", "01")
+	if err != nil {
+		t.Errorf("want nil error for successful snapshot, got %v", err)
+	}
+	if bc.calls != 1 {
+		t.Errorf("want 1 FetchAccountSnapshot call, got %d", bc.calls)
+	}
+}
+
+func TestValidateAccount_Error(t *testing.T) {
+	bc := &mockBalanceClient{err: errors.New("auth failed")}
+	svc := makeSyncSvc(bc, &mockSyncAccountRepo{}, &mockSyncHoldingRepo{}, &mockSyncStockRepo{}, &mockSyncGroupRepo{})
+
+	err := svc.ValidateAccount("12345678", "01")
+	if err == nil || err.Error() != "auth failed" {
+		t.Errorf("want 'auth failed', got %v", err)
+	}
+}
+
+func TestLogEvent_WritesFile(t *testing.T) {
+	// Exercise logEvent + rotateIfNeeded (small file → no rotation) via a successful sync.
+	logPath := t.TempDir() + "/sync.log"
+	account := makeTestAccount()
+
+	bc := &mockBalanceClient{snapshot: models.KisAccountSnapshot{}}
+	svc := services.NewKisAccountSyncService(
+		&mockSyncAccountRepo{},
+		&mockSyncHoldingRepo{},
+		&mockSyncStockRepo{},
+		&mockSyncGroupRepo{},
+		bc,
+		logPath,
+	)
+
+	_, err := svc.SyncAccount(context.Background(), account, "12345678", "01", true)
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	data, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatalf("log file not written: %v", readErr)
+	}
+	if len(data) == 0 {
+		t.Error("log file is empty")
 	}
 }

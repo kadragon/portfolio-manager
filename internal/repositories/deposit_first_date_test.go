@@ -54,6 +54,7 @@ func TestDepositGetFirstDateReturnsEarliest(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("expected date, got nil")
+		return
 	}
 	if got.ISO() != d2.ISO() {
 		t.Errorf("first date = %s, want %s", got.ISO(), d2.ISO())

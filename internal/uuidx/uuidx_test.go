@@ -1,6 +1,10 @@
 package uuidx
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/google/uuid"
+)
 
 func TestParseHex32RoundTrip(t *testing.T) {
 	// Form stored by Peewee UUIDField (32 hex chars, no dashes).
@@ -55,5 +59,65 @@ func TestScanBytes(t *testing.T) {
 	}
 	if u.Hex() != stored {
 		t.Fatalf("hex = %q, want %q", u.Hex(), stored)
+	}
+}
+
+func TestNew(t *testing.T) {
+	a, b := New(), New()
+	if a == b {
+		t.Error("New() returned duplicate UUIDs")
+	}
+	if a.UUID == uuid.Nil {
+		t.Error("New() returned nil UUID")
+	}
+}
+
+func TestWrap(t *testing.T) {
+	id := uuid.New()
+	w := Wrap(id)
+	if w.UUID != id {
+		t.Errorf("Wrap() = %v, want %v", w.UUID, id)
+	}
+}
+
+func TestParseError(t *testing.T) {
+	_, err := Parse("not-a-uuid")
+	if err == nil {
+		t.Error("Parse invalid expected error, got nil")
+	}
+}
+
+func TestScanBytesUUID(t *testing.T) {
+	id := New()
+	var u UUID
+	if err := u.Scan([]byte(id.Hex())); err != nil {
+		t.Fatalf("Scan []byte: %v", err)
+	}
+	if u.UUID != id.UUID {
+		t.Errorf("Scan result mismatch")
+	}
+}
+
+func TestScanUnknownTypeUUID(t *testing.T) {
+	var u UUID
+	if err := u.Scan(42); err == nil {
+		t.Error("Scan int expected error")
+	}
+}
+
+func TestParseEmptyString(t *testing.T) {
+	var u UUID
+	if err := u.Scan(""); err != nil {
+		t.Fatalf("Scan empty string: %v", err)
+	}
+	if u.UUID != uuid.Nil {
+		t.Errorf("empty string should give nil UUID, got %v", u.UUID)
+	}
+}
+
+func TestParseInvalidString(t *testing.T) {
+	var u UUID
+	if err := u.Scan("not-valid-hex"); err == nil {
+		t.Error("Scan invalid expected error")
 	}
 }

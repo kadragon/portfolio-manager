@@ -47,7 +47,7 @@ type mockCreateCall struct {
 	exchange        string
 }
 
-func (r *mockExecRepo) Create(ctx context.Context, ticker, side string, qty int, currency, status, message, exchange string, raw map[string]any) (models.OrderExecutionRecord, error) {
+func (r *mockExecRepo) Create(_ context.Context, ticker, side string, qty int, currency, status, message, exchange string, _ map[string]any) (models.OrderExecutionRecord, error) {
 	r.calls = append(r.calls, mockCreateCall{ticker, side, qty, currency, status, message, exchange})
 	return models.OrderExecutionRecord{}, nil
 }

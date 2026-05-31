@@ -326,6 +326,29 @@ func TestHoldingCreateByTickerEmptyTicker422(t *testing.T) {
 	}
 }
 
+// TestHoldingBulkUpdateWrongAccountError exercises normalizeBulkError by submitting
+// a holding_id that belongs to a different account.
+func TestHoldingBulkUpdateWrongAccountError(t *testing.T) {
+	e, c := setupHoldings(t)
+	a1 := seedAccount(t, c, "계좌1")
+	a2 := seedAccount(t, c, "계좌2")
+	g := seedGroup(t, c, "그룹")
+	s := seedStock(t, c, "TST1", g)
+	h2 := seedHoldingH(t, c, a2.ID, s.ID, "5") // belongs to a2
+
+	// PUT /accounts/a1/holdings/bulk with a holding from a2 → normalizeBulkError called
+	rec := do(e, http.MethodPut, "/accounts/"+a1.ID.String()+"/holdings/bulk", url.Values{
+		"holding_id": {h2.ID.String()},
+		"quantity":   {"10"},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "holding_id") && !strings.Contains(rec.Body.String(), "계좌") {
+		t.Errorf("error message unexpected:\n%s", rec.Body.String())
+	}
+}
+
 func TestHoldingCreateByTickerNoGroupError422(t *testing.T) {
 	e, c := setupHoldings(t)
 	a := seedAccount(t, c, "계좌")

@@ -1,6 +1,9 @@
 package datex
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestScanISOStringRoundTrip(t *testing.T) {
 	// Form stored by Peewee DateField.
@@ -59,5 +62,63 @@ func TestNew(t *testing.T) {
 	d := New(2026, 1, 6)
 	if d.ISO() != "2026-01-06" {
 		t.Fatalf("iso = %q, want 2026-01-06", d.ISO())
+	}
+}
+
+func TestFromTime(t *testing.T) {
+	tt := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
+	d := FromTime(tt)
+	if d.ISO() != "2026-01-03" {
+		t.Errorf("FromTime = %q, want 2026-01-03", d.ISO())
+	}
+}
+
+func TestParseDate(t *testing.T) {
+	d, err := ParseDate("2026-01-03")
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
+	if d.ISO() != "2026-01-03" {
+		t.Errorf("ParseDate = %q, want 2026-01-03", d.ISO())
+	}
+	_, err = ParseDate("not-a-date")
+	if err == nil {
+		t.Error("ParseDate(invalid) should return error")
+	}
+}
+
+func TestISOZero(t *testing.T) {
+	var d Date
+	if d.ISO() != "" {
+		t.Errorf("zero Date.ISO() = %q, want empty", d.ISO())
+	}
+}
+
+func TestScanTimeTime(t *testing.T) {
+	var d Date
+	tt := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
+	if err := d.Scan(tt); err != nil {
+		t.Fatalf("Scan time.Time: %v", err)
+	}
+	if d.ISO() != "2026-01-03" {
+		t.Errorf("Scan time.Time = %q, want 2026-01-03", d.ISO())
+	}
+}
+
+func TestScanBytesDate(t *testing.T) {
+	var d Date
+	if err := d.Scan([]byte("2026-05-01")); err != nil {
+		t.Fatalf("Scan []byte: %v", err)
+	}
+	if d.ISO() != "2026-05-01" {
+		t.Errorf("Scan []byte = %q, want 2026-05-01", d.ISO())
+	}
+}
+
+func TestScanUnknownType(t *testing.T) {
+	var d Date
+	err := d.Scan(42)
+	if err == nil {
+		t.Error("Scan int expected error, got nil")
 	}
 }

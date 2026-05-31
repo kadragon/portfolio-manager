@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/db"
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
+	"github.com/kadragon/portfolio-manager/internal/services"
+	"github.com/kadragon/portfolio-manager/internal/uuidx"
 	"github.com/kadragon/portfolio-manager/internal/web/handlers"
 )
 
@@ -343,5 +346,103 @@ func TestBulkCashPreservesKIS(t *testing.T) {
 	updated, _ := c.Accounts.GetByID(context.Background(), a.ID)
 	if updated == nil || updated.KisAccountNo == nil || *updated.KisAccountNo != "87654321-01" {
 		t.Fatalf("KIS preserved: %+v", updated)
+	}
+}
+
+// --- sync ---
+
+// TestSyncAccountNilService checks that POST /accounts/:id/sync returns the
+// "KIS 계좌 동기화 서비스가 설정되지 않았습니다" message when AccountSync is nil
+// (the default in-memory container).
+func TestSyncAccountNilService(t *testing.T) {
+	e, c := setupAccounts(t)
+	a := seedAccount(t, c, "동기화계좌")
+
+	rec := do(e, http.MethodPost, "/accounts/"+a.ID.String()+"/sync", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "KIS 계좌 동기화 서비스가 설정되지 않았습니다") {
+		t.Errorf("nil-service message missing:\n%s", rec.Body.String())
+	}
+}
+
+// TestSyncAccountInvalidUUID checks that POST /accounts/bad-uuid/sync returns the
+// "잘못된 계좌 ID입니다" message.
+func TestSyncAccountInvalidUUID(t *testing.T) {
+	e, _ := setupAccounts(t)
+	rec := do(e, http.MethodPost, "/accounts/bad-uuid/sync", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "잘못된 계좌 ID입니다") {
+		t.Errorf("invalid-uuid message missing:\n%s", rec.Body.String())
+	}
+}
+
+// TestSyncAccountNotFound checks that POST /accounts/{valid-but-nonexistent-uuid}/sync
+// returns the "계좌를 찾을 수 없습니다" message.
+//
+// NOTE: The syncAccount handler checks AccountSync == nil BEFORE querying the DB,
+// so AccountSync must be non-nil to reach the not-found branch. We wire a
+// KisAccountSyncService with a nil BalanceClient, which is safe because
+// SyncAccount (the only call path to the client) is never reached when GetByID
+// returns nil.
+//
+// normalizeKisAccountNo is an unexported function in the handlers package and
+// TestSyncAccountNormalizeKisAccountNo exercises normalizeKisAccountNo indirectly:
+// account has a kis_account_no set; with AccountSync wired and a nil balance client
+// that returns empty snapshot, normalizeKisAccountNo is called to parse the number.
+func TestSyncAccountNormalizeKisAccountNo(t *testing.T) {
+	e, c := setupAccounts(t)
+	ctx := context.Background()
+
+	c.AccountSync = services.NewKisAccountSyncService(
+		c.Accounts, c.Holdings, c.Stocks, c.Groups,
+		&mockEmptyBalanceClient{},
+		"",
+	)
+
+	acc, err := c.Accounts.Create(ctx, "KIS 계좌", numeric.Zero)
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	updated, err := c.Accounts.Update(ctx, acc.ID, acc.Name, acc.CashBalance,
+		sql.NullString{String: "12345678-01", Valid: true},
+		sql.NullInt64{})
+	if err != nil {
+		t.Fatalf("update account: %v", err)
+	}
+
+	rec := do(e, http.MethodPost, "/accounts/"+updated.ID.String()+"/sync", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+type mockEmptyBalanceClient struct{}
+
+func (m *mockEmptyBalanceClient) FetchAccountSnapshot(_, _ string) (models.KisAccountSnapshot, error) {
+	return models.KisAccountSnapshot{}, nil
+}
+
+// cannot be tested directly from handlers_test. Its behaviour is implicitly
+// covered whenever syncAccount processes a KIS account number; direct unit tests
+// would require either exporting it or moving to a white-box test file.
+func TestSyncAccountNotFound(t *testing.T) {
+	e, c := setupAccounts(t)
+
+	// Wire a non-nil AccountSync so the handler progresses past the nil check.
+	c.AccountSync = services.NewKisAccountSyncService(
+		c.Accounts, c.Holdings, c.Stocks, c.Groups, nil, "",
+	)
+
+	nonexistent := uuidx.New()
+	rec := do(e, http.MethodPost, "/accounts/"+nonexistent.String()+"/sync", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "계좌를 찾을 수 없습니다") {
+		t.Errorf("not-found message missing:\n%s", rec.Body.String())
 	}
 }

@@ -704,3 +704,24 @@ func findAccountSummary(plan models.RebalancePlan, id uuidx.UUID) models.Account
 	}
 	panic("account summary not found: " + id.String())
 }
+
+// TestBuildPlanEmptyPortfolio verifies emptyPlan() is returned when total assets == 0.
+func TestBuildPlanEmptyPortfolio(t *testing.T) {
+	svc := services.NewRebalanceService()
+	summary := models.PortfolioSummary{}
+	plan, err := svc.BuildPlan(services.BuildPlanParams{
+		Summary:  summary,
+		Accounts: []models.Account{},
+		Groups:   []models.Group{},
+		Stocks:   []models.Stock{},
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan empty: %v", err)
+	}
+	if plan.GroupDiagnostics == nil {
+		t.Error("emptyPlan() GroupDiagnostics should not be nil")
+	}
+	if len(plan.SellRecs) != 0 || len(plan.BuyRecs) != 0 {
+		t.Error("empty plan should have no recommendations")
+	}
+}

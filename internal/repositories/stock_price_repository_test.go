@@ -58,6 +58,40 @@ func TestStockPriceAbsentReturnsNil(t *testing.T) {
 	}
 }
 
+func TestStockPriceGetLatestByTicker(t *testing.T) {
+	r := newStockPriceRepo(t)
+	ctx := context.Background()
+
+	d, _ := datex.ParseDate("2026-01-03")
+	price, _ := numeric.FromString("74000")
+	_, err := r.Save(ctx, "005930", d, price, "KRW", "삼성전자", sql.NullString{})
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	sp, err := r.GetLatestByTicker(ctx, "005930")
+	if err != nil {
+		t.Fatalf("GetLatestByTicker: %v", err)
+	}
+	if sp == nil {
+		t.Fatal("expected non-nil")
+	}
+	if sp.Ticker != "005930" {
+		t.Errorf("Ticker = %q, want 005930", sp.Ticker)
+	}
+}
+
+func TestStockPriceGetLatestByTickerNotFound(t *testing.T) {
+	r := newStockPriceRepo(t)
+	sp, err := r.GetLatestByTicker(context.Background(), "NOTEXIST")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sp != nil {
+		t.Errorf("expected nil for missing ticker, got %+v", sp)
+	}
+}
+
 func TestStockPriceUpsertPreservesName(t *testing.T) {
 	r := newStockPriceRepo(t)
 	ctx := context.Background()

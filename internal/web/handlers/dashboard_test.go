@@ -11,6 +11,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/container"
 	"github.com/kadragon/portfolio-manager/internal/db"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
+	"github.com/kadragon/portfolio-manager/internal/services"
 	"github.com/kadragon/portfolio-manager/internal/web/handlers"
 )
 
@@ -41,6 +42,25 @@ func TestDashboardEmpty(t *testing.T) {
 	}
 	if !strings.Contains(body, "대시보드") {
 		t.Error("page title missing")
+	}
+}
+
+func TestDashboardNilPortfolio(t *testing.T) {
+	e, c := setupDashboard(t)
+	c.Portfolio = nil
+	rec := do(e, http.MethodGet, "/", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}
+
+func TestDashboardNoPriceService(t *testing.T) {
+	e, c := setupDashboard(t)
+	// Override with nil priceService → HasPriceService() returns false → fallback to GroupHoldings
+	c.Portfolio = services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, nil, nil)
+	rec := do(e, http.MethodGet, "/", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
 	}
 }
 

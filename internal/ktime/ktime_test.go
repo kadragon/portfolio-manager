@@ -94,3 +94,59 @@ func TestScanNilZero(t *testing.T) {
 		t.Fatalf("zero time value = %v, want nil", v)
 	}
 }
+
+func TestNow(t *testing.T) {
+	before := time.Now()
+	got := Now()
+	after := time.Now()
+	if got.Time.Before(before) || got.Time.After(after) {
+		t.Errorf("Now() = %v, not in [%v, %v]", got.Time, before, after)
+	}
+}
+
+func TestKtimeString(t *testing.T) {
+	ts := New(time.Date(2026, 1, 3, 13, 21, 44, 873677000, KST))
+	s := ts.String()
+	if s == "" {
+		t.Error("String() returned empty for non-zero time")
+	}
+	var zero Time
+	if zero.String() != "" {
+		t.Errorf("zero String() = %q, want empty", zero.String())
+	}
+}
+
+func TestScanTimeTime(t *testing.T) {
+	var ts Time
+	tt := time.Date(2026, 1, 3, 13, 21, 44, 0, KST)
+	if err := ts.Scan(tt); err != nil {
+		t.Fatalf("Scan time.Time: %v", err)
+	}
+	if ts.Year() != 2026 {
+		t.Errorf("year = %d, want 2026", ts.Year())
+	}
+}
+
+func TestScanUnknownType(t *testing.T) {
+	var ts Time
+	if err := ts.Scan(42); err == nil {
+		t.Error("Scan int expected error, got nil")
+	}
+}
+
+func TestParseInvalidString(t *testing.T) {
+	var ts Time
+	if err := ts.Scan("not-a-timestamp"); err == nil {
+		t.Error("Scan invalid string expected error, got nil")
+	}
+}
+
+func TestScanBytes(t *testing.T) {
+	var ts Time
+	if err := ts.Scan([]byte("2026-01-03 13:21:44+09:00")); err != nil {
+		t.Fatalf("Scan []byte: %v", err)
+	}
+	if ts.Year() != 2026 {
+		t.Errorf("year = %d, want 2026", ts.Year())
+	}
+}

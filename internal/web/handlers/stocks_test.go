@@ -330,6 +330,24 @@ func TestStockDeleteOK(t *testing.T) {
 	}
 }
 
+func TestStockDeleteBadUUID(t *testing.T) {
+	e, c := setupStocks(t)
+	g := seedGroup(t, c, "g")
+	rec := do(e, http.MethodDelete, "/groups/"+g.ID.String()+"/stocks/bad-uuid", nil)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", rec.Code)
+	}
+}
+
+func TestStockEditFormBadUUID(t *testing.T) {
+	e, c := setupStocks(t)
+	g := seedGroup(t, c, "g")
+	rec := do(e, http.MethodGet, "/groups/"+g.ID.String()+"/stocks/bad-uuid/edit", nil)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", rec.Code)
+	}
+}
+
 // delete is unconditional: no existence/ownership check (parity).
 func TestStockDeleteNonExistentOK(t *testing.T) {
 	e, c := setupStocks(t)

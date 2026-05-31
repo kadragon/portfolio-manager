@@ -168,3 +168,49 @@ func TestHoldingBulkUpdateEmpty(t *testing.T) {
 		t.Fatalf("empty bulk update: %v", err)
 	}
 }
+
+func TestHoldingListAll(t *testing.T) {
+	ar, sr, gr, hr := newHoldingRepo(t)
+	ctx := context.Background()
+
+	aid1, sid1, _ := seedHolding(t, ar, sr, gr, hr)
+
+	g2, _ := gr.Create(ctx, "그룹2", 0)
+	s2, _ := sr.Create(ctx, "AAPL", g2.ID)
+	acc2, _ := ar.Create(ctx, "계좌2", numeric.Zero)
+	_, _ = hr.Create(ctx, acc2.ID, s2.ID, numeric.FromInt(5))
+	_ = sid1
+	_ = aid1
+
+	all, err := hr.ListAll(ctx)
+	if err != nil {
+		t.Fatalf("ListAll: %v", err)
+	}
+	if len(all) < 2 {
+		t.Errorf("expected ≥2 holdings, got %d", len(all))
+	}
+}
+
+func TestHoldingGetAggregatedByStock(t *testing.T) {
+	ar, sr, gr, hr := newHoldingRepo(t)
+	ctx := context.Background()
+
+	g, _ := gr.Create(ctx, "그룹", 0)
+	s, _ := sr.Create(ctx, "005930", g.ID)
+	acc1, _ := ar.Create(ctx, "계좌1", numeric.Zero)
+	acc2, _ := ar.Create(ctx, "계좌2", numeric.Zero)
+	_, _ = hr.Create(ctx, acc1.ID, s.ID, numeric.FromInt(10))
+	_, _ = hr.Create(ctx, acc2.ID, s.ID, numeric.FromInt(5))
+
+	agg, err := hr.GetAggregatedByStock(ctx)
+	if err != nil {
+		t.Fatalf("GetAggregatedByStock: %v", err)
+	}
+	total, ok := agg[s.ID]
+	if !ok {
+		t.Fatal("stock not in aggregated map")
+	}
+	if total.String() != "15" {
+		t.Errorf("aggregated qty = %q, want 15", total.String())
+	}
+}

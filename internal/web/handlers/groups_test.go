@@ -12,6 +12,7 @@ import (
 
 	"github.com/kadragon/portfolio-manager/internal/container"
 	"github.com/kadragon/portfolio-manager/internal/db"
+	"github.com/kadragon/portfolio-manager/internal/uuidx"
 	"github.com/kadragon/portfolio-manager/internal/web/handlers"
 )
 
@@ -182,6 +183,23 @@ func TestGroupRowAndDelete(t *testing.T) {
 func TestGroupBadUUIDIs422(t *testing.T) {
 	e, _ := setupGroups(t)
 	rec := do(e, http.MethodGet, "/groups/not-a-uuid/edit", nil)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", rec.Code)
+	}
+}
+
+func TestGroupRowNotFound(t *testing.T) {
+	e, _ := setupGroups(t)
+	nonexistent := uuidx.New()
+	rec := do(e, http.MethodGet, "/groups/"+nonexistent.String(), nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestGroupDeleteBadUUID(t *testing.T) {
+	e, _ := setupGroups(t)
+	rec := do(e, http.MethodDelete, "/groups/bad-uuid", nil)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", rec.Code)
 	}
