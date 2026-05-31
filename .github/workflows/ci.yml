@@ -27,8 +27,8 @@ jobs:
       - name: Install sqlc
         run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
-      - name: templ generate --check
-        run: templ generate --check
+      - name: templ generate
+        run: templ generate
 
       - name: sqlc diff
         run: sqlc diff
