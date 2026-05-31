@@ -1,0 +1,291 @@
+package templates
+
+import (
+	"strings"
+
+	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/uuidx"
+)
+
+// stockTicker returns the ticker for a holding, falling back to the stock ID.
+func stockTicker(h models.Holding, stockMap map[uuidx.UUID]models.Stock) string {
+	if s, ok := stockMap[h.StockID]; ok {
+		return s.Ticker
+	}
+	return h.StockID.String()
+}
+
+// holdingRowStockName returns the display name for a holding row (stockNameMap → stock.Name → ticker).
+func holdingRowStockName(h models.Holding, stockMap map[uuidx.UUID]models.Stock, stockNameMap map[uuidx.UUID]string) string {
+	if name, ok := stockNameMap[h.StockID]; ok {
+		return name
+	}
+	if s, ok := stockMap[h.StockID]; ok {
+		if s.Name != "" {
+			return s.Name
+		}
+		return s.Ticker
+	}
+	return h.StockID.String()
+}
+
+// holdingFormStockName returns the display name for a holding form (stockNameMap → ticker, no stock.Name fallback).
+func holdingFormStockName(h models.Holding, stockMap map[uuidx.UUID]models.Stock, stockNameMap map[uuidx.UUID]string) string {
+	if name, ok := stockNameMap[h.StockID]; ok {
+		return name
+	}
+	return stockTicker(h, stockMap)
+}
+
+// stockOptionLabel returns the option label for a stock select: "name (ticker)" or "ticker (ticker)".
+func stockOptionLabel(s models.Stock) string {
+	name := s.Name
+	if name == "" {
+		name = s.Ticker
+	}
+	return name + " (" + s.Ticker + ")"
+}
+
+// BuildStockNameMap builds a name map from stored stock.Name values, applying
+// format_stock_name (ETF suffix strip) to match Python's stock_service fallback.
+// Phase 8 will replace this with live resolution via the stock service.
+func BuildStockNameMap(stocks []models.Stock) map[uuidx.UUID]string {
+	const etfSuffix = "증권상장지수투자신탁(주식)"
+	m := make(map[uuidx.UUID]string, len(stocks))
+	for _, s := range stocks {
+		if s.Name != "" {
+			name := strings.TrimSpace(strings.Replace(s.Name, etfSuffix, "", 1))
+			if name != "" {
+				m[s.ID] = name
+			}
+		}
+	}
+	return m
+}
+
+// HoldingRow renders one <tr> for use inside the bulk-update form.
+// Contains: hidden holding_id, ticker code, stock name, inline quantity input, delete button.
+templ HoldingRow(h models.Holding, stockMap map[uuidx.UUID]models.Stock, stockNameMap map[uuidx.UUID]string, accountID uuidx.UUID) {
+	<tr id={ "holding-" + h.ID.String() }>
+		<td>
+			<code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ stockTicker(h, stockMap) }</code>
+			<input type="hidden" name="holding_id" value={ h.ID.String() }/>
+		</td>
+		<td>{ holdingRowStockName(h, stockMap, stockNameMap) }</td>
+		<td class="text-right font-mono">
+			<label class="sr-only" for={ "holding-qty-inline-" + h.ID.String() }>수량</label>
+			<input
+				id={ "holding-qty-inline-" + h.ID.String() }
+				type="number"
+				name="quantity"
+				value={ h.Quantity.String() }
+				min="0.000001"
+				step="0.000001"
+				required
+				autocomplete="off"
+				class="input input-bordered input-sm"
+			/>
+		</td>
+		<td>
+			<div class="flex flex-wrap gap-1.5">
+				<button
+					type="button"
+					class="btn btn-error btn-xs"
+					hx-delete={ "/accounts/" + accountID.String() + "/holdings/" + h.ID.String() }
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					hx-confirm="보유 내역을 삭제하시겠습니까?"
+					data-request-message="보유 내역을 삭제하는 중…"
+				>
+					삭제
+				</button>
+			</div>
+		</td>
+	</tr>
+}
+
+// HoldingForm renders one <tr> as an individual edit form.
+// Uses the HTML5 form= attribute to associate the quantity input with the form in the action td.
+templ HoldingForm(h models.Holding, stockMap map[uuidx.UUID]models.Stock, stockNameMap map[uuidx.UUID]string, accountID uuidx.UUID) {
+	<tr id={ "holding-" + h.ID.String() }>
+		<td>
+			<code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ stockTicker(h, stockMap) }</code>
+		</td>
+		<td>{ holdingFormStockName(h, stockMap, stockNameMap) }</td>
+		<td>
+			<label class="sr-only" for={ "holding-qty-" + h.ID.String() }>수량</label>
+			<input
+				id={ "holding-qty-" + h.ID.String() }
+				form={ "edit-holding-" + h.ID.String() }
+				type="number"
+				name="quantity"
+				value={ h.Quantity.String() }
+				min="0"
+				step="0.000001"
+				required
+				autocomplete="off"
+				class="input input-bordered input-sm font-mono"
+			/>
+		</td>
+		<td>
+			<div class="flex flex-wrap gap-1.5">
+				<form
+					id={ "edit-holding-" + h.ID.String() }
+					hx-put={ "/accounts/" + accountID.String() + "/holdings/" + h.ID.String() }
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					data-request-message="보유 수량을 저장하는 중…"
+				>
+					<button type="submit" class="btn btn-primary btn-sm">저장</button>
+				</form>
+				<button
+					type="button"
+					class="btn btn-ghost btn-xs"
+					hx-get={ "/accounts/" + accountID.String() + "/holdings/" + h.ID.String() }
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					data-request-message="수정 취소 중…"
+				>
+					취소
+				</button>
+			</div>
+		</td>
+	</tr>
+}
+
+// HoldingsRows renders all tbody <tr> rows (empty-state or per-holding rows).
+// Used as the target for create and by-ticker responses (hx-swap="innerHTML").
+templ HoldingsRows(holdings []models.Holding, stockMap map[uuidx.UUID]models.Stock, stockNameMap map[uuidx.UUID]string, accountID uuidx.UUID) {
+	if len(holdings) == 0 {
+		<tr><td colspan="4" class="text-center text-base-content/40">보유 내역이 없습니다. 아래에서 새 보유를 추가하세요.</td></tr>
+	}
+	for _, h := range holdings {
+		@HoldingRow(h, stockMap, stockNameMap, accountID)
+	}
+}
+
+// HoldingsBulkResult renders the bulk update result into #holdings-bulk-feedback.
+// On success, also OOB-swaps #holdings-body.
+templ HoldingsBulkResult(success bool, message string, holdings []models.Holding, stockMap map[uuidx.UUID]models.Stock, stockNameMap map[uuidx.UUID]string, accountID uuidx.UUID) {
+	if success {
+		<div class="alert alert-success text-sm py-2" role="status" aria-live="polite">{ message }</div>
+		<tbody id="holdings-body" hx-swap-oob="innerHTML">
+			@HoldingsRows(holdings, stockMap, stockNameMap, accountID)
+		</tbody>
+	} else {
+		<div class="alert alert-error text-sm py-2" role="status" aria-live="polite">{ message }</div>
+	}
+}
+
+// HoldingsPage is the full holdings page for an account.
+templ HoldingsPage(account models.Account, holdings []models.Holding, stockMap map[uuidx.UUID]models.Stock, stockNameMap map[uuidx.UUID]string, allStocks []models.Stock, allGroups []models.Group) {
+	@Base(account.Name+" 보유 내역 — 포트폴리오 매니저", "accounts") {
+		<div class="breadcrumbs text-xs mb-2" aria-label="breadcrumb">
+			<ul>
+				<li><a href="/accounts">계좌</a></li>
+				<li>{ account.Name }</li>
+			</ul>
+		</div>
+		<h1 class="text-lg font-semibold text-base-content mb-3">{ account.Name } 보유 내역</h1>
+		<section class="card bg-base-100">
+			<div class="card-body p-4 sm:p-6">
+				<div id="holdings-bulk-feedback" role="status" aria-live="polite" aria-atomic="true"></div>
+				<form
+					id="bulk-holdings-form"
+					hx-put={ "/accounts/" + account.ID.String() + "/holdings/bulk" }
+					hx-target="#holdings-bulk-feedback"
+					hx-swap="innerHTML"
+					data-request-message="보유 수량을 일괄 저장하는 중…"
+				>
+					<div class="overflow-x-auto" tabindex="0" aria-label="보유 내역 표 가로 스크롤 영역">
+						<table class="table table-sm">
+							<caption>{ account.Name } 계좌 보유 종목과 수량</caption>
+							<thead>
+								<tr>
+									<th class="text-xs uppercase tracking-wider">티커</th>
+									<th class="text-xs uppercase tracking-wider">종목명</th>
+									<th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
+									<th class="text-xs uppercase tracking-wider">작업</th>
+								</tr>
+							</thead>
+							<tbody id="holdings-body">
+								@HoldingsRows(holdings, stockMap, stockNameMap, account.ID)
+							</tbody>
+						</table>
+					</div>
+					<div class="flex flex-wrap gap-1.5 mt-3">
+						<button type="submit" class="btn btn-primary btn-sm">일괄 저장</button>
+					</div>
+				</form>
+				<div class="border-t border-base-300 pt-3 mt-3">
+					<h3 class="text-sm font-semibold text-base-content mb-2">보유 추가</h3>
+					<form
+						hx-post={ "/accounts/" + account.ID.String() + "/holdings" }
+						hx-target="#holdings-body"
+						hx-swap="innerHTML"
+						hx-on::after-request="if (event.detail.successful) { this.reset(); }"
+						data-request-message="보유 내역을 추가하는 중…"
+					>
+						<div class="flex flex-wrap gap-3 items-end">
+							<label class="form-control flex-[2_1_18rem]">
+								<span class="label text-xs font-semibold text-base-content/60">종목<span class="text-error ml-0.5" aria-hidden="true">*</span></span>
+								<select name="stock_id" required class="select select-bordered select-sm">
+									<option value="">종목을 선택하세요…</option>
+									for _, s := range allStocks {
+										<option value={ s.ID.String() }>{ stockOptionLabel(s) }</option>
+									}
+								</select>
+							</label>
+							<label class="form-control flex-[1.2_1_10rem]">
+								<span class="label text-xs font-semibold text-base-content/60">수량<span class="text-error ml-0.5" aria-hidden="true">*</span></span>
+								<input type="number" name="quantity" value="0" min="0" step="0.000001" required autocomplete="off" class="input input-bordered input-sm"/>
+							</label>
+							<div>
+								<button type="submit" class="btn btn-primary btn-sm">보유 추가</button>
+							</div>
+						</div>
+					</form>
+				</div>
+				<div class="border-t border-base-300 pt-3 mt-3">
+					<h3 class="text-sm font-semibold text-base-content mb-2">보유 추가 (티커 직접 입력)</h3>
+					<p class="text-xs text-base-content/50 mt-0.5">새 티커는 그룹을 선택해야 하며, 그룹이 없으면 새 그룹 이름으로 자동 생성할 수 있습니다.</p>
+					<form
+						hx-post={ "/accounts/" + account.ID.String() + "/holdings/by-ticker" }
+						hx-target="#holdings-body"
+						hx-swap="innerHTML"
+						hx-on::after-request="if (event.detail.successful) { this.reset(); document.getElementById('by-ticker-error').textContent = ''; }"
+						data-request-message="티커로 보유 내역을 추가하는 중…"
+					>
+						<div class="flex flex-wrap gap-3 items-end">
+							<label class="form-control flex-[2_1_18rem]">
+								<span class="label text-xs font-semibold text-base-content/60">티커<span class="text-error ml-0.5" aria-hidden="true">*</span></span>
+								<input class="input input-bordered input-sm uppercase" type="text" name="ticker" placeholder="예: AAPL 또는 005930…" required autocomplete="off"/>
+							</label>
+							<label class="form-control flex-[1.2_1_10rem]">
+								<span class="label text-xs font-semibold text-base-content/60">수량<span class="text-error ml-0.5" aria-hidden="true">*</span></span>
+								<input type="number" name="quantity" value="0" min="0" step="0.000001" required autocomplete="off" class="input input-bordered input-sm"/>
+							</label>
+							<label class="form-control flex-[1.2_1_10rem]">
+								<span class="label text-xs font-semibold text-base-content/60">그룹 선택 (신규 티커일 때)</span>
+								<select name="group_id" class="select select-bordered select-sm">
+									<option value="">선택 안 함</option>
+									for _, g := range allGroups {
+										<option value={ g.ID.String() }>{ g.Name }</option>
+									}
+								</select>
+							</label>
+							<label class="form-control flex-[2_1_18rem]">
+								<span class="label text-xs font-semibold text-base-content/60">새 그룹 이름 (그룹이 없을 때만)</span>
+								<input type="text" name="new_group_name" placeholder="예: KIS 자동동기화…" autocomplete="off" class="input input-bordered input-sm"/>
+							</label>
+							<div>
+								<button type="submit" class="btn btn-primary btn-sm">티커로 추가</button>
+							</div>
+						</div>
+					</form>
+					<p id="by-ticker-error" class="text-xs text-base-content/40 min-h-4" role="status" aria-live="polite" aria-atomic="true"></p>
+				</div>
+			</div>
+		</section>
+	}
+}

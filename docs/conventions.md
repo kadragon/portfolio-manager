@@ -1,91 +1,48 @@
 # Conventions
 
-What agents frequently get wrong in this codebase. Ruff/pyright catch style and types — this doc covers patterns the tools miss.
+## 커밋 메시지
 
-## Naming
+`[TYPE] description` 형식:
 
-| Element | Pattern | Example |
-|---------|---------|---------|
-| Python files | `snake_case` | `account_repository.py` |
-| Classes | `PascalCase` | `AccountRepository`, `KisDomesticPriceClient` |
-| Functions / methods | `snake_case` | `get_by_id()`, `sync_account()` |
-| Peewee ORM model classes | `{Name}Model`, singular | `AccountModel`, `HoldingModel`, `StockPriceModel` |
-| Domain dataclasses | `PascalCase`, singular | `Account`, `Holding`, `StockPrice` |
-| Repository classes | `{Model}Repository` | `AccountRepository`, `HoldingRepository` |
-| KIS client classes | `Kis{Scope}{Role}Client` | `KisDomesticPriceClient`, `KisOverseasOrderClient` |
-| Route files | `snake_case`, plural noun | `accounts.py`, `groups.py` |
-| Template dirs | match route file name | `templates/accounts/`, `templates/groups/` |
-| HTMX partial templates | `_` prefix | `_form.html`, `_row.html` |
-| Environment vars | `SCREAMING_SNAKE_CASE` | `KIS_APP_KEY`, `USD_KRW_RATE` |
-| Commit messages | `[TYPE] description` | `[FEAT] add account sync endpoint` |
+- `[FEAT]` 기능 추가
+- `[FIX]` 버그 수정 (재현 테스트 동반)
+- `[REFACTOR]` 구조 개선 (동작 불변)
+- `[TEST]` 테스트 전용 (신규 커버리지, 테스트 리팩터)
+- `[DOCS]` 문서
+- `[CONSTRAINT]` 구조적 가드 (lint/schema/type) — 프로덕션 코드 미변경
+- `[HARNESS]` CI, 린터, 평가 기준, 툴링
+- `[PLAN]` 백로그/태스크 변경
 
-## Commit Types
+## Go 코드 스타일
 
-`[FEAT]` · `[FIX]` · `[REFACTOR]` · `[DOCS]` · `[CONSTRAINT]` · `[HARNESS]` · `[PLAN]`
+- golangci-lint (gofmt/goimports, staticcheck, gosec, errorlint, revive 등) — `.golangci.yml` 참조
+- `go vet` 통과 필수
+- 에러는 `fmt.Errorf(..., %w)`로 래핑, `errors.Is`/`errors.As`로 검사 (errorlint)
+- 외부 IO·비결정 의존성만 모킹; 그 외 통합 테스트 우선
 
-- `[FEAT]` — new user-visible behavior
-- `[FIX]` — bug fix, must include a test that would have caught it
-- `[REFACTOR]` — structural change only, no behavior change
-- `[CONSTRAINT]` — new structural test / lint rule
-- `[HARNESS]` — CI, sweep, tooling changes
-- `[PLAN]` — backlog / tasks updates only
+## 네이밍
 
-## HTMX Route Pattern
+- 파일: snake_case (`stock_service.go`)
+- 익스포트 식별자: PascalCase, 비익스포트: camelCase
+- 패키지: 짧은 소문자 단일 단어
+- 상수: 관용적 Go (PascalCase 익스포트, 비익스포트는 camelCase 허용)
 
-Routes must check the `HX-Request` header and return the appropriate fragment or full page:
+## 테스트
 
-```python
-# correct — consistent partial/full pattern
-@router.get("/accounts/{id}/edit")
-async def edit_account(request: Request, id: int, container=Depends(get_container)):
-    account = container.account_repository.get_by_id(id)
-    if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("accounts/_form.html", {"request": request, "account": account})
-    return templates.TemplateResponse("accounts/edit.html", {"request": request, "account": account})
-```
+- 표준 `testing`, `*_test.go` (대상 패키지 옆)
+- 화이트박스(`package foo`) 또는 블랙박스(`package foo_test`) — 헬퍼 검증은 화이트박스
+- 통합 테스트는 `//go:build integration` 빌드 태그
+- 커버리지 85%+ 유지 (`make go-cover`; 생성 코드 제외)
+- 테이블 드리븐 테스트 선호
 
-Never return a full layout template in response to an HTMX partial request.
+## 코드 생성
 
-## Peewee Model Usage
+- DB 쿼리: `query/queries.sql` → `make go-gen` → `internal/db/sqlc/` (committed)
+- 템플릿: `*.templ` → `make go-gen` → `*_templ.go` (gitignored)
+- 변경 후 `sqlc diff` / `templ generate --check` 통과 확인 (pre-commit/CI에서 검사)
 
-- Models live in `models/`. They define schema (fields, meta, indexes) — no business logic.
-- All queries go through repositories. Never call `Model.select()` or `Model.get()` directly outside `repositories/`.
-- Use `database_proxy` from `services/database.py` for all model `Meta.database` assignments so tests can swap to in-memory SQLite.
+## HTMX 패턴
 
-```python
-# correct
-class Account(Model):
-    class Meta:
-        database = database_proxy
-
-# violation — hardcoded DB handle
-class Account(Model):
-    class Meta:
-        database = SqliteDatabase("portfolio.db")
-```
-
-## KIS Client Usage
-
-- Never call `manager.get_token()` manually in route handlers or services — clients do this internally.
-- Token issuance is rate-limited to **1 per minute** (KIS API constraint). If a test triggers token issuance, mark it `@pytest.mark.integration`.
-- `KIS_ENV` accepts: `real`, `demo`, `vps`, `paper`. Anything else falls through to the production URL silently — validate at startup.
-- Use `KisUnifiedPriceClient` / `KisUnifiedOrderClient` for market-agnostic operations; use the domestic/overseas clients directly only when you need market-specific behavior.
-
-## Testing
-
-- Unit tests: no external calls, no filesystem side-effects, no sleep.
-- Integration tests: `@pytest.mark.integration` — CI excludes these. Run locally with `uv run pytest -m integration`.
-- Test fixtures in `tests/conftest.py`: use `test_container` (in-memory SQLite) — never instantiate `ServiceContainer` directly in tests.
-- Coverage threshold is 85% (branch coverage). CI fails below this. New features need tests before merge.
-- Do NOT mock repository methods in unit tests for routes — use the in-memory DB via the test container fixture.
-
-## Error Handling
-
-- Services raise `ValueError` or domain-specific exceptions for expected failures (invalid input, not found).
-- Routes catch domain exceptions and return appropriate HTTP status codes via `HTTPException`.
-- KIS API errors surface via `KisApiError` (in `services/kis/kis_api_error.py`) — don't wrap in generic `Exception`.
-- Never swallow exceptions silently. Log at `WARNING` or above, then re-raise or convert.
-
-## Environment Variables
-
-All credentials and configuration go through `.env` + `os.getenv()`. No hardcoded values in source. Required vars are documented in `docs/runbook.md`. Optional vars have sensible defaults in code.
+- `HX-Request` 헤더로 partial/full 분기
+- 템플릿: templ, DaisyUI 컴포넌트
+- `internal/web/handlers/render.go` — 본문 출력 전 상태 코드 설정

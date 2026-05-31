@@ -1,0 +1,356 @@
+package templates
+
+import (
+	"fmt"
+
+	"github.com/kadragon/portfolio-manager/internal/accountformat"
+	"github.com/kadragon/portfolio-manager/internal/models"
+)
+
+// RebalancePage renders GET /rebalance.
+templ RebalancePage(
+	summary *models.PortfolioSummary,
+	plan *models.RebalancePlan,
+	restrictOverseas bool,
+	errorMsg string,
+	hasOrderClient bool,
+) {
+	@Base("리밸런싱 — 포트폴리오 매니저", "rebalance") {
+		<h1 class="text-lg font-semibold text-base-content mb-3">리밸런싱 추천</h1>
+		<form method="get" action="/rebalance" class="mb-3 flex items-center gap-2">
+			<label class="label cursor-pointer justify-start gap-2 inline-flex">
+				<input
+					type="checkbox"
+					name="restrict_overseas"
+					value="on"
+					class="checkbox checkbox-sm"
+					if restrictOverseas {
+						checked
+					}
+				/>
+				<span class="label-text text-sm">해외 주식 매도 제한 (국내 종목으로만 리밸런싱)</span>
+			</label>
+			<button type="submit" class="btn btn-ghost btn-xs">적용</button>
+		</form>
+		if restrictOverseas {
+			<div class="alert alert-info text-sm py-2 mb-3" role="status">
+				해외 매도 제한 옵션 적용 중 — 해외 종목(티커 6자리 숫자 미만)은 매도·매수 추천에서 제외됩니다.
+			</div>
+		}
+		if errorMsg != "" {
+			<div class="alert alert-error text-sm py-2" role="alert" aria-live="polite">{ errorMsg }</div>
+		}
+		if plan != nil {
+			@rebalanceDiagnostics(plan)
+			@rebalanceAccountSummaries(plan)
+		}
+		if plan == nil || (len(plan.SellRecs) == 0 && len(plan.BuyRecs) == 0) {
+			if errorMsg == "" {
+				<section class="card bg-base-100">
+					<div class="card-body p-4 sm:p-6">
+						<p>리밸런싱 추천이 없습니다. 현재 포트폴리오가 목표 비중에 가깝습니다.</p>
+					</div>
+				</section>
+			}
+		}
+		if plan != nil && (len(plan.SellRecs) > 0 || len(plan.BuyRecs) > 0) {
+			<div id="execute-result" class="card bg-base-100">
+				<div class="card-body p-4 sm:p-6">
+					<form
+						hx-post="/rebalance/execute"
+						hx-target="#execute-result"
+						hx-swap="outerHTML"
+						hx-confirm="실제 주문을 실행하시겠습니까?"
+						data-request-message="주문을 실행하는 중…"
+					>
+						if restrictOverseas {
+							<input type="hidden" name="restrict_overseas" value="on"/>
+						}
+						if hasOrderClient {
+							<button type="submit" class="btn btn-primary btn-sm" hx-disabled-elt="this">주문 실행</button>
+						} else {
+							<button type="button" class="btn btn-sm btn-disabled" disabled title="KIS 주문 클라이언트가 설정되지 않았습니다.">주문 실행 불가 (KIS 미설정)</button>
+						}
+					</form>
+				</div>
+			</div>
+		}
+		<p>
+			<a
+				href={ templ.SafeURL("/rebalance" + restrictOverseasQuery(restrictOverseas)) }
+				class="btn btn-ghost btn-xs"
+			>추천 다시 조회</a>
+		</p>
+	}
+}
+
+templ rebalanceDiagnostics(plan *models.RebalancePlan) {
+	<section class="card bg-base-100">
+		<div class="card-body p-4 sm:p-6">
+			<h3 class="text-sm font-semibold text-base-content mb-2">진단 요약</h3>
+			<div class="overflow-x-auto" tabindex="0" aria-label="지역 진단 요약 표 가로 스크롤 영역">
+				<table class="table table-sm">
+					<caption>지역 비중 진단과 트리거 상태</caption>
+					<thead>
+						<tr>
+							<th class="text-xs uppercase tracking-wider">구분</th>
+							<th class="text-right font-mono text-xs uppercase tracking-wider">목표</th>
+							<th class="text-right font-mono text-xs uppercase tracking-wider">현재</th>
+							<th class="text-right font-mono text-xs uppercase tracking-wider">허용 밴드</th>
+							<th class="text-xs uppercase tracking-wider">상태</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td>지역(국내)</td>
+							<td class="text-right font-mono">{ formatPct(plan.RegionDiagnostic.TargetKRPct) }</td>
+							<td class="text-right font-mono">{ formatPct(plan.RegionDiagnostic.CurrentKRPct) }</td>
+							<td class="text-right font-mono">{ formatPct(plan.RegionDiagnostic.LowerKRPct) }% ~ { formatPct(plan.RegionDiagnostic.UpperKRPct) }%</td>
+							<td>
+								if plan.RegionDiagnostic.IsTriggered {
+									<span class="badge badge-error badge-sm">트리거 발동</span>
+								} else {
+									<span class="badge badge-success badge-sm">정상 범위</span>
+								}
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="overflow-x-auto" tabindex="0" aria-label="그룹 진단 요약 표 가로 스크롤 영역">
+				<table class="table table-sm">
+					<caption>그룹별 목표 비중 대비 현재 상태</caption>
+					<thead>
+						<tr>
+							<th class="text-xs uppercase tracking-wider">그룹</th>
+							<th class="text-right font-mono text-xs uppercase tracking-wider">목표</th>
+							<th class="text-right font-mono text-xs uppercase tracking-wider">현재</th>
+							<th class="text-right font-mono text-xs uppercase tracking-wider">허용 밴드</th>
+							<th class="text-xs uppercase tracking-wider">상태</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, diag := range plan.GroupDiagnostics {
+							<tr>
+								<td>{ diag.RebalanceGroupName }</td>
+								<td class="text-right font-mono">{ formatPct(diag.TargetPct) }%</td>
+								<td class="text-right font-mono">{ formatPct(diag.CurrentPct) }%</td>
+								<td class="text-right font-mono">{ formatPct(diag.LowerPct) }% ~ { formatPct(diag.UpperPct) }%</td>
+								<td>
+									if diag.IsUpperBreached {
+										<span class="badge badge-error badge-sm">상단 이탈</span>
+									} else if diag.IsLowerBreached {
+										<span class="badge badge-warning badge-sm">하단 이탈</span>
+									} else {
+										<span>정상</span>
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</section>
+}
+
+templ rebalanceAccountSummaries(plan *models.RebalancePlan) {
+	for _, s := range plan.AccountSummaries {
+		if len(s.SellRecs) > 0 || len(s.BuyRecs) > 0 || len(s.UnmetGroups) > 0 {
+			<section class="card bg-base-100">
+				<div class="card-body p-4 sm:p-6">
+					<h3 class="text-base font-semibold text-base-content mb-2">{ s.AccountName }</h3>
+					<div class="flex flex-wrap gap-4 text-xs mb-3">
+						<span>시작 현금 <span class="font-mono">{ accountformat.FormatKRW(s.StartingCashKRW) }</span></span>
+						<span>매도 현금 <span class="font-mono text-error">{ accountformat.FormatKRW(s.SellCashKRW) }</span></span>
+						<span>매수 합계 <span class="font-mono text-success">{ accountformat.FormatKRW(s.TotalBuyKRW) }</span></span>
+						if s.UnusedCashKRW.IsPositive() {
+							<span class="text-warning">잔여 현금(이월) <span class="font-mono">{ accountformat.FormatKRW(s.UnusedCashKRW) }</span></span>
+						}
+					</div>
+					if len(s.UnmetGroups) > 0 {
+						<div class="alert alert-warning text-xs py-2 mb-3" role="alert">
+							이 계좌에 <strong>{ joinStrings(s.UnmetGroups) }</strong> 그룹 종목이 없어 매수를 생성하지 못했습니다.
+							해당 금액은 다음 회차로 이월됩니다.
+						</div>
+					}
+					if len(s.SellRecs) > 0 {
+						<h4 class="text-sm font-semibold mb-1"><span class="badge badge-error badge-sm">매도</span> 추천</h4>
+						<div class="overflow-x-auto mb-3" tabindex="0">
+							@rebalanceRecTable(s.SellRecs, false)
+						</div>
+					}
+					if len(s.BuyRecs) > 0 {
+						<h4 class="text-sm font-semibold mb-1"><span class="badge badge-success badge-sm">매수</span> 추천</h4>
+						<div class="overflow-x-auto" tabindex="0">
+							@rebalanceRecTable(s.BuyRecs, true)
+						</div>
+					}
+				</div>
+			</section>
+		}
+	}
+}
+
+templ rebalanceRecTable(recs []models.RebalanceRecommendation, isBuy bool) {
+	<table class="table table-sm">
+		<thead>
+			<tr>
+				<th class="text-xs uppercase tracking-wider">리밸런싱 그룹</th>
+				<th class="text-xs uppercase tracking-wider">원본 그룹</th>
+				<th class="text-xs uppercase tracking-wider">티커</th>
+				<th class="text-xs uppercase tracking-wider">종목명</th>
+				<th class="text-right font-mono text-xs uppercase tracking-wider">금액(통화)</th>
+				<th class="text-right font-mono text-xs uppercase tracking-wider">금액(KRW)</th>
+				<th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
+				<th class="text-xs uppercase tracking-wider">통화</th>
+				<th class="text-xs uppercase tracking-wider">근거</th>
+			</tr>
+		</thead>
+		<tbody>
+			for _, rec := range recs {
+				<tr>
+					<td>{ rec.RebalanceGroupName }</td>
+					<td>{ rec.GroupName }</td>
+					<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ rec.Ticker }</code></td>
+					<td>{ rec.StockName }</td>
+					<td class={ "text-right font-mono font-semibold " + recAmountClass(isBuy) }>
+						if rec.Currency == "KRW" {
+							{ accountformat.FormatKRW(rec.Amount) }
+						} else {
+							{ accountformat.FormatUSD(rec.Amount) }
+						}
+					</td>
+					<td class={ "text-right font-mono font-semibold " + recAmountClass(isBuy) }>
+						{ accountformat.FormatKRW(rec.AmountKRW) }
+					</td>
+					<td class="text-right font-mono">{ formatRebalanceQty(rec) }</td>
+					<td>{ rec.Currency }</td>
+					<td>{ rec.Reason }</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+
+// RebalanceResultPartial renders #execute-result partial (HTMX swap target).
+templ RebalanceResultPartial(result *models.RebalanceExecutionResult, message string, success bool) {
+	<div id="execute-result" class="card bg-base-100" role="status" aria-live="polite" aria-atomic="true">
+		<div class="card-body p-4 sm:p-6">
+			if success {
+				<div class="alert alert-success text-sm py-2">{ message }</div>
+			} else {
+				<div class="alert alert-error text-sm py-2">{ message }</div>
+			}
+			if result != nil {
+				<p>
+					<strong>성공:</strong> { fmt.Sprintf("%d", countStatus(result.Executions, "success")) }
+					<strong>실패:</strong> { fmt.Sprintf("%d", countStatus(result.Executions, "failed")) }
+					<strong>스킵:</strong> { fmt.Sprintf("%d", len(result.Skipped)) }
+				</p>
+				if result.SyncWarning != "" {
+					<div class="alert alert-error text-sm py-2">동기화 경고: { result.SyncWarning }</div>
+				}
+				@rebalanceFailedExecs(result.Executions)
+			}
+			<p><a href="/rebalance" class="btn btn-ghost btn-xs">리밸런싱 화면으로 돌아가기</a></p>
+		</div>
+	</div>
+}
+
+templ rebalanceFailedExecs(execs []models.OrderExecutionResult) {
+	if len(failedExecs(execs)) > 0 {
+		<h4 class="text-sm font-semibold text-base-content mb-1">실패한 주문</h4>
+		<div class="overflow-x-auto" tabindex="0" aria-label="실패한 주문 표">
+			<table class="table table-sm">
+				<thead>
+					<tr>
+						<th class="text-xs uppercase tracking-wider">종목명</th>
+						<th class="text-xs uppercase tracking-wider">티커</th>
+						<th class="text-xs uppercase tracking-wider">구분</th>
+						<th class="text-xs uppercase tracking-wider">상태</th>
+						<th class="text-xs uppercase tracking-wider">메시지</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, ex := range failedExecs(execs) {
+						<tr>
+							<td>{ ex.Intent.StockName }</td>
+							<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ ex.Intent.Ticker }</code></td>
+							<td>{ ex.Intent.Side }</td>
+							<td>{ ex.Status }</td>
+							<td>{ ex.Message }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+// --- helpers ---
+
+func restrictOverseasQuery(r bool) string {
+	if r {
+		return "?restrict_overseas=on"
+	}
+	return ""
+}
+
+func formatPct(d interface{ String() string }) string {
+	return fmt.Sprintf("%.2f", parseFloat(d.String()))
+}
+
+func parseFloat(s string) float64 {
+	var f float64
+	fmt.Sscanf(s, "%f", &f)
+	return f
+}
+
+func recAmountClass(isBuy bool) string {
+	if isBuy {
+		return "text-success"
+	}
+	return "text-error"
+}
+
+func formatRebalanceQty(rec models.RebalanceRecommendation) string {
+	if rec.Quantity == nil {
+		return "-"
+	}
+	if rec.Currency == "KRW" {
+		return fmt.Sprintf("%d주", int(rec.Quantity.InexactFloat64()))
+	}
+	return fmt.Sprintf("%.4f주", rec.Quantity.InexactFloat64())
+}
+
+func countStatus(execs []models.OrderExecutionResult, status string) int {
+	n := 0
+	for _, ex := range execs {
+		if ex.Status == status {
+			n++
+		}
+	}
+	return n
+}
+
+func failedExecs(execs []models.OrderExecutionResult) []models.OrderExecutionResult {
+	var out []models.OrderExecutionResult
+	for _, ex := range execs {
+		if ex.Status == "failed" {
+			out = append(out, ex)
+		}
+	}
+	return out
+}
+
+func joinStrings(ss []string) string {
+	result := ""
+	for i, s := range ss {
+		if i > 0 {
+			result += ", "
+		}
+		result += s
+	}
+	return result
+}

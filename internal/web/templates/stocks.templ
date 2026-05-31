@@ -1,0 +1,173 @@
+package templates
+
+import (
+	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/uuidx"
+)
+
+// displayName returns the stock's name if set, otherwise its ticker (mirrors
+// Python's `stock.name or stock.ticker`).
+func displayName(s models.Stock) string {
+	if s.Name != "" {
+		return s.Name
+	}
+	return s.Ticker
+}
+
+// displayExchange returns the exchange string or "-" (mirrors Python's
+// `stock.exchange or "-"`: None and "" both render as "-").
+func displayExchange(s models.Stock) string {
+	if s.Exchange != nil && *s.Exchange != "" {
+		return *s.Exchange
+	}
+	return "-"
+}
+
+// StockRow renders a single stock table row (groups/_stock_row.html).
+templ StockRow(stock models.Stock, groupID uuidx.UUID) {
+	<tr id={ "stock-" + stock.ID.String() }>
+		<td>{ displayName(stock) }</td>
+		<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ stock.Ticker }</code></td>
+		<td>{ displayExchange(stock) }</td>
+		<td>
+			<div class="flex flex-wrap gap-1.5">
+				<button
+					type="button"
+					class="btn btn-ghost btn-xs"
+					hx-get={ "/groups/" + groupID.String() + "/stocks/" + stock.ID.String() + "/edit" }
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					data-request-message="종목 수정 폼을 여는 중…"
+				>
+					수정
+				</button>
+				<button
+					type="button"
+					class="btn btn-error btn-xs"
+					hx-delete={ "/groups/" + groupID.String() + "/stocks/" + stock.ID.String() }
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					hx-confirm={ "'" + stock.Ticker + "' 종목을 삭제하시겠습니까?" }
+					data-request-message="종목을 삭제하는 중…"
+				>
+					삭제
+				</button>
+			</div>
+		</td>
+	</tr>
+}
+
+// StockForm renders the inline edit form for a stock (groups/_stock_form.html).
+templ StockForm(stock models.Stock, groupID uuidx.UUID, groups []models.Group) {
+	<tr id={ "stock-" + stock.ID.String() }>
+		<td>
+			<label class="sr-only" for={ "stock-ticker-" + stock.ID.String() }>티커</label>
+			<input
+				id={ "stock-ticker-" + stock.ID.String() }
+				type="text"
+				name="ticker"
+				value={ stock.Ticker }
+				required
+				autocomplete="off"
+				class="input input-bordered input-sm uppercase"
+			/>
+		</td>
+		<td>
+			<label class="sr-only" for={ "stock-group-" + stock.ID.String() }>그룹 이동</label>
+			<select id={ "stock-group-" + stock.ID.String() } name="target_group_id" class="select select-bordered select-sm">
+				for _, g := range groups {
+					if g.ID == stock.GroupID {
+						<option value={ g.ID.String() } selected>{ g.Name }</option>
+					} else {
+						<option value={ g.ID.String() }>{ g.Name }</option>
+					}
+				}
+			</select>
+		</td>
+		<td>
+			<div class="flex flex-wrap gap-1.5">
+				<button
+					type="button"
+					class="btn btn-primary btn-sm"
+					hx-put={ "/groups/" + groupID.String() + "/stocks/" + stock.ID.String() }
+					hx-include="closest tr"
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					data-request-message="종목 정보를 저장하는 중…"
+				>
+					저장
+				</button>
+				<button
+					type="button"
+					class="btn btn-ghost btn-xs"
+					hx-get={ "/groups/" + groupID.String() + "/stocks/" + stock.ID.String() }
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					data-request-message="수정 취소 중…"
+				>
+					취소
+				</button>
+			</div>
+		</td>
+	</tr>
+}
+
+// StocksPage renders the stocks management page for a group (groups/stocks.html).
+templ StocksPage(group models.Group, stocks []models.Stock) {
+	@Base(group.Name+" 종목 — 포트폴리오 매니저", "groups") {
+		<div class="breadcrumbs text-xs mb-2" aria-label="breadcrumb">
+			<ul>
+				<li><a href="/groups">그룹</a></li>
+				<li>{ group.Name }</li>
+			</ul>
+		</div>
+		<h1 class="text-lg font-semibold text-base-content mb-3">{ group.Name } 종목</h1>
+		<section class="card bg-base-100">
+			<div class="card-body p-4 sm:p-6">
+				<div class="overflow-x-auto" tabindex="0" aria-label="그룹 종목 목록 표 가로 스크롤 영역">
+					<table class="table table-sm">
+						<caption class="text-xs text-base-content/40 text-left py-1">{ group.Name } 그룹 종목 목록과 작업</caption>
+						<thead>
+							<tr>
+								<th class="text-xs uppercase tracking-wider">종목명</th>
+								<th class="text-xs uppercase tracking-wider">티커</th>
+								<th class="text-xs uppercase tracking-wider">거래소</th>
+								<th class="text-xs uppercase tracking-wider">작업</th>
+							</tr>
+						</thead>
+						<tbody id="stocks-body">
+							if len(stocks) == 0 {
+								<tr><td colspan="4" class="text-center text-base-content/40">종목이 없습니다. 아래에서 새 종목을 추가하세요.</td></tr>
+							} else {
+								for _, s := range stocks {
+									@StockRow(s, group.ID)
+								}
+							}
+						</tbody>
+					</table>
+				</div>
+				<div class="border-t border-base-300 pt-3 mt-3">
+					<form
+						hx-post={ "/groups/" + group.ID.String() + "/stocks" }
+						hx-target="#stocks-body"
+						hx-swap="afterbegin"
+						hx-on::after-request="if (event.detail.successful) { this.reset(); }"
+						data-request-message="종목을 추가하는 중…"
+					>
+						<div class="flex flex-wrap gap-3 items-end">
+							<div class="form-control flex-[2_1_18rem]">
+								<label for="new-stock-ticker" class="label text-xs font-semibold text-base-content/60">
+									티커<span class="text-error ml-0.5" aria-hidden="true">*</span>
+								</label>
+								<input id="new-stock-ticker" type="text" name="ticker" placeholder="예: AAPL 또는 005930…" required autocomplete="off" class="input input-bordered input-sm uppercase"/>
+							</div>
+							<div>
+								<button type="submit" class="btn btn-primary btn-sm">종목 추가</button>
+							</div>
+						</div>
+					</form>
+				</div>
+			</div>
+		</section>
+	}
+}

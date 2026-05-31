@@ -1,0 +1,46 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "internal/db/schema.sql"
+    queries: "query/queries.sql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/db/sqlc"
+        emit_interface: true
+        emit_empty_slices: true
+        overrides:
+          # Date-only columns (Peewee DateField). db_type match is reliable here.
+          - db_type: "DATE"
+            go_type:
+              import: "github.com/kadragon/portfolio-manager/internal/datex"
+              type: "Date"
+          # Timestamp columns (Peewee DateTimeField), KST-aware.
+          - db_type: "DATETIME"
+            go_type:
+              import: "github.com/kadragon/portfolio-manager/internal/ktime"
+              type: "Time"
+          # Money / quantities. The DECIMAL(10,10) db_type does not match in sqlc's
+          # SQLite parser, so override each NUMERIC-affinity column explicitly.
+          - column: "accounts.cash_balance"
+            go_type: &decimal
+              import: "github.com/kadragon/portfolio-manager/internal/numeric"
+              type: "Decimal"
+          - { column: "holdings.quantity", go_type: *decimal }
+          - { column: "deposits.amount", go_type: *decimal }
+          - { column: "stock_prices.price", go_type: *decimal }
+          # UUID primary keys and foreign keys (TEXT, stored as 32-char hex).
+          - column: "groups.id"
+            go_type: &uuid
+              import: "github.com/kadragon/portfolio-manager/internal/uuidx"
+              type: "UUID"
+          - { column: "stocks.id", go_type: *uuid }
+          - { column: "stocks.group_id", go_type: *uuid }
+          - { column: "accounts.id", go_type: *uuid }
+          - { column: "holdings.id", go_type: *uuid }
+          - { column: "holdings.account_id", go_type: *uuid }
+          - { column: "holdings.stock_id", go_type: *uuid }
+          - { column: "deposits.id", go_type: *uuid }
+          - { column: "stock_prices.id", go_type: *uuid }
+          - { column: "order_executions.id", go_type: *uuid }
+          - { column: "investor_flows.id", go_type: *uuid }

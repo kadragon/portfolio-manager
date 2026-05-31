@@ -1,0 +1,416 @@
+// Package container wires the repositories (and, in later phases, services and
+// external clients) over an open database, the Go counterpart of
+// core/container.py's ServiceContainer. As the composition root it may depend on
+// both the db and repository layers.
+package container
+
+import (
+	"context"
+	"database/sql"
+	"log"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/kadragon/portfolio-manager/internal/db"
+	"github.com/kadragon/portfolio-manager/internal/db/sqlc"
+	"github.com/kadragon/portfolio-manager/internal/kis"
+	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
+	"github.com/kadragon/portfolio-manager/internal/repositories"
+	"github.com/kadragon/portfolio-manager/internal/services"
+)
+
+// Container holds shared dependencies for the web layer.
+type Container struct {
+	DB                 *sql.DB
+	Groups             *repositories.GroupRepository
+	Stocks             *repositories.StockRepository
+	Accounts           *repositories.AccountRepository
+	Holdings           *repositories.HoldingRepository
+	Deposits           *repositories.DepositRepository
+	StockPrices        *repositories.StockPriceRepository
+	OrderExecutions    *repositories.OrderExecutionRepository
+	Portfolio          *services.PortfolioService
+	Rebalance          *services.RebalanceService
+	RebalanceExecution *services.RebalanceExecutionService
+	OrderClient        services.OrderClient            // nil if KIS not configured
+	AccountSync        *services.KisAccountSyncService // nil if KIS not configured
+	KisCano            string
+	KisAcntPrdtCd      string
+}
+
+// New opens the database at path (empty = default location) and builds the
+// repositories. The caller is responsible for Close.
+func New(path string) (*Container, error) {
+	sqlDB, q, err := db.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return newWithQueries(sqlDB, q, true), nil
+}
+
+// NewWithQueries builds a Container over an already-open database and queries
+// handle (used by tests with an in-memory database; skips KIS wiring).
+func NewWithQueries(sqlDB *sql.DB, q *sqlc.Queries) *Container {
+	return newWithQueries(sqlDB, q, false)
+}
+
+func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
+	groups := repositories.NewGroupRepository(q)
+	stocks := repositories.NewStockRepository(q)
+	accounts := repositories.NewAccountRepository(q)
+	holdings := repositories.NewHoldingRepository(q, sqlDB)
+	deposits := repositories.NewDepositRepository(q)
+	stockPrices := repositories.NewStockPriceRepository(q)
+	orderExecutions := repositories.NewOrderExecutionRepository(q)
+
+	var priceClient services.PriceClient
+	var exchangeRate *services.ExchangeRateService
+	var orderClient services.OrderClient
+	var accountSync *services.KisAccountSyncService
+	var rebalanceSync services.SyncService
+	kisCano := ""
+	kisAcntPrdtCd := ""
+
+	if setupKIS {
+		kisAuth := buildKISAuth()
+		priceClient = buildKISClient(kisAuth)
+		exchangeRate = buildExchangeRate()
+		orderClient = buildOrderClient(kisAuth)
+
+		kisCano, kisAcntPrdtCd = loadKISAccount()
+		if balanceClient := buildBalanceClient(kisAuth); balanceClient != nil {
+			accountSync = services.NewKisAccountSyncService(accounts, holdings, stocks, groups, balanceClient, ".data/kis_sync.log")
+			rebalanceSync = &rebalanceSyncAdapter{
+				accounts:   accounts,
+				sync:       accountSync,
+				cano:       kisCano,
+				acntPrdtCd: kisAcntPrdtCd,
+			}
+		}
+	}
+
+	priceService := services.NewPriceService(stockPrices, priceClient)
+	_ = services.NewStockService(stocks, priceService)
+	portfolio := services.NewPortfolioService(groups, stocks, holdings, accounts, deposits, priceService, exchangeRate)
+	rebalance := services.NewRebalanceService()
+
+	execRepo := &execRepoAdapter{r: orderExecutions}
+	rebalanceExecution := services.NewRebalanceExecutionService(orderClient, execRepo, rebalanceSync)
+
+	return &Container{
+		DB:                 sqlDB,
+		Groups:             groups,
+		Stocks:             stocks,
+		Accounts:           accounts,
+		Holdings:           holdings,
+		Deposits:           deposits,
+		StockPrices:        stockPrices,
+		OrderExecutions:    orderExecutions,
+		Portfolio:          portfolio,
+		Rebalance:          rebalance,
+		RebalanceExecution: rebalanceExecution,
+		OrderClient:        orderClient,
+		AccountSync:        accountSync,
+		KisCano:            kisCano,
+		KisAcntPrdtCd:      kisAcntPrdtCd,
+	}
+}
+
+// Close releases the database connection.
+func (c *Container) Close() error {
+	if c.DB != nil {
+		return c.DB.Close()
+	}
+	return nil
+}
+
+// execRepoAdapter wraps OrderExecutionRepository to satisfy services.ExecutionRepo.
+type execRepoAdapter struct {
+	r *repositories.OrderExecutionRepository
+}
+
+func (a *execRepoAdapter) Create(
+	ctx context.Context,
+	ticker, side string,
+	quantity int,
+	currency, status, message, exchange string,
+	rawResponse map[string]any,
+) (models.OrderExecutionRecord, error) {
+	return a.r.Create(ctx, ticker, side, quantity, currency, status, message, exchange, rawResponse)
+}
+
+type rebalanceSyncAdapter struct {
+	accounts   *repositories.AccountRepository
+	sync       *services.KisAccountSyncService
+	cano       string
+	acntPrdtCd string
+}
+
+func (a *rebalanceSyncAdapter) SyncAccount() error {
+	ctx := context.Background()
+	accounts, err := a.accounts.ListAll(ctx)
+	if err != nil {
+		return err
+	}
+	for _, account := range accounts {
+		cano, acntPrdtCd := a.cano, a.acntPrdtCd
+		if account.KisAccountNo != nil && *account.KisAccountNo != "" {
+			parsedCano, parsedPrdtCd := parseKISAccountNo(*account.KisAccountNo)
+			if parsedCano == "" {
+				continue
+			}
+			cano, acntPrdtCd = parsedCano, parsedPrdtCd
+		}
+		if cano == "" {
+			continue
+		}
+		if _, err := a.sync.SyncAccount(ctx, account, cano, acntPrdtCd, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func parseKISAccountNo(raw string) (cano, acntPrdtCd string) {
+	var digits strings.Builder
+	for _, ch := range raw {
+		if ch >= '0' && ch <= '9' {
+			digits.WriteRune(ch)
+		}
+	}
+	if d := digits.String(); len(d) == 10 {
+		return d[:8], d[8:]
+	}
+	return "", ""
+}
+
+type kisAuth struct {
+	appKey       string
+	appSecret    string
+	env          string
+	custType     string
+	baseURL      string
+	cano         string
+	acntPrdtCd   string
+	httpClient   *http.Client
+	tokenManager *kis.TokenManager
+}
+
+func buildKISAuth() *kisAuth {
+	appKey := strings.TrimSpace(os.Getenv("KIS_APP_KEY"))
+	appSecret := strings.TrimSpace(os.Getenv("KIS_APP_SECRET"))
+	if appKey == "" || appSecret == "" {
+		return nil
+	}
+
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("KIS_ENV")))
+	if env == "" {
+		env = "real"
+	}
+	if i := strings.IndexByte(env, '/'); i >= 0 {
+		env = env[:i]
+	}
+
+	custType := strings.TrimSpace(os.Getenv("KIS_CUST_TYPE"))
+	if custType == "" {
+		custType = "P"
+	}
+
+	baseURL := "https://openapi.koreainvestment.com:9443"
+	if env == "demo" || env == "vps" || env == "paper" {
+		baseURL = "https://openapivts.koreainvestment.com:29443"
+	}
+
+	cano, acntPrdtCd := loadKISAccount()
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	authClient := &kis.AuthClient{
+		HTTPClient: httpClient,
+		BaseURL:    baseURL,
+		AppKey:     appKey,
+		AppSecret:  appSecret,
+	}
+	store := kis.NewFileTokenStore(".data/kis_token_1.json")
+	manager := kis.NewTokenManager(store, authClient, time.Minute)
+
+	return &kisAuth{
+		appKey:       appKey,
+		appSecret:    appSecret,
+		env:          env,
+		custType:     custType,
+		baseURL:      baseURL,
+		cano:         cano,
+		acntPrdtCd:   acntPrdtCd,
+		httpClient:   httpClient,
+		tokenManager: manager,
+	}
+}
+
+// buildKISClient returns a UnifiedPriceClient, or nil if KIS keys are absent.
+func buildKISClient(auth *kisAuth) services.PriceClient {
+	if auth == nil {
+		return nil
+	}
+
+	prdtTypeCd := strings.TrimSpace(os.Getenv("KIS_PRDT_TYPE_CD"))
+	if prdtTypeCd == "" {
+		prdtTypeCd = "300"
+	}
+	domesticInfoTrID := strings.TrimSpace(os.Getenv("KIS_DOMESTIC_INFO_TR_ID"))
+	if domesticInfoTrID == "" {
+		domesticInfoTrID = "CTPF1002R"
+	}
+	overseasInfoTrID := strings.TrimSpace(os.Getenv("KIS_OVERSEAS_INFO_TR_ID"))
+	if overseasInfoTrID == "" {
+		overseasInfoTrID = "CTPF1702R"
+	}
+
+	unified := &kis.UnifiedPriceClient{
+		Domestic: &kis.DomesticPriceClient{
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			CustType:  auth.custType,
+			Env:       auth.env,
+			Manager:   auth.tokenManager,
+		},
+		Overseas: &kis.OverseasPriceClient{
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			CustType:  auth.custType,
+			Env:       auth.env,
+			Manager:   auth.tokenManager,
+		},
+		DomesticInfo: &kis.DomesticInfoClient{
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			TrID:      domesticInfoTrID,
+			CustType:  auth.custType,
+			Manager:   auth.tokenManager,
+		},
+		OverseasInfo: &kis.OverseasInfoClient{
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			TrID:      overseasInfoTrID,
+			CustType:  auth.custType,
+			Manager:   auth.tokenManager,
+		},
+		PrdtTypeCd: prdtTypeCd,
+	}
+
+	if k2 := strings.TrimSpace(os.Getenv("KIS_APP_KEY_2")); k2 != "" {
+		log.Printf("KIS_APP_KEY_2 is set but multi-key round-robin is not implemented in Go; single key used")
+	}
+
+	log.Printf("KIS price client initialized (env=%q)", auth.env) //nolint:gosec // env is operator-controlled, not user input
+	return unified
+}
+
+// loadKISAccount resolves the KIS account number from env vars.
+// Prefers explicit KIS_CANO + KIS_ACNT_PRDT_CD; falls back to KIS_ACCOUNT_NO
+// (10 consecutive digits split 8+2), matching Python ServiceContainer behaviour.
+func loadKISAccount() (cano, acntPrdtCd string) {
+	cano = strings.TrimSpace(os.Getenv("KIS_CANO"))
+	acntPrdtCd = strings.TrimSpace(os.Getenv("KIS_ACNT_PRDT_CD"))
+	if cano != "" && acntPrdtCd != "" {
+		return
+	}
+	if raw := strings.TrimSpace(os.Getenv("KIS_ACCOUNT_NO")); raw != "" {
+		var digits strings.Builder
+		for _, ch := range raw {
+			if ch >= '0' && ch <= '9' {
+				digits.WriteRune(ch)
+			}
+		}
+		if d := digits.String(); len(d) == 10 {
+			cano = d[:8]
+			acntPrdtCd = d[8:]
+		}
+	}
+	if acntPrdtCd == "" {
+		acntPrdtCd = "01"
+	}
+	return
+}
+
+// buildOrderClient returns a UnifiedOrderClient, or nil if keys/account are absent.
+func buildOrderClient(auth *kisAuth) services.OrderClient {
+	if auth == nil || auth.cano == "" {
+		return nil
+	}
+
+	log.Printf("KIS order client initialized (env=%q)", auth.env) //nolint:gosec // env is operator-controlled, not user input
+	return &kis.UnifiedOrderClient{
+		Domestic: &kis.DomesticOrderClient{
+			HTTP:       auth.httpClient,
+			BaseURL:    auth.baseURL,
+			AppKey:     auth.appKey,
+			AppSecret:  auth.appSecret,
+			CANO:       auth.cano,
+			AcntPrdtCd: auth.acntPrdtCd,
+			CustType:   auth.custType,
+			Env:        auth.env,
+			Manager:    auth.tokenManager,
+		},
+		Overseas: &kis.OverseasOrderClient{
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			CustType:  auth.custType,
+			Env:       auth.env,
+			Manager:   auth.tokenManager,
+		},
+	}
+}
+
+// buildBalanceClient returns a DomesticBalanceClient, or nil if keys/account are absent.
+func buildBalanceClient(auth *kisAuth) services.BalanceClient {
+	if auth == nil || auth.cano == "" {
+		return nil
+	}
+
+	log.Printf("KIS balance client initialized (env=%q)", auth.env) //nolint:gosec // env is operator-controlled, not user input
+	return &kis.DomesticBalanceClient{
+		HTTP:      auth.httpClient,
+		BaseURL:   auth.baseURL,
+		AppKey:    auth.appKey,
+		AppSecret: auth.appSecret,
+		CustType:  auth.custType,
+		Env:       auth.env,
+		Manager:   auth.tokenManager,
+	}
+}
+
+// buildExchangeRate reads USD_KRW_RATE or EXIM_AUTH_KEY env vars.
+// Priority: fixed rate > EXIM client > nil.
+func buildExchangeRate() *services.ExchangeRateService {
+	if raw := strings.TrimSpace(os.Getenv("USD_KRW_RATE")); raw != "" {
+		rate, err := numeric.FromString(raw)
+		if err != nil {
+			log.Printf("invalid USD_KRW_RATE: %v", err)
+			return nil
+		}
+		return services.NewFixedExchangeRateService(rate)
+	}
+
+	if authKey := strings.TrimSpace(os.Getenv("EXIM_AUTH_KEY")); authKey != "" {
+		eximClient := &services.EximClient{
+			HTTPClient: &http.Client{Timeout: 10 * time.Second},
+			BaseURL:    "https://oapi.koreaexim.go.kr",
+			AuthKey:    authKey,
+		}
+		return services.NewEximExchangeRateService(eximClient)
+	}
+
+	return nil
+}

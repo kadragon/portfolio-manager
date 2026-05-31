@@ -1,8 +1,0 @@
-[assert_used]
-skips = tests/*
-
-[hardcoded_password_string]
-skips = tests/*
-
-[hardcoded_password_funcarg]
-skips = tests/*

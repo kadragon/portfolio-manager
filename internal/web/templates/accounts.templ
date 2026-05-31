@@ -1,0 +1,332 @@
+package templates
+
+import (
+	"fmt"
+
+	"github.com/kadragon/portfolio-manager/internal/accountformat"
+	"github.com/kadragon/portfolio-manager/internal/models"
+)
+
+func kisAccountNoVal(a models.Account) string {
+	if a.KisAccountNo != nil {
+		return *a.KisAccountNo
+	}
+	return ""
+}
+
+func itoa64(i int64) string { return fmt.Sprintf("%d", i) }
+
+func kisApiKeyMatch(a models.Account, kid int64) bool {
+	if a.KisAPIKeyID != nil {
+		return *a.KisAPIKeyID == kid
+	}
+	return kid == 1
+}
+
+templ AccountRow(account models.Account) {
+	<tr id={ "account-" + account.ID.String() }>
+		<td>{ account.Name }</td>
+		<td class="text-right font-mono">{ accountformat.FormatKRW(account.CashBalance) }</td>
+		<td>
+			<div class="flex flex-wrap gap-1.5">
+				<button
+					type="button"
+					class="btn btn-ghost btn-xs"
+					hx-get={ "/accounts/" + account.ID.String() + "/edit" }
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					data-request-message="계좌 수정 폼을 여는 중…"
+				>
+					수정
+				</button>
+				<a href={ templ.SafeURL("/accounts/" + account.ID.String() + "/holdings") } class="btn btn-ghost btn-xs">보유 내역</a>
+				if account.KisAccountNo != nil {
+					<button
+						type="button"
+						class="btn btn-ghost btn-xs"
+						hx-post={ "/accounts/" + account.ID.String() + "/sync" }
+						hx-target={ "#sync-result-" + account.ID.String() }
+						hx-swap="outerHTML"
+						data-request-message="KIS 계좌를 동기화하는 중…"
+					>
+						KIS 동기화
+					</button>
+				}
+				<button
+					type="button"
+					class="btn btn-error btn-xs"
+					hx-delete={ "/accounts/" + account.ID.String() }
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					hx-confirm={ "'" + account.Name + "' 계좌를 삭제하시겠습니까? (보유 내역도 함께 삭제됩니다)" }
+					data-request-message="계좌를 삭제하는 중…"
+				>
+					삭제
+				</button>
+			</div>
+		</td>
+	</tr>
+	<tr id={ "sync-result-" + account.ID.String() }></tr>
+}
+
+templ AccountForm(account models.Account, availableKisKeyIDs []int64, errorMessage string) {
+	<tr id={ "account-" + account.ID.String() }>
+		<td>
+			<label class="sr-only" for={ "account-name-" + account.ID.String() }>계좌 이름</label>
+			<input
+				form={ "edit-account-" + account.ID.String() }
+				id={ "account-name-" + account.ID.String() }
+				type="text"
+				name="name"
+				value={ account.Name }
+				required
+				autocomplete="off"
+				class="input input-bordered input-sm"
+			/>
+		</td>
+		<td>
+			<label class="sr-only" for={ "account-cash-" + account.ID.String() }>예수금</label>
+			<input
+				form={ "edit-account-" + account.ID.String() }
+				id={ "account-cash-" + account.ID.String() }
+				type="number"
+				name="cash_balance"
+				value={ account.CashBalance.StringFixed(0) }
+				min="0"
+				step="1"
+				required
+				autocomplete="off"
+				class="input input-bordered input-sm"
+			/>
+			<label class="sr-only" for={ "account-kis-" + account.ID.String() }>KIS 계좌번호</label>
+			<input
+				form={ "edit-account-" + account.ID.String() }
+				id={ "account-kis-" + account.ID.String() }
+				type="text"
+				name="kis_account_no"
+				value={ kisAccountNoVal(account) }
+				placeholder="KIS 계좌번호 (예: 12345678-01)"
+				autocomplete="off"
+				class="input input-bordered input-sm mt-1"
+			/>
+			if len(availableKisKeyIDs) > 1 {
+				<label class="sr-only" for={ "account-kis-api-" + account.ID.String() }>API 키 세트</label>
+				<select
+					form={ "edit-account-" + account.ID.String() }
+					id={ "account-kis-api-" + account.ID.String() }
+					name="kis_api_key_id"
+					class="select select-bordered select-sm mt-1"
+				>
+					for _, kid := range availableKisKeyIDs {
+						<option
+							value={ itoa64(kid) }
+							if kisApiKeyMatch(account, kid) {
+								selected
+							}
+						>
+							API 키 { itoa64(kid) }
+						</option>
+					}
+				</select>
+			}
+			if errorMessage != "" {
+				<p class="mt-1 text-error text-xs">{ errorMessage }</p>
+			}
+		</td>
+		<td>
+			<div class="flex flex-wrap gap-1.5">
+				<form
+					id={ "edit-account-" + account.ID.String() }
+					hx-put={ "/accounts/" + account.ID.String() }
+					hx-target={ "#account-" + account.ID.String() }
+					hx-swap="outerHTML"
+					data-request-message="계좌 정보를 저장하는 중…"
+				>
+					<button type="submit" class="btn btn-primary btn-sm">저장</button>
+				</form>
+				<button
+					type="button"
+					class="btn btn-ghost btn-xs"
+					hx-get={ "/accounts/" + account.ID.String() }
+					hx-target={ "#account-" + account.ID.String() }
+					hx-swap="outerHTML"
+					data-request-message="수정 취소 중…"
+				>
+					취소
+				</button>
+			</div>
+		</td>
+	</tr>
+	<tr id={ "sync-result-" + account.ID.String() }></tr>
+}
+
+// SyncResultPartial renders the KIS sync result row (hx-swap outerHTML).
+// result may be nil on failure.
+templ SyncResultPartial(accountID string, success bool, message string, result *models.KisAccountSyncResult, showConfirmEmpty bool) {
+	<tr id={ "sync-result-" + accountID }>
+		<td colspan="3">
+			<div
+				class={ "alert text-sm py-2 " + syncAlertClass(success) }
+				role="status"
+				aria-live="polite"
+				aria-atomic="true"
+			>
+				<div class="w-full">
+					<p class="font-semibold">{ message }</p>
+					if !success && showConfirmEmpty {
+						<button
+							type="button"
+							class="btn btn-xs btn-warning mt-2"
+							hx-post={ "/accounts/" + accountID + "/sync" }
+							hx-vals='{"confirm_empty": "true"}'
+							hx-target={ "#sync-result-" + accountID }
+							hx-swap="outerHTML"
+						>전량 매도 확정 — 재동기화</button>
+					}
+					if result != nil {
+						<div class="mt-1 text-xs opacity-80 space-y-0.5">
+							if !result.CashBalance.Equal(result.OldCashBalance.Decimal) {
+								<p>예수금: { accountformat.FormatKRW(result.OldCashBalance) } → { accountformat.FormatKRW(result.CashBalance) }</p>
+							} else {
+								<p>예수금: { accountformat.FormatKRW(result.CashBalance) } (변동 없음)</p>
+							}
+							<p>
+								보유 종목: { fmt.Sprintf("%d", result.HoldingCount) }건
+								if result.CreatedStockCount > 0 {
+									(신규 종목 { fmt.Sprintf("%d", result.CreatedStockCount) }건 생성)
+								}
+							</p>
+							if len(result.HoldingChanges) > 0 {
+								<ul class="list-none mt-1 space-y-0.5">
+									for _, ch := range result.HoldingChanges {
+										<li>{ syncChangeText(ch) }</li>
+									}
+								</ul>
+							} else {
+								<p>보유 내역 변동 없음</p>
+							}
+						</div>
+					}
+				</div>
+			</div>
+		</td>
+	</tr>
+}
+
+func syncAlertClass(success bool) string {
+	if success {
+		return "alert-success"
+	}
+	return "alert-error"
+}
+
+func syncChangeText(ch models.HoldingSyncDetail) string {
+	switch ch.Action {
+	case "created":
+		if ch.NewQuantity != nil {
+			return "+ " + ch.Ticker + ": " + ch.NewQuantity.String() + "주 추가"
+		}
+		return "+ " + ch.Ticker + " 추가"
+	case "updated":
+		old := ""
+		nw := ""
+		if ch.OldQuantity != nil {
+			old = ch.OldQuantity.String()
+		}
+		if ch.NewQuantity != nil {
+			nw = ch.NewQuantity.String()
+		}
+		return "~ " + ch.Ticker + ": " + old + " → " + nw + "주"
+	case "deleted":
+		if ch.OldQuantity != nil {
+			return "- " + ch.Ticker + ": " + ch.OldQuantity.String() + "주 삭제"
+		}
+		return "- " + ch.Ticker + " 삭제"
+	}
+	return ch.Ticker + " " + ch.Action
+}
+
+templ AccountsPage(accounts []models.Account) {
+	@Base("계좌 — 포트폴리오 매니저", "accounts") {
+		<h1 class="text-lg font-semibold text-base-content mb-3">계좌</h1>
+		<section class="card bg-base-100">
+			<div class="card-body p-4 sm:p-6">
+				<div class="overflow-x-auto" tabindex="0" aria-label="계좌 목록 표 가로 스크롤 영역">
+					<table class="table table-sm">
+						<caption>계좌별 예수금과 작업</caption>
+						<thead>
+							<tr>
+								<th class="text-xs uppercase tracking-wider">이름</th>
+								<th class="text-right font-mono text-xs uppercase tracking-wider">예수금</th>
+								<th class="text-xs uppercase tracking-wider">작업</th>
+							</tr>
+						</thead>
+						<tbody id="accounts-body">
+							if len(accounts) == 0 {
+								<tr><td colspan="3" class="text-center text-base-content/40">계좌가 없습니다. 아래에서 새 계좌를 추가하세요.</td></tr>
+							}
+							for _, account := range accounts {
+								@AccountRow(account)
+							}
+						</tbody>
+					</table>
+				</div>
+				if len(accounts) > 0 {
+					<div class="border-t border-base-300 pt-3 mt-3">
+						<h3 class="text-sm font-semibold text-base-content mb-2">일괄 예수금 수정</h3>
+						<form
+							hx-put="/accounts/bulk-cash"
+							hx-target="#bulk-cash-status"
+							hx-swap="innerHTML"
+							data-request-message="일괄 예수금을 저장하는 중…"
+						>
+							<div class="flex flex-wrap gap-3 items-end">
+								for _, account := range accounts {
+									<label class="form-control flex-[1.2_1_10rem]">
+										<span class="label text-xs font-semibold text-base-content/60">{ account.Name }</span>
+										<input
+											type="number"
+											name={ "cash_" + account.ID.String() }
+											value={ account.CashBalance.StringFixed(0) }
+											min="0"
+											step="1"
+											required
+											autocomplete="off"
+											class="input input-bordered input-sm"
+										/>
+									</label>
+								}
+								<div>
+									<button type="submit" class="btn btn-primary btn-sm">일괄 저장</button>
+								</div>
+							</div>
+						</form>
+						<p id="bulk-cash-status" class="text-xs text-base-content/40 min-h-4" role="status" aria-live="polite" aria-atomic="true"></p>
+					</div>
+				}
+				<form
+					hx-post="/accounts"
+					hx-target="#accounts-body"
+					hx-swap="afterbegin"
+					hx-on::after-request="if (event.detail.successful) { this.reset(); }"
+					data-request-message="계좌를 추가하는 중…"
+					class="border-t border-base-300 pt-3 mt-3"
+				>
+					<div class="flex flex-wrap gap-3 items-end">
+						<label class="form-control flex-[2_1_18rem]">
+							<span class="label text-xs font-semibold text-base-content/60">이름<span class="text-error ml-0.5" aria-hidden="true">*</span></span>
+							<input type="text" name="name" placeholder="예: KIS 국내 계좌…" required autocomplete="off" class="input input-bordered input-sm"/>
+						</label>
+						<label class="form-control flex-[1.2_1_10rem]">
+							<span class="label text-xs font-semibold text-base-content/60">예수금 (KRW)<span class="text-error ml-0.5" aria-hidden="true">*</span></span>
+							<input type="number" name="cash_balance" value="0" min="0" step="1" required autocomplete="off" class="input input-bordered input-sm"/>
+						</label>
+						<div>
+							<button type="submit" class="btn btn-primary btn-sm">계좌 추가</button>
+						</div>
+					</div>
+				</form>
+			</div>
+		</section>
+	}
+}
