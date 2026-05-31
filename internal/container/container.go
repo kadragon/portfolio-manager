@@ -7,6 +7,7 @@ package container
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -35,8 +36,9 @@ type Container struct {
 	Portfolio          *services.PortfolioService
 	Rebalance          *services.RebalanceService
 	RebalanceExecution *services.RebalanceExecutionService
-	OrderClient        services.OrderClient            // nil if KIS not configured
-	AccountSync        *services.KisAccountSyncService // nil if KIS not configured
+	OrderClient        services.OrderClient                      // nil if KIS not configured
+	AccountSync        *services.KisAccountSyncService           // nil if KIS not configured; key-1 service
+	AccountSyncByKeyID map[int64]*services.KisAccountSyncService // keyed by kis_api_key_id
 	KisCano            string
 	KisAcntPrdtCd      string
 }
@@ -70,6 +72,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	var exchangeRate *services.ExchangeRateService
 	var orderClient services.OrderClient
 	var accountSync *services.KisAccountSyncService
+	accountSyncByKeyID := map[int64]*services.KisAccountSyncService{}
 	var rebalanceSync services.SyncService
 	kisCano := ""
 	kisAcntPrdtCd := ""
@@ -83,11 +86,27 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		kisCano, kisAcntPrdtCd = loadKISAccount()
 		if balanceClient := buildBalanceClient(kisAuth); balanceClient != nil {
 			accountSync = services.NewKisAccountSyncService(accounts, holdings, stocks, groups, balanceClient, ".data/kis_sync.log")
+			accountSyncByKeyID[1] = accountSync
+		}
+
+		if kisAuth != nil {
+			for id := 2; id <= 9; id++ {
+				if auth := buildKISAuthExtra(id, kisAuth); auth != nil {
+					bc := buildBalanceClientFromAuth(auth)
+					svc := services.NewKisAccountSyncService(accounts, holdings, stocks, groups, bc,
+						fmt.Sprintf(".data/kis_sync_%d.log", id))
+					accountSyncByKeyID[int64(id)] = svc
+				}
+			}
+		}
+
+		if accountSync != nil || len(accountSyncByKeyID) > 1 {
 			rebalanceSync = &rebalanceSyncAdapter{
-				accounts:   accounts,
-				sync:       accountSync,
-				cano:       kisCano,
-				acntPrdtCd: kisAcntPrdtCd,
+				accounts:    accounts,
+				sync:        accountSync,
+				syncByKeyID: accountSyncByKeyID,
+				cano:        kisCano,
+				acntPrdtCd:  kisAcntPrdtCd,
 			}
 		}
 	}
@@ -114,6 +133,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		RebalanceExecution: rebalanceExecution,
 		OrderClient:        orderClient,
 		AccountSync:        accountSync,
+		AccountSyncByKeyID: accountSyncByKeyID,
 		KisCano:            kisCano,
 		KisAcntPrdtCd:      kisAcntPrdtCd,
 	}
@@ -143,10 +163,11 @@ func (a *execRepoAdapter) Create(
 }
 
 type rebalanceSyncAdapter struct {
-	accounts   *repositories.AccountRepository
-	sync       *services.KisAccountSyncService
-	cano       string
-	acntPrdtCd string
+	accounts    *repositories.AccountRepository
+	sync        *services.KisAccountSyncService
+	syncByKeyID map[int64]*services.KisAccountSyncService
+	cano        string
+	acntPrdtCd  string
 }
 
 func (a *rebalanceSyncAdapter) SyncAccount() error {
@@ -156,6 +177,16 @@ func (a *rebalanceSyncAdapter) SyncAccount() error {
 		return err
 	}
 	for _, account := range accounts {
+		svc := a.sync
+		if account.KisAPIKeyID != nil {
+			if s, ok := a.syncByKeyID[*account.KisAPIKeyID]; ok {
+				svc = s
+			}
+		}
+		if svc == nil {
+			continue
+		}
+
 		cano, acntPrdtCd := a.cano, a.acntPrdtCd
 		if account.KisAccountNo != nil && *account.KisAccountNo != "" {
 			parsedCano, parsedPrdtCd := parseKISAccountNo(*account.KisAccountNo)
@@ -167,7 +198,7 @@ func (a *rebalanceSyncAdapter) SyncAccount() error {
 		if cano == "" {
 			continue
 		}
-		if _, err := a.sync.SyncAccount(ctx, account, cano, acntPrdtCd, false); err != nil {
+		if _, err := svc.SyncAccount(ctx, account, cano, acntPrdtCd, false); err != nil {
 			return err
 		}
 	}
@@ -307,10 +338,6 @@ func buildKISClient(auth *kisAuth) services.PriceClient {
 		PrdtTypeCd: prdtTypeCd,
 	}
 
-	if k2 := strings.TrimSpace(os.Getenv("KIS_APP_KEY_2")); k2 != "" {
-		log.Printf("KIS_APP_KEY_2 is set but multi-key round-robin is not implemented in Go; single key used")
-	}
-
 	log.Printf("KIS price client initialized (env=%q)", auth.env) //nolint:gosec // env is operator-controlled, not user input
 	return unified
 }
@@ -373,13 +400,19 @@ func buildOrderClient(auth *kisAuth) services.OrderClient {
 	}
 }
 
-// buildBalanceClient returns a DomesticBalanceClient, or nil if keys/account are absent.
+// buildBalanceClient returns a DomesticBalanceClient for the primary key, or nil if
+// keys/account are absent. Requires auth.cano so the rebalance adapter has a fallback CANO.
 func buildBalanceClient(auth *kisAuth) services.BalanceClient {
 	if auth == nil || auth.cano == "" {
 		return nil
 	}
-
 	log.Printf("KIS balance client initialized (env=%q)", auth.env) //nolint:gosec // env is operator-controlled, not user input
+	return buildBalanceClientFromAuth(auth)
+}
+
+// buildBalanceClientFromAuth builds a DomesticBalanceClient for an extra key set.
+// CANO is always passed per-call; no global account required.
+func buildBalanceClientFromAuth(auth *kisAuth) services.BalanceClient {
 	return &kis.DomesticBalanceClient{
 		HTTP:      auth.httpClient,
 		BaseURL:   auth.baseURL,
@@ -388,6 +421,36 @@ func buildBalanceClient(auth *kisAuth) services.BalanceClient {
 		CustType:  auth.custType,
 		Env:       auth.env,
 		Manager:   auth.tokenManager,
+	}
+}
+
+// buildKISAuthExtra builds a kisAuth for an extra API key set (id >= 2).
+// Reads KIS_APP_KEY_{id} / KIS_APP_SECRET_{id}; inherits env/custType/baseURL/httpClient
+// from the primary auth so all key sets share the same KIS environment.
+func buildKISAuthExtra(id int, base *kisAuth) *kisAuth {
+	suffix := fmt.Sprintf("_%d", id)
+	appKey := strings.TrimSpace(os.Getenv("KIS_APP_KEY" + suffix))
+	appSecret := strings.TrimSpace(os.Getenv("KIS_APP_SECRET" + suffix))
+	if appKey == "" || appSecret == "" {
+		return nil
+	}
+	authClient := &kis.AuthClient{
+		HTTPClient: base.httpClient,
+		BaseURL:    base.baseURL,
+		AppKey:     appKey,
+		AppSecret:  appSecret,
+	}
+	store := kis.NewFileTokenStore(fmt.Sprintf(".data/kis_token_%d.json", id))
+	manager := kis.NewTokenManager(store, authClient, time.Minute)
+	log.Printf("KIS balance client %d initialized (env=%q)", id, base.env) //nolint:gosec
+	return &kisAuth{
+		appKey:       appKey,
+		appSecret:    appSecret,
+		env:          base.env,
+		custType:     base.custType,
+		baseURL:      base.baseURL,
+		httpClient:   base.httpClient,
+		tokenManager: manager,
 	}
 }
 

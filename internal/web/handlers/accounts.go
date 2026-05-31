@@ -207,7 +207,7 @@ func (h *AccountHandler) syncAccount(c echo.Context) error {
 		return renderSyncResult(c, id.String(), false, "잘못된 계좌 ID입니다.", nil, false)
 	}
 
-	if h.c.AccountSync == nil {
+	if h.c.AccountSync == nil && len(h.c.AccountSyncByKeyID) == 0 {
 		return renderSyncResult(c, id.String(), false,
 			"KIS 계좌 동기화 서비스가 설정되지 않았습니다. (.env에 KIS_CANO/KIS_ACNT_PRDT_CD 확인)", nil, false)
 	}
@@ -217,6 +217,18 @@ func (h *AccountHandler) syncAccount(c echo.Context) error {
 	account, err := h.c.Accounts.GetByID(ctx, id)
 	if err != nil || account == nil {
 		return renderSyncResult(c, id.String(), false, "계좌를 찾을 수 없습니다.", nil, false)
+	}
+
+	// Route to key-specific sync service; fall back to key-1 (AccountSync).
+	syncSvc := h.c.AccountSync
+	if account.KisAPIKeyID != nil {
+		if s, ok := h.c.AccountSyncByKeyID[*account.KisAPIKeyID]; ok {
+			syncSvc = s
+		}
+	}
+	if syncSvc == nil {
+		return renderSyncResult(c, id.String(), false,
+			"KIS 계좌 동기화 서비스가 설정되지 않았습니다. (.env에 KIS_CANO/KIS_ACNT_PRDT_CD 확인)", nil, false)
 	}
 
 	var cano, acntPrdtCd string
@@ -232,7 +244,7 @@ func (h *AccountHandler) syncAccount(c echo.Context) error {
 		return renderSyncResult(c, id.String(), false, "이 계좌에는 KIS 계좌번호가 설정되지 않았습니다.", nil, false)
 	}
 
-	syncResult, err := h.c.AccountSync.SyncAccount(ctx, *account, cano, acntPrdtCd, confirmEmpty)
+	syncResult, err := syncSvc.SyncAccount(ctx, *account, cano, acntPrdtCd, confirmEmpty)
 	if err != nil {
 		if services.IsKisEmptySnapshotError(err) {
 			return renderSyncResult(c, id.String(), false,
