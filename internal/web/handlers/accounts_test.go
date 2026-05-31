@@ -426,6 +426,52 @@ func (m *mockEmptyBalanceClient) FetchAccountSnapshot(_, _ string) (models.KisAc
 	return models.KisAccountSnapshot{}, nil
 }
 
+type trackingBalanceClient struct{ called bool }
+
+func (c *trackingBalanceClient) FetchAccountSnapshot(_, _ string) (models.KisAccountSnapshot, error) {
+	c.called = true
+	return models.KisAccountSnapshot{}, nil
+}
+
+// TestSyncAccountKeyIDRouting verifies that an account with KisAPIKeyID=2 uses the
+// key-2 sync service, not the default key-1 service.
+func TestSyncAccountKeyIDRouting(t *testing.T) {
+	e, c := setupAccounts(t)
+	ctx := context.Background()
+
+	key1 := &trackingBalanceClient{}
+	c.AccountSync = services.NewKisAccountSyncService(
+		c.Accounts, c.Holdings, c.Stocks, c.Groups, key1, "",
+	)
+	key2 := &trackingBalanceClient{}
+	c.AccountSyncByKeyID = map[int64]*services.KisAccountSyncService{
+		2: services.NewKisAccountSyncService(c.Accounts, c.Holdings, c.Stocks, c.Groups, key2, ""),
+	}
+
+	acc, err := c.Accounts.Create(ctx, "여유금", numeric.Zero)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	updated, err := c.Accounts.Update(ctx, acc.ID, acc.Name, acc.CashBalance,
+		sql.NullString{String: "4659285601", Valid: true},
+		sql.NullInt64{Int64: 2, Valid: true},
+	)
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	rec := do(e, http.MethodPost, "/accounts/"+updated.ID.String()+"/sync", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if key1.called {
+		t.Error("key-1 client called for KisAPIKeyID=2 account")
+	}
+	if !key2.called {
+		t.Error("key-2 client not called for KisAPIKeyID=2 account")
+	}
+}
+
 // cannot be tested directly from handlers_test. Its behaviour is implicitly
 // covered whenever syncAccount processes a KIS account number; direct unit tests
 // would require either exporting it or moving to a white-box test file.
