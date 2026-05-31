@@ -106,7 +106,7 @@ func (c *DomesticBalanceClient) FetchAccountSnapshot(cano, acntPrdtCd string) (m
 		}
 
 		headerTrCont := respHeaders.Get("tr_cont")
-		if headerTrCont != "M" && headerTrCont != "F" {
+		if headerTrCont != "M" {
 			break
 		}
 		fk100 = strings.TrimSpace(strVal(data, "ctx_area_fk100"))

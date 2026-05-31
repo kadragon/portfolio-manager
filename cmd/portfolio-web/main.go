@@ -28,10 +28,7 @@ func main() {
 
 	e := newServer(c)
 
-	addr := "127.0.0.1:8000"
-	if v := os.Getenv("PORTFOLIO_ADDR"); v != "" {
-		addr = v
-	}
+	addr := defaultAddr()
 
 	go func() {
 		if err := e.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -70,4 +67,11 @@ func newServer(c *container.Container) *echo.Echo {
 
 func staticDir() string {
 	return "internal/web/static"
+}
+
+func defaultAddr() string {
+	if v := os.Getenv("PORTFOLIO_ADDR"); v != "" {
+		return v
+	}
+	return "0.0.0.0:8000"
 }

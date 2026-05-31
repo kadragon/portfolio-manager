@@ -61,7 +61,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	groups := repositories.NewGroupRepository(q)
 	stocks := repositories.NewStockRepository(q)
 	accounts := repositories.NewAccountRepository(q)
-	holdings := repositories.NewHoldingRepository(q)
+	holdings := repositories.NewHoldingRepository(q, sqlDB)
 	deposits := repositories.NewDepositRepository(q)
 	stockPrices := repositories.NewStockPriceRepository(q)
 	orderExecutions := repositories.NewOrderExecutionRepository(q)
@@ -70,17 +70,25 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	var exchangeRate *services.ExchangeRateService
 	var orderClient services.OrderClient
 	var accountSync *services.KisAccountSyncService
+	var rebalanceSync services.SyncService
 	kisCano := ""
 	kisAcntPrdtCd := ""
 
 	if setupKIS {
-		priceClient = buildKISClient()
+		kisAuth := buildKISAuth()
+		priceClient = buildKISClient(kisAuth)
 		exchangeRate = buildExchangeRate()
-		orderClient = buildOrderClient()
+		orderClient = buildOrderClient(kisAuth)
 
 		kisCano, kisAcntPrdtCd = loadKISAccount()
-		if balanceClient := buildBalanceClient(); balanceClient != nil {
+		if balanceClient := buildBalanceClient(kisAuth); balanceClient != nil {
 			accountSync = services.NewKisAccountSyncService(accounts, holdings, stocks, groups, balanceClient, ".data/kis_sync.log")
+			rebalanceSync = &rebalanceSyncAdapter{
+				accounts:   accounts,
+				sync:       accountSync,
+				cano:       kisCano,
+				acntPrdtCd: kisAcntPrdtCd,
+			}
 		}
 	}
 
@@ -90,7 +98,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	rebalance := services.NewRebalanceService()
 
 	execRepo := &execRepoAdapter{r: orderExecutions}
-	rebalanceExecution := services.NewRebalanceExecutionService(orderClient, execRepo, nil)
+	rebalanceExecution := services.NewRebalanceExecutionService(orderClient, execRepo, rebalanceSync)
 
 	return &Container{
 		DB:                 sqlDB,
@@ -134,8 +142,64 @@ func (a *execRepoAdapter) Create(
 	return a.r.Create(ctx, ticker, side, quantity, currency, status, message, exchange, rawResponse)
 }
 
-// buildKISClient reads KIS env vars and returns a UnifiedPriceClient, or nil if keys are absent.
-func buildKISClient() services.PriceClient {
+type rebalanceSyncAdapter struct {
+	accounts   *repositories.AccountRepository
+	sync       *services.KisAccountSyncService
+	cano       string
+	acntPrdtCd string
+}
+
+func (a *rebalanceSyncAdapter) SyncAccount() error {
+	ctx := context.Background()
+	accounts, err := a.accounts.ListAll(ctx)
+	if err != nil {
+		return err
+	}
+	for _, account := range accounts {
+		cano, acntPrdtCd := a.cano, a.acntPrdtCd
+		if account.KisAccountNo != nil && *account.KisAccountNo != "" {
+			parsedCano, parsedPrdtCd := parseKISAccountNo(*account.KisAccountNo)
+			if parsedCano == "" {
+				continue
+			}
+			cano, acntPrdtCd = parsedCano, parsedPrdtCd
+		}
+		if cano == "" {
+			continue
+		}
+		if _, err := a.sync.SyncAccount(ctx, account, cano, acntPrdtCd, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func parseKISAccountNo(raw string) (cano, acntPrdtCd string) {
+	var digits strings.Builder
+	for _, ch := range raw {
+		if ch >= '0' && ch <= '9' {
+			digits.WriteRune(ch)
+		}
+	}
+	if d := digits.String(); len(d) == 10 {
+		return d[:8], d[8:]
+	}
+	return "", ""
+}
+
+type kisAuth struct {
+	appKey       string
+	appSecret    string
+	env          string
+	custType     string
+	baseURL      string
+	cano         string
+	acntPrdtCd   string
+	httpClient   *http.Client
+	tokenManager *kis.TokenManager
+}
+
+func buildKISAuth() *kisAuth {
 	appKey := strings.TrimSpace(os.Getenv("KIS_APP_KEY"))
 	appSecret := strings.TrimSpace(os.Getenv("KIS_APP_SECRET"))
 	if appKey == "" || appSecret == "" {
@@ -160,6 +224,7 @@ func buildKISClient() services.PriceClient {
 		baseURL = "https://openapivts.koreainvestment.com:29443"
 	}
 
+	cano, acntPrdtCd := loadKISAccount()
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	authClient := &kis.AuthClient{
 		HTTPClient: httpClient,
@@ -169,6 +234,25 @@ func buildKISClient() services.PriceClient {
 	}
 	store := kis.NewFileTokenStore(".data/kis_token_1.json")
 	manager := kis.NewTokenManager(store, authClient, time.Minute)
+
+	return &kisAuth{
+		appKey:       appKey,
+		appSecret:    appSecret,
+		env:          env,
+		custType:     custType,
+		baseURL:      baseURL,
+		cano:         cano,
+		acntPrdtCd:   acntPrdtCd,
+		httpClient:   httpClient,
+		tokenManager: manager,
+	}
+}
+
+// buildKISClient returns a UnifiedPriceClient, or nil if KIS keys are absent.
+func buildKISClient(auth *kisAuth) services.PriceClient {
+	if auth == nil {
+		return nil
+	}
 
 	prdtTypeCd := strings.TrimSpace(os.Getenv("KIS_PRDT_TYPE_CD"))
 	if prdtTypeCd == "" {
@@ -185,40 +269,40 @@ func buildKISClient() services.PriceClient {
 
 	unified := &kis.UnifiedPriceClient{
 		Domestic: &kis.DomesticPriceClient{
-			HTTP:      httpClient,
-			BaseURL:   baseURL,
-			AppKey:    appKey,
-			AppSecret: appSecret,
-			CustType:  custType,
-			Env:       env,
-			Manager:   manager,
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			CustType:  auth.custType,
+			Env:       auth.env,
+			Manager:   auth.tokenManager,
 		},
 		Overseas: &kis.OverseasPriceClient{
-			HTTP:      httpClient,
-			BaseURL:   baseURL,
-			AppKey:    appKey,
-			AppSecret: appSecret,
-			CustType:  custType,
-			Env:       env,
-			Manager:   manager,
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			CustType:  auth.custType,
+			Env:       auth.env,
+			Manager:   auth.tokenManager,
 		},
 		DomesticInfo: &kis.DomesticInfoClient{
-			HTTP:      httpClient,
-			BaseURL:   baseURL,
-			AppKey:    appKey,
-			AppSecret: appSecret,
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
 			TrID:      domesticInfoTrID,
-			CustType:  custType,
-			Manager:   manager,
+			CustType:  auth.custType,
+			Manager:   auth.tokenManager,
 		},
 		OverseasInfo: &kis.OverseasInfoClient{
-			HTTP:      httpClient,
-			BaseURL:   baseURL,
-			AppKey:    appKey,
-			AppSecret: appSecret,
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
 			TrID:      overseasInfoTrID,
-			CustType:  custType,
-			Manager:   manager,
+			CustType:  auth.custType,
+			Manager:   auth.tokenManager,
 		},
 		PrdtTypeCd: prdtTypeCd,
 	}
@@ -227,7 +311,7 @@ func buildKISClient() services.PriceClient {
 		log.Printf("KIS_APP_KEY_2 is set but multi-key round-robin is not implemented in Go; single key used")
 	}
 
-	log.Printf("KIS price client initialized (env=%q)", env) //nolint:gosec // env is operator-controlled, not user input
+	log.Printf("KIS price client initialized (env=%q)", auth.env) //nolint:gosec // env is operator-controlled, not user input
 	return unified
 }
 
@@ -258,114 +342,52 @@ func loadKISAccount() (cano, acntPrdtCd string) {
 	return
 }
 
-// buildOrderClient reads KIS env vars and returns a UnifiedOrderClient, or nil if keys are absent.
-func buildOrderClient() services.OrderClient {
-	appKey := strings.TrimSpace(os.Getenv("KIS_APP_KEY"))
-	appSecret := strings.TrimSpace(os.Getenv("KIS_APP_SECRET"))
-	cano, acntPrdtCd := loadKISAccount()
-	if appKey == "" || appSecret == "" || cano == "" {
+// buildOrderClient returns a UnifiedOrderClient, or nil if keys/account are absent.
+func buildOrderClient(auth *kisAuth) services.OrderClient {
+	if auth == nil || auth.cano == "" {
 		return nil
 	}
 
-	env := strings.ToLower(strings.TrimSpace(os.Getenv("KIS_ENV")))
-	if env == "" {
-		env = "real"
-	}
-	if i := strings.IndexByte(env, '/'); i >= 0 {
-		env = env[:i]
-	}
-
-	custType := strings.TrimSpace(os.Getenv("KIS_CUST_TYPE"))
-	if custType == "" {
-		custType = "P"
-	}
-
-	baseURL := "https://openapi.koreainvestment.com:9443"
-	if env == "demo" || env == "vps" || env == "paper" {
-		baseURL = "https://openapivts.koreainvestment.com:29443"
-	}
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	authClient := &kis.AuthClient{
-		HTTPClient: httpClient,
-		BaseURL:    baseURL,
-		AppKey:     appKey,
-		AppSecret:  appSecret,
-	}
-	store := kis.NewFileTokenStore(".data/kis_token_1.json")
-	manager := kis.NewTokenManager(store, authClient, time.Minute)
-
-	log.Printf("KIS order client initialized (env=%q)", env) //nolint:gosec // env is operator-controlled, not user input
+	log.Printf("KIS order client initialized (env=%q)", auth.env) //nolint:gosec // env is operator-controlled, not user input
 	return &kis.UnifiedOrderClient{
 		Domestic: &kis.DomesticOrderClient{
-			HTTP:       httpClient,
-			BaseURL:    baseURL,
-			AppKey:     appKey,
-			AppSecret:  appSecret,
-			CANO:       cano,
-			AcntPrdtCd: acntPrdtCd,
-			CustType:   custType,
-			Env:        env,
-			Manager:    manager,
+			HTTP:       auth.httpClient,
+			BaseURL:    auth.baseURL,
+			AppKey:     auth.appKey,
+			AppSecret:  auth.appSecret,
+			CANO:       auth.cano,
+			AcntPrdtCd: auth.acntPrdtCd,
+			CustType:   auth.custType,
+			Env:        auth.env,
+			Manager:    auth.tokenManager,
 		},
 		Overseas: &kis.OverseasOrderClient{
-			HTTP:      httpClient,
-			BaseURL:   baseURL,
-			AppKey:    appKey,
-			AppSecret: appSecret,
-			CustType:  custType,
-			Env:       env,
-			Manager:   manager,
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			CustType:  auth.custType,
+			Env:       auth.env,
+			Manager:   auth.tokenManager,
 		},
 	}
 }
 
-// buildBalanceClient reads KIS env vars and returns a DomesticBalanceClient, or nil if keys are absent.
-func buildBalanceClient() services.BalanceClient {
-	appKey := strings.TrimSpace(os.Getenv("KIS_APP_KEY"))
-	appSecret := strings.TrimSpace(os.Getenv("KIS_APP_SECRET"))
-	cano, _ := loadKISAccount()
-	if appKey == "" || appSecret == "" || cano == "" {
+// buildBalanceClient returns a DomesticBalanceClient, or nil if keys/account are absent.
+func buildBalanceClient(auth *kisAuth) services.BalanceClient {
+	if auth == nil || auth.cano == "" {
 		return nil
 	}
 
-	env := strings.ToLower(strings.TrimSpace(os.Getenv("KIS_ENV")))
-	if env == "" {
-		env = "real"
-	}
-	if i := strings.IndexByte(env, '/'); i >= 0 {
-		env = env[:i]
-	}
-
-	custType := strings.TrimSpace(os.Getenv("KIS_CUST_TYPE"))
-	if custType == "" {
-		custType = "P"
-	}
-
-	baseURL := "https://openapi.koreainvestment.com:9443"
-	if env == "demo" || env == "vps" || env == "paper" {
-		baseURL = "https://openapivts.koreainvestment.com:29443"
-	}
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	authClient := &kis.AuthClient{
-		HTTPClient: httpClient,
-		BaseURL:    baseURL,
-		AppKey:     appKey,
-		AppSecret:  appSecret,
-	}
-	store := kis.NewFileTokenStore(".data/kis_token_1.json")
-	manager := kis.NewTokenManager(store, authClient, time.Minute)
-
-	log.Printf("KIS balance client initialized (env=%q)", env) //nolint:gosec // env is operator-controlled, not user input
+	log.Printf("KIS balance client initialized (env=%q)", auth.env) //nolint:gosec // env is operator-controlled, not user input
 	return &kis.DomesticBalanceClient{
-		HTTP:      httpClient,
-		BaseURL:   baseURL,
-		AppKey:    appKey,
-		AppSecret: appSecret,
-		CustType:  custType,
-		Env:       env,
-		Manager:   manager,
+		HTTP:      auth.httpClient,
+		BaseURL:   auth.baseURL,
+		AppKey:    auth.appKey,
+		AppSecret: auth.appSecret,
+		CustType:  auth.custType,
+		Env:       auth.env,
+		Manager:   auth.tokenManager,
 	}
 }
 

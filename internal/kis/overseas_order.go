@@ -35,7 +35,7 @@ func (c *OverseasOrderClient) PlaceOrder(ticker, side string, quantity int, exch
 		"PDNO":          ticker,
 		"ORD_QTY":       fmt.Sprintf("%d", quantity),
 		"OVRS_ORD_UNPR": "0",
-		"ORD_DVSN":      "00",
+		"ORD_DVSN":      "01",
 	}
 
 	headers := BuildHeaders(token, c.AppKey, c.AppSecret, trID, c.CustType)

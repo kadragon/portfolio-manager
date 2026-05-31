@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/datex"
@@ -33,6 +34,7 @@ var priceToOrder = map[string]string{
 // PriceService resolves stock prices using DB cache first, then a live PriceClient.
 // When client is nil, only the DB cache is consulted (returns zero on cache miss).
 type PriceService struct {
+	mu            sync.RWMutex
 	stockPrices   *repositories.StockPriceRepository
 	client        PriceClient
 	todayProvider func() time.Time
@@ -67,9 +69,12 @@ func NewPriceService(stockPrices *repositories.StockPriceRepository, client Pric
 func (s *PriceService) GetStockPrice(ctx context.Context, ticker, preferredExchange string) (numeric.Decimal, string, string, string) {
 	cacheExch := toOrderExchange(preferredExchange)
 	k := priceCacheKey{ticker: ticker, exchange: cacheExch}
+	s.mu.RLock()
 	if e, ok := s.priceCache[k]; ok {
+		s.mu.RUnlock()
 		return e.price, e.currency, e.name, e.exchange
 	}
+	s.mu.RUnlock()
 
 	today := datex.FromTime(s.todayProvider())
 	if sp := s.loadCached(ctx, ticker, today); sp != nil {
@@ -79,7 +84,9 @@ func (s *PriceService) GetStockPrice(ctx context.Context, ticker, preferredExcha
 			name:     sp.Name,
 			exchange: toOrderExchange(sp.Exchange.String),
 		}
+		s.mu.Lock()
 		s.priceCache[k] = e
+		s.mu.Unlock()
 		return e.price, e.currency, e.name, e.exchange
 	}
 
@@ -104,7 +111,9 @@ func (s *PriceService) GetStockPrice(ctx context.Context, ticker, preferredExcha
 
 	e := priceCacheEntry{price: price, currency: quote.Currency, name: quote.Name, exchange: normalized}
 	if price.IsPositive() {
+		s.mu.Lock()
 		s.priceCache[k] = e
+		s.mu.Unlock()
 	}
 	return e.price, e.currency, e.name, e.exchange
 }

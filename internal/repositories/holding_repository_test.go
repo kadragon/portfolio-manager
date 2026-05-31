@@ -136,6 +136,64 @@ func TestHoldingBulkUpdateOK(t *testing.T) {
 	}
 }
 
+func TestHoldingBulkUpdateRollbackOnMidwayFailure(t *testing.T) {
+	sqlDB, q, err := db.OpenMemory()
+	if err != nil {
+		t.Fatalf("open memory: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	ar := repositories.NewAccountRepository(q)
+	sr := repositories.NewStockRepository(q)
+	gr := repositories.NewGroupRepository(q)
+	hr := repositories.NewHoldingRepository(q, sqlDB)
+	ctx := context.Background()
+
+	g, _ := gr.Create(ctx, "그룹", 0)
+	s1, _ := sr.Create(ctx, "005930", g.ID)
+	s2, _ := sr.Create(ctx, "000660", g.ID)
+	a, _ := ar.Create(ctx, "계좌", numeric.Zero)
+	h1, _ := hr.Create(ctx, a.ID, s1.ID, numeric.FromInt(10))
+	h2, _ := hr.Create(ctx, a.ID, s2.ID, numeric.FromInt(20))
+
+	if _, err := sqlDB.ExecContext(ctx, `
+		CREATE TEMP TABLE update_counter (n INTEGER NOT NULL);
+		INSERT INTO update_counter (n) VALUES (0);
+		CREATE TEMP TRIGGER fail_second_holding_update
+		BEFORE UPDATE ON holdings
+		BEGIN
+			UPDATE update_counter SET n = n + 1;
+			SELECT CASE WHEN (SELECT n FROM update_counter) > 1 THEN RAISE(FAIL, 'boom') END;
+		END;
+	`); err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+
+	err = hr.BulkUpdateByAccount(ctx, a.ID, []repositories.HoldingUpdate{
+		{ID: h1.ID, Quantity: numeric.FromInt(1)},
+		{ID: h2.ID, Quantity: numeric.FromInt(2)},
+	})
+	if err == nil {
+		t.Fatal("expected bulk update failure")
+	}
+
+	assertQuantity := func(id uuidx.UUID, want string) {
+		t.Helper()
+		got, err := hr.GetByID(ctx, id)
+		if err != nil {
+			t.Fatalf("get holding: %v", err)
+		}
+		if got == nil {
+			t.Fatal("holding missing")
+		}
+		if got.Quantity.String() != want {
+			t.Fatalf("quantity = %s, want %s", got.Quantity.String(), want)
+		}
+	}
+	assertQuantity(h1.ID, "10")
+	assertQuantity(h2.ID, "20")
+}
+
 func TestHoldingBulkUpdateWrongAccount(t *testing.T) {
 	ar, sr, gr, hr := newHoldingRepo(t)
 	ctx := context.Background()

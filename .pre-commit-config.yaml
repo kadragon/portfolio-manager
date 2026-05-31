@@ -20,14 +20,14 @@ repos:
 
       - id: templ-check
         name: templ generate --check
-        entry: /Users/kadragon/go/bin/templ generate --check
+        entry: templ generate --check
         language: system
         pass_filenames: false
         stages: [pre-commit]
 
       - id: sqlc-diff
         name: sqlc diff
-        entry: /Users/kadragon/go/bin/sqlc diff
+        entry: sqlc diff
         language: system
         pass_filenames: false
         stages: [pre-commit]

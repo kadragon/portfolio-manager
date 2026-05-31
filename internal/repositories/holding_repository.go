@@ -21,12 +21,17 @@ type HoldingUpdate struct {
 
 // HoldingRepository provides holding CRUD operations.
 type HoldingRepository struct {
-	q *sqlc.Queries
+	q  *sqlc.Queries
+	db *sql.DB
 }
 
 // NewHoldingRepository builds a HoldingRepository over the given queries handle.
-func NewHoldingRepository(q *sqlc.Queries) *HoldingRepository {
-	return &HoldingRepository{q: q}
+func NewHoldingRepository(q *sqlc.Queries, db ...*sql.DB) *HoldingRepository {
+	var sqlDB *sql.DB
+	if len(db) > 0 {
+		sqlDB = db[0]
+	}
+	return &HoldingRepository{q: q, db: sqlDB}
 }
 
 // Create inserts a new holding and returns it.
@@ -135,8 +140,23 @@ func (r *HoldingRepository) BulkUpdateByAccount(ctx context.Context, accountID u
 	if len(updates) == 0 {
 		return nil
 	}
+	if r.db == nil {
+		return bulkUpdateByAccount(ctx, r.q, accountID, updates)
+	}
 
-	existing, err := r.q.ListHoldingsByAccount(ctx, accountID)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if err := bulkUpdateByAccount(ctx, r.q.WithTx(tx), accountID, updates); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+func bulkUpdateByAccount(ctx context.Context, q *sqlc.Queries, accountID uuidx.UUID, updates []HoldingUpdate) error {
+	existing, err := q.ListHoldingsByAccount(ctx, accountID)
 	if err != nil {
 		return err
 	}
@@ -152,7 +172,7 @@ func (r *HoldingRepository) BulkUpdateByAccount(ctx context.Context, accountID u
 
 	now := ktime.Now()
 	for _, u := range updates {
-		if _, err := r.q.UpdateHolding(ctx, sqlc.UpdateHoldingParams{
+		if _, err := q.UpdateHolding(ctx, sqlc.UpdateHoldingParams{
 			Quantity:  u.Quantity,
 			UpdatedAt: now,
 			ID:        u.ID,

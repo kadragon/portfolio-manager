@@ -803,6 +803,33 @@ func TestFetchAccountSnapshotPaginated(t *testing.T) {
 	}
 }
 
+func TestFetchAccountSnapshotStopsWhenHeaderIsFinal(t *testing.T) {
+	callCount := 0
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("tr_cont", "F")
+		fmt.Fprintf(w, `{
+			"rt_cd":"0",
+			"output1":[{"pdno":"005930","hldg_qty":"10","prdt_name":"삼성전자"}],
+			"output2":[{"dnca_tot_amt":"500000"}],
+			"ctx_area_fk100":"fk_value",
+			"ctx_area_nk100":"nk_value"
+		}`)
+	}))
+	mgr := makeManager(t, "tok")
+	bc := &DomesticBalanceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	if _, err := bc.FetchAccountSnapshot("12345678", "01"); err != nil {
+		t.Fatalf("FetchAccountSnapshot: %v", err)
+	}
+	if callCount != 1 {
+		t.Fatalf("page calls = %d, want 1", callCount)
+	}
+}
+
 // ---------- domestic_info.go ----------
 
 func TestExtractOutputObject(t *testing.T) {
@@ -941,6 +968,12 @@ func TestDomesticOrderClientPlaceOrderBuy(t *testing.T) {
 	}
 	if received["PDNO"] != "005930" {
 		t.Errorf("PDNO = %q, want 005930", received["PDNO"])
+	}
+	if received["ORD_DVSN"] != "01" {
+		t.Errorf("ORD_DVSN = %q, want 01", received["ORD_DVSN"])
+	}
+	if received["ORD_UNPR"] != "0" {
+		t.Errorf("ORD_UNPR = %q, want 0", received["ORD_UNPR"])
 	}
 }
 
@@ -1162,6 +1195,12 @@ func TestOverseasOrderClientPlaceOrderBuy(t *testing.T) {
 	}
 	if received["OVRS_EXCG_CD"] != "NASD" {
 		t.Errorf("OVRS_EXCG_CD = %q, want NASD", received["OVRS_EXCG_CD"])
+	}
+	if received["ORD_DVSN"] != "01" {
+		t.Errorf("ORD_DVSN = %q, want 01", received["ORD_DVSN"])
+	}
+	if received["OVRS_ORD_UNPR"] != "0" {
+		t.Errorf("OVRS_ORD_UNPR = %q, want 0", received["OVRS_ORD_UNPR"])
 	}
 }
 

@@ -162,6 +162,28 @@ func TestDepositCreateUpsertDuplicateDate(t *testing.T) {
 	}
 }
 
+func TestDepositCreateUpsertEmptyNoteKeepsExisting(t *testing.T) {
+	e, c := setupDeposits(t)
+	dep := seedDeposit(t, c, "2026-05-02", "100000", "keep note")
+
+	rec := do(e, http.MethodPost, "/deposits", url.Values{
+		"deposit_date": {"2026-05-02"},
+		"amount":       {"200000"},
+		"note":         {""},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	updated, err := c.Deposits.GetByID(context.Background(), dep.ID)
+	if err != nil {
+		t.Fatalf("get updated deposit: %v", err)
+	}
+	if !updated.Note.Valid || updated.Note.String != "keep note" {
+		t.Errorf("note changed on empty upsert: %+v", updated.Note)
+	}
+}
+
 func TestDepositCreateNoteStripped(t *testing.T) {
 	e, c := setupDeposits(t)
 

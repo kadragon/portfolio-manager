@@ -32,12 +32,11 @@ func (c *DomesticOrderClient) PlaceOrder(ticker, side string, quantity int, _ st
 		return nil, err
 	}
 
-	// We need the current price for ord_unpr (limit price in market order form = 0).
 	payload := map[string]string{
 		"CANO":            c.CANO,
 		"ACNT_PRDT_CD":    c.AcntPrdtCd,
 		"PDNO":            ticker,
-		"ORD_DVSN":        "00", // 지정가 (limit, required by KIS even for market orders in some envs)
+		"ORD_DVSN":        "01",
 		"ORD_QTY":         fmt.Sprintf("%d", quantity),
 		"ORD_UNPR":        "0",
 		"EXCG_ID_DVSN_CD": "KRX",

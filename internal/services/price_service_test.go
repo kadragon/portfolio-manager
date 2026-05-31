@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/kadragon/portfolio-manager/internal/datex"
@@ -16,12 +17,15 @@ import (
 // --- mock PriceClient ---
 
 type mockPriceClient struct {
+	mu        sync.Mutex
 	quotes    map[string]services.PriceQuote
 	getCalls  int
 	histCalls int
 }
 
 func (m *mockPriceClient) GetPrice(ticker, _ string) (services.PriceQuote, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.getCalls++
 	if q, ok := m.quotes[ticker]; ok {
 		return q, nil
@@ -30,6 +34,8 @@ func (m *mockPriceClient) GetPrice(ticker, _ string) (services.PriceQuote, error
 }
 
 func (m *mockPriceClient) GetHistoricalClose(_ string, _ datex.Date, _ string) (float64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.histCalls++
 	return 70000, nil
 }
@@ -84,6 +90,39 @@ func TestGetStockPriceWithMockClient(t *testing.T) {
 	if client.getCalls != 1 {
 		t.Errorf("want 1 total GetPrice call (cache hit), got %d", client.getCalls)
 	}
+}
+
+func TestGetStockPriceConcurrentAccess(t *testing.T) {
+	r := newPriceRepo(t)
+	client := &mockPriceClient{
+		quotes: map[string]services.PriceQuote{
+			"005930": {
+				Symbol:   "005930",
+				Name:     "삼성전자",
+				Price:    74000,
+				Currency: "KRW",
+				Exchange: "",
+			},
+		},
+	}
+	svc := services.NewPriceService(r, client)
+	ctx := context.Background()
+	start := make(chan struct{})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			price, currency, _, _ := svc.GetStockPrice(ctx, "005930", "")
+			if !price.IsPositive() || currency != "KRW" {
+				t.Errorf("unexpected price result: %s %s", price.String(), currency)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
 }
 
 func TestGetStockPriceNilClient(t *testing.T) {

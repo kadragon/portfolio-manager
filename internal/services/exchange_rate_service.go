@@ -46,15 +46,16 @@ func (s *ExchangeRateService) GetUSDKRW() numeric.Decimal {
 		return numeric.Zero
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	today := datex.FromTime(ktime.NowKST())
 	for offset := 0; offset < 7; offset++ {
 		candidate := today.Time.AddDate(0, 0, -offset).Format("20060102")
+		s.mu.Lock()
 		if v, ok := s.cachedRates[candidate]; ok {
+			s.mu.Unlock()
 			return v
 		}
+		s.mu.Unlock()
+
 		raw, err := s.eximClient.FetchUSDRate(candidate)
 		if err != nil || raw == 0 {
 			continue
@@ -63,7 +64,9 @@ func (s *ExchangeRateService) GetUSDKRW() numeric.Decimal {
 		if parseErr != nil {
 			continue
 		}
+		s.mu.Lock()
 		s.cachedRates[candidate] = rate
+		s.mu.Unlock()
 		return rate
 	}
 	return numeric.Zero

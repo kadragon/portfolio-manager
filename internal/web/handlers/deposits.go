@@ -73,8 +73,10 @@ func (h *DepositHandler) create(c echo.Context) error {
 	}
 	noteStr := strings.TrimSpace(c.FormValue("note"))
 	note := sql.NullString{}
+	var notePtr *sql.NullString
 	if noteStr != "" {
 		note = sql.NullString{String: noteStr, Valid: true}
+		notePtr = &note
 	}
 
 	existing, err := h.c.Deposits.GetByDate(ctx, depositDate)
@@ -83,7 +85,6 @@ func (h *DepositHandler) create(c echo.Context) error {
 	}
 	if existing != nil {
 		// Upsert: date already exists — update instead of create.
-		notePtr := &note
 		updated, err := h.c.Deposits.Update(ctx, existing.ID, amount, depositDate, notePtr)
 		if err != nil {
 			return err
