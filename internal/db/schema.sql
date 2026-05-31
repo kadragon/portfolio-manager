@@ -94,19 +94,3 @@ CREATE TABLE IF NOT EXISTS "order_executions" (
     "created_at" DATETIME NOT NULL
 );
 CREATE INDEX IF NOT EXISTS "orderexecutionmodel_created_at" ON "order_executions" ("created_at");
-
-CREATE TABLE IF NOT EXISTS "investor_flows" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "ticker" TEXT NOT NULL,
-    "flow_date" DATE NOT NULL,
-    "foreign_net_qty" INTEGER NOT NULL,
-    "institution_net_qty" INTEGER NOT NULL,
-    "individual_net_qty" INTEGER NOT NULL,
-    "foreign_net_krw" INTEGER NOT NULL,
-    "institution_net_krw" INTEGER NOT NULL,
-    "individual_net_krw" INTEGER NOT NULL,
-    "created_at" DATETIME NOT NULL,
-    "updated_at" DATETIME NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS "investorflowmodel_ticker_flow_date" ON "investor_flows" ("ticker", "flow_date");
-CREATE INDEX IF NOT EXISTS "investorflowmodel_ticker" ON "investor_flows" ("ticker");

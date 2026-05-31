@@ -1,3 +1,4 @@
+// Package templates provides shared helper functions for templ components.
 package templates
 
 import (
@@ -130,7 +131,6 @@ var navItems = []navItem{
 	{"/accounts", "accounts", "계좌"},
 	{"/deposits", "deposits", "입금"},
 	{"/rebalance", "rebalance", "리밸런싱"},
-	{"/insights", "insights", "AI 인사이트"},
 }
 
 // navClass returns the nav link class string (base.html), active or not.

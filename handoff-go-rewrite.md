@@ -17,7 +17,7 @@ Strategy: **clean replace** (Go replaces `src/` at cutover). Python kept on disk
 | 6 — portfolio/price/exchange/dashboard | ✅ |
 | 7 — rebalance | ✅ (`b7a73e4`) |
 | 8 — KIS account sync | ✅ (`a9f7826`) |
-| 9 — insights/LLM | ⬜ see `backlog.md` |
+| 9 — insights/LLM | ❌ dropped |
 | 10 — cutover | ⬜ see `backlog.md` |
 
 ## Stack (locked)

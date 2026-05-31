@@ -16,7 +16,6 @@ from portfolio_manager.web.routes import (
     groups,
     accounts,
     deposits,
-    insights,
     rebalance,
 )
 
@@ -97,7 +96,6 @@ def create_app() -> FastAPI:
     app.include_router(accounts.router)
     app.include_router(deposits.router)
     app.include_router(rebalance.router)
-    app.include_router(insights.router)
 
     return app
 
