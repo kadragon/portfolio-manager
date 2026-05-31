@@ -189,6 +189,40 @@ func TestGetStockChangeRatesEmptyPeriods(t *testing.T) {
 	}
 }
 
+// TestGetStockPriceLiveFailFallsBackToCache covers the weekend/market-closed case:
+// live API returns 0 → service should return the most recent DB-cached price, not zero.
+func TestGetStockPriceLiveFailFallsBackToCache(t *testing.T) {
+	r := newPriceRepo(t)
+	ctx := context.Background()
+
+	staleDate, _ := datex.ParseDate("2026-05-29")
+	cachedPrice, _ := numeric.FromString("159.11")
+	_, err := r.Save(ctx, "VYM", staleDate, cachedPrice, "USD", "VANGUARD HIGH DIVIDEND YIELD",
+		sql.NullString{String: "AMEX", Valid: true})
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Live client returns Price=0 (market closed / weekend)
+	client := &mockPriceClient{
+		quotes: map[string]services.PriceQuote{
+			"VYM": {Symbol: "VYM", Price: 0, Currency: "USD"},
+		},
+	}
+	svc := services.NewPriceService(r, client)
+
+	price, currency, _, _ := svc.GetStockPrice(ctx, "VYM", "NAS")
+	if price.IsZero() {
+		t.Error("want non-zero price from cache fallback, got zero")
+	}
+	if !price.Equal(cachedPrice.Decimal) {
+		t.Errorf("want cached price %v, got %v", cachedPrice, price)
+	}
+	if currency != "USD" {
+		t.Errorf("want USD, got %s", currency)
+	}
+}
+
 func TestGetStockChangeRatesSmoke(t *testing.T) {
 	r := newPriceRepo(t)
 	client := &mockPriceClient{

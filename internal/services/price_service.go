@@ -96,6 +96,18 @@ func (s *PriceService) GetStockPrice(ctx context.Context, ticker, preferredExcha
 
 	quote, err := s.client.GetPrice(ticker, toPriceExchange(cacheExch))
 	if err != nil || quote.Price <= 0 {
+		if sp, _ := s.stockPrices.GetLatestByTicker(ctx, ticker); sp != nil && sp.Price.IsPositive() {
+			e := priceCacheEntry{
+				price:    sp.Price,
+				currency: sp.Currency,
+				name:     sp.Name,
+				exchange: toOrderExchange(sp.Exchange.String),
+			}
+			s.mu.Lock()
+			s.priceCache[k] = e
+			s.mu.Unlock()
+			return e.price, e.currency, e.name, e.exchange
+		}
 		return numeric.Zero, "KRW", "", cacheExch
 	}
 
