@@ -1,9 +1,8 @@
 package templates
 
 import (
-	"strings"
-
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/stockformat"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
@@ -21,8 +20,8 @@ func holdingRowStockName(h models.Holding, stockMap map[uuidx.UUID]models.Stock,
 		return name
 	}
 	if s, ok := stockMap[h.StockID]; ok {
-		if s.Name != "" {
-			return s.Name
+		if formatted := stockformat.FormatName(s.Name); formatted != "" {
+			return formatted
 		}
 		return s.Ticker
 	}
@@ -39,7 +38,7 @@ func holdingFormStockName(h models.Holding, stockMap map[uuidx.UUID]models.Stock
 
 // stockOptionLabel returns the option label for a stock select: "name (ticker)" or "ticker (ticker)".
 func stockOptionLabel(s models.Stock) string {
-	name := s.Name
+	name := stockformat.FormatName(s.Name)
 	if name == "" {
 		name = s.Ticker
 	}
@@ -47,17 +46,12 @@ func stockOptionLabel(s models.Stock) string {
 }
 
 // BuildStockNameMap builds a name map from stored stock.Name values, applying
-// format_stock_name (ETF suffix strip) to match Python's stock_service fallback.
-// Phase 8 will replace this with live resolution via the stock service.
+// ETF suffix strip via stockformat.
 func BuildStockNameMap(stocks []models.Stock) map[uuidx.UUID]string {
-	const etfSuffix = "증권상장지수투자신탁(주식)"
 	m := make(map[uuidx.UUID]string, len(stocks))
 	for _, s := range stocks {
-		if s.Name != "" {
-			name := strings.TrimSpace(strings.Replace(s.Name, etfSuffix, "", 1))
-			if name != "" {
-				m[s.ID] = name
-			}
+		if name := stockformat.FormatName(s.Name); name != "" {
+			m[s.ID] = name
 		}
 	}
 	return m

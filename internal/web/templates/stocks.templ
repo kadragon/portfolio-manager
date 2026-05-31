@@ -2,14 +2,14 @@ package templates
 
 import (
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/stockformat"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
-// displayName returns the stock's name if set, otherwise its ticker (mirrors
-// Python's `stock.name or stock.ticker`).
+// displayName returns the formatted stock name if set, otherwise its ticker.
 func displayName(s models.Stock) string {
-	if s.Name != "" {
-		return s.Name
+	if formatted := stockformat.FormatName(s.Name); formatted != "" {
+		return formatted
 	}
 	return s.Ticker
 }
