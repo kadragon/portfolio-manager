@@ -14,26 +14,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-go@v5
         with:
-          enable-cache: true
+          go-version-file: go.mod
+          cache: true
 
-      - name: Install dependencies
-        run: uv sync --group dev
+      - name: Install templ
+        run: go install github.com/a-h/templ/cmd/templ@latest
 
-      - name: Ruff check
-        run: uv run --with ruff ruff check
+      - name: Install sqlc
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
-      - name: Ruff format
-        run: uv run --with ruff ruff format --check
+      - name: templ generate --check
+        run: templ generate --check
 
-      - name: Pyright
-        run: uv run --with pyright pyright
+      - name: sqlc diff
+        run: sqlc diff
 
-      - name: Bandit
-        run: uv run --with bandit bandit -r src scripts --skip B101,B105,B106,B404,B603
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.1
 
-      - name: Pytest
-        run: uv run pytest
+      - name: go build
+        run: go build ./...
+
+      - name: go test (coverage gate 85%)
+        run: |
+          PKGS=$(go list ./... | grep -vE '/(db/sqlc|cmd|container|models|web/templates)($|/)' | tr '\n' ' ')
+          go test $PKGS -coverprofile=coverage.out -covermode=atomic
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",\$3); print \$3}')
+          echo "total coverage: ${total}%"
+          awk "BEGIN { exit (${total} < 85.0) }" || { echo "coverage below 85%"; exit 1; }

@@ -238,8 +238,9 @@ func prevBizDay(t time.Time) time.Time {
 		return t.AddDate(0, 0, -1)
 	case time.Sunday:
 		return t.AddDate(0, 0, -2)
+	default:
+		return t
 	}
-	return t
 }
 
 func toOrderExchange(e string) string {

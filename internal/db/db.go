@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // registers the sqlite3 driver
 
 	"github.com/kadragon/portfolio-manager/internal/db/sqlc"
 )

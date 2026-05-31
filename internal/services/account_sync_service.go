@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -31,11 +32,8 @@ func (e *KisEmptySnapshotError) Error() string { return e.msg }
 
 // IsKisEmptySnapshotError reports whether err is a KisEmptySnapshotError.
 func IsKisEmptySnapshotError(err error) bool {
-	if err == nil {
-		return false
-	}
-	_, ok := err.(*KisEmptySnapshotError)
-	return ok
+	var target *KisEmptySnapshotError
+	return errors.As(err, &target)
 }
 
 // Unexported interfaces for repo injection — enable mock testing without a DB.

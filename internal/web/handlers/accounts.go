@@ -86,7 +86,7 @@ func (h *AccountHandler) bulkCash(c echo.Context) error {
 		if err2 != nil {
 			c.Response().WriteHeader(http.StatusUnprocessableEntity)
 			_, _ = c.Response().Write([]byte("'" + escapedName + "' 예수금 형식이 올바르지 않습니다."))
-			return nil
+			return nil //nolint:nilerr // intentional: response written manually; nil tells Echo not to re-handle
 		}
 		updates = append(updates, pending{
 			id:          account.ID,

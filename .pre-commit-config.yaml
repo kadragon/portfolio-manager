@@ -1,41 +1,33 @@
 repos:
   - repo: local
     hooks:
-      - id: pyright
-        name: pyright
-        entry: uv run pyright
+      - id: golangci-lint
+        name: golangci-lint
+        entry: golangci-lint run
         language: system
-        types: [python]
+        types: [go]
         pass_filenames: false
         stages: [pre-commit]
 
-      - id: ruff-check
-        name: ruff check
-        entry: uv run ruff check
+      - id: go-test
+        name: go test
+        entry: go test ./...
         language: system
-        types: [python]
-        stages: [pre-commit]
-
-      - id: ruff-format
-        name: ruff format
-        entry: uv run ruff format
-        language: system
-        types: [python]
-        stages: [pre-commit]
-
-      - id: bandit
-        name: bandit
-        entry: uv run bandit -r src scripts --skip B101,B105,B106,B404,B603
-        language: system
-        types: [python]
-        pass_filenames: false
-        stages: [pre-commit]
-
-      - id: pytest
-        name: pytest
-        entry: uv run pytest
-        language: system
-        types: [python]
+        types: [go]
         pass_filenames: false
         stages: [pre-commit]
         always_run: true
+
+      - id: templ-check
+        name: templ generate --check
+        entry: /Users/kadragon/go/bin/templ generate --check
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: sqlc-diff
+        name: sqlc diff
+        entry: /Users/kadragon/go/bin/sqlc diff
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

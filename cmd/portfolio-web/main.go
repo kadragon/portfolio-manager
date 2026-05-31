@@ -68,13 +68,6 @@ func newServer(c *container.Container) *echo.Echo {
 	return e
 }
 
-// staticDir returns the directory served at /static. During the Python→Go
-// transition the existing assets are reused in place; cutover moves them under
-// internal/web/static.
 func staticDir() string {
-	const transitional = "src/portfolio_manager/web/static"
-	if _, err := os.Stat(transitional); err == nil {
-		return transitional
-	}
 	return "internal/web/static"
 }

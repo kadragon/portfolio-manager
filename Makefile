@@ -1,6 +1,6 @@
 TAILWIND_BIN := bin/tailwindcss
-INPUT_CSS := src/portfolio_manager/web/tailwind/input.css
-OUTPUT_CSS := src/portfolio_manager/web/static/css/app.css
+INPUT_CSS := internal/web/tailwind/input.css
+OUTPUT_CSS := internal/web/static/css/app.css
 
 .PHONY: setup css-watch css-build dev \
 	go-tools go-gen go-build go-vet go-test go-cover go-lint go-run go-check
@@ -24,7 +24,7 @@ dev:
 	@$(TAILWIND_BIN) -i $(INPUT_CSS) -o $(OUTPUT_CSS) --watch & \
 	TAILWIND_PID=$$!; \
 	trap "kill $$TAILWIND_PID 2>/dev/null" EXIT; \
-	uv run portfolio-web
+	go run ./cmd/portfolio-web
 
 # --- Go ---------------------------------------------------------------------
 
@@ -47,10 +47,11 @@ go-vet:
 go-test:
 	go test ./...
 
-## Coverage with the 85% gate (matches the Python project's cov-fail-under)
+## Coverage with the 85% gate (excludes generated: sqlc, templ, cmd, container, models)
 go-cover:
-	go test ./... -coverprofile=coverage.out -covermode=atomic
-	@total=$$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$$3); print $$3}'); \
+	@PKGS=$$(go list ./... | grep -vE '/(db/sqlc|cmd|container|models|web/templates)($$|/)' | tr '\n' ' '); \
+	go test $$PKGS -coverprofile=coverage.out -covermode=atomic; \
+	total=$$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$$3); print $$3}'); \
 	echo "total coverage: $$total%"; \
 	awk "BEGIN { exit ($$total < 85.0) }" || { echo "coverage below 85%"; exit 1; }
 

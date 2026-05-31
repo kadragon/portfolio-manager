@@ -25,7 +25,7 @@ func Wrap(u uuid.UUID) UUID { return UUID{u} }
 func Parse(s string) (UUID, error) {
 	u, err := uuid.Parse(s)
 	if err != nil {
-		return UUID{}, err
+		return UUID{}, fmt.Errorf("uuidx: parse %q: %w", s, err)
 	}
 	return UUID{u}, nil
 }

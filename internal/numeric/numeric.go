@@ -27,7 +27,7 @@ func FromInt(i int64) Decimal { return Decimal{decimal.NewFromInt(i)} }
 func FromString(s string) (Decimal, error) {
 	d, err := decimal.NewFromString(s)
 	if err != nil {
-		return Decimal{}, err
+		return Decimal{}, fmt.Errorf("numeric: parse %q: %w", s, err)
 	}
 	return Decimal{d}, nil
 }

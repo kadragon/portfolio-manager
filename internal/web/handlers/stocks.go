@@ -48,7 +48,7 @@ func (h *StockHandler) list(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return render(c, http.StatusOK, templates.StocksPage(*g, stocks))
+	return render(c, templates.StocksPage(*g, stocks))
 }
 
 func (h *StockHandler) create(c echo.Context) error {
@@ -68,7 +68,7 @@ func (h *StockHandler) create(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return render(c, http.StatusOK, templates.StockRow(s, groupID))
+	return render(c, templates.StockRow(s, groupID))
 }
 
 func (h *StockHandler) row(c echo.Context) error {
@@ -87,7 +87,7 @@ func (h *StockHandler) row(c echo.Context) error {
 	if s == nil || s.GroupID != groupID {
 		return echo.NewHTTPError(http.StatusNotFound)
 	}
-	return render(c, http.StatusOK, templates.StockRow(*s, groupID))
+	return render(c, templates.StockRow(*s, groupID))
 }
 
 func (h *StockHandler) editForm(c echo.Context) error {
@@ -111,7 +111,7 @@ func (h *StockHandler) editForm(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return render(c, http.StatusOK, templates.StockForm(*s, groupID, groups))
+	return render(c, templates.StockForm(*s, groupID, groups))
 }
 
 func (h *StockHandler) update(c echo.Context) error {
@@ -183,7 +183,7 @@ func (h *StockHandler) update(c echo.Context) error {
 		}
 		updated = upd
 	}
-	return render(c, http.StatusOK, templates.StockRow(updated, updated.GroupID))
+	return render(c, templates.StockRow(updated, updated.GroupID))
 }
 
 func (h *StockHandler) delete(c echo.Context) error {

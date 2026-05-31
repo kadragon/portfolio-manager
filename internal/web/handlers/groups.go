@@ -38,7 +38,7 @@ func (h *GroupHandler) list(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return render(c, http.StatusOK, templates.GroupsList(groups))
+	return render(c, templates.GroupsList(groups))
 }
 
 func (h *GroupHandler) row(c echo.Context) error {
@@ -53,7 +53,7 @@ func (h *GroupHandler) row(c echo.Context) error {
 	if g == nil {
 		return echo.NewHTTPError(http.StatusNotFound)
 	}
-	return render(c, http.StatusOK, templates.GroupRow(*g))
+	return render(c, templates.GroupRow(*g))
 }
 
 func (h *GroupHandler) editForm(c echo.Context) error {
@@ -68,7 +68,7 @@ func (h *GroupHandler) editForm(c echo.Context) error {
 	if g == nil {
 		return echo.NewHTTPError(http.StatusNotFound)
 	}
-	return render(c, http.StatusOK, templates.GroupForm(*g))
+	return render(c, templates.GroupForm(*g))
 }
 
 func (h *GroupHandler) create(c echo.Context) error {
@@ -80,7 +80,7 @@ func (h *GroupHandler) create(c echo.Context) error {
 	if cerr != nil {
 		return cerr
 	}
-	return render(c, http.StatusOK, templates.GroupRow(g))
+	return render(c, templates.GroupRow(g))
 }
 
 func (h *GroupHandler) update(c echo.Context) error {
@@ -96,7 +96,7 @@ func (h *GroupHandler) update(c echo.Context) error {
 	if uerr != nil {
 		return uerr
 	}
-	return render(c, http.StatusOK, templates.GroupRow(g))
+	return render(c, templates.GroupRow(g))
 }
 
 func (h *GroupHandler) delete(c echo.Context) error {

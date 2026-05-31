@@ -1,9 +1,3 @@
-.venv/
-__pycache__/
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
 .env
 .data/
 .serena/
@@ -11,18 +5,28 @@ htmlcov/
 .claude/*.lock
 .claude/worktrees/
 
+# Python tooling leftovers (transitional; removed at Go cutover)
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.egg-info/
+.coverage
+.coverage.*
+htmlcov/
 
 # Tailwind standalone CLI binary
 bin/
 # DaisyUI CSS bundle (downloaded)
-src/portfolio_manager/web/tailwind/daisyui.css
+internal/web/tailwind/daisyui.css
 
 # Go
 /portfolio-web
-coverage.out
+coverage*.out
 coverage.txt
-# templ generated output (regenerated via `make go-gen`); sqlc output IS committed
 *_templ.go
 # The user's global gitignore excludes *.templ; re-include the source templates.
 !*.templ

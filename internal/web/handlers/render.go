@@ -4,14 +4,14 @@
 package handlers
 
 import (
+	"net/http"
+
 	"github.com/a-h/templ"
 	"github.com/labstack/echo/v4"
 )
 
-// render writes a templ component as an HTML response with the given status.
-// The status is set before rendering so HTMX-driven partials can carry 422 etc.
-func render(c echo.Context, status int, comp templ.Component) error {
+func render(c echo.Context, comp templ.Component) error {
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	c.Response().WriteHeader(status)
+	c.Response().WriteHeader(http.StatusOK)
 	return comp.Render(c.Request().Context(), c.Response().Writer)
 }

@@ -78,11 +78,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		exchangeRate = buildExchangeRate()
 		orderClient = buildOrderClient()
 
-		kisCano = strings.TrimSpace(os.Getenv("KIS_CANO"))
-		kisAcntPrdtCd = strings.TrimSpace(os.Getenv("KIS_ACNT_PRDT_CD"))
-		if kisAcntPrdtCd == "" {
-			kisAcntPrdtCd = "01"
-		}
+		kisCano, kisAcntPrdtCd = loadKISAccount()
 		if balanceClient := buildBalanceClient(); balanceClient != nil {
 			accountSync = services.NewKisAccountSyncService(accounts, holdings, stocks, groups, balanceClient, ".data/kis_sync.log")
 		}
@@ -227,21 +223,48 @@ func buildKISClient() services.PriceClient {
 		PrdtTypeCd: prdtTypeCd,
 	}
 
+	if k2 := strings.TrimSpace(os.Getenv("KIS_APP_KEY_2")); k2 != "" {
+		log.Printf("KIS_APP_KEY_2 is set but multi-key round-robin is not implemented in Go; single key used")
+	}
+
 	log.Printf("KIS price client initialized (env=%q)", env) //nolint:gosec // env is operator-controlled, not user input
 	return unified
+}
+
+// loadKISAccount resolves the KIS account number from env vars.
+// Prefers explicit KIS_CANO + KIS_ACNT_PRDT_CD; falls back to KIS_ACCOUNT_NO
+// (10 consecutive digits split 8+2), matching Python ServiceContainer behaviour.
+func loadKISAccount() (cano, acntPrdtCd string) {
+	cano = strings.TrimSpace(os.Getenv("KIS_CANO"))
+	acntPrdtCd = strings.TrimSpace(os.Getenv("KIS_ACNT_PRDT_CD"))
+	if cano != "" && acntPrdtCd != "" {
+		return
+	}
+	if raw := strings.TrimSpace(os.Getenv("KIS_ACCOUNT_NO")); raw != "" {
+		var digits strings.Builder
+		for _, ch := range raw {
+			if ch >= '0' && ch <= '9' {
+				digits.WriteRune(ch)
+			}
+		}
+		if d := digits.String(); len(d) == 10 {
+			cano = d[:8]
+			acntPrdtCd = d[8:]
+		}
+	}
+	if acntPrdtCd == "" {
+		acntPrdtCd = "01"
+	}
+	return
 }
 
 // buildOrderClient reads KIS env vars and returns a UnifiedOrderClient, or nil if keys are absent.
 func buildOrderClient() services.OrderClient {
 	appKey := strings.TrimSpace(os.Getenv("KIS_APP_KEY"))
 	appSecret := strings.TrimSpace(os.Getenv("KIS_APP_SECRET"))
-	cano := strings.TrimSpace(os.Getenv("KIS_CANO"))
-	acntPrdtCd := strings.TrimSpace(os.Getenv("KIS_ACNT_PRDT_CD"))
+	cano, acntPrdtCd := loadKISAccount()
 	if appKey == "" || appSecret == "" || cano == "" {
 		return nil
-	}
-	if acntPrdtCd == "" {
-		acntPrdtCd = "01"
 	}
 
 	env := strings.ToLower(strings.TrimSpace(os.Getenv("KIS_ENV")))
@@ -301,7 +324,7 @@ func buildOrderClient() services.OrderClient {
 func buildBalanceClient() services.BalanceClient {
 	appKey := strings.TrimSpace(os.Getenv("KIS_APP_KEY"))
 	appSecret := strings.TrimSpace(os.Getenv("KIS_APP_SECRET"))
-	cano := strings.TrimSpace(os.Getenv("KIS_CANO"))
+	cano, _ := loadKISAccount()
 	if appKey == "" || appSecret == "" || cano == "" {
 		return nil
 	}

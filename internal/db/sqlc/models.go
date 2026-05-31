@@ -49,20 +49,6 @@ type Holding struct {
 	UpdatedAt ktime.Time
 }
 
-type InvestorFlow struct {
-	ID                uuidx.UUID
-	Ticker            string
-	FlowDate          datex.Date
-	ForeignNetQty     int64
-	InstitutionNetQty int64
-	IndividualNetQty  int64
-	ForeignNetKrw     int64
-	InstitutionNetKrw int64
-	IndividualNetKrw  int64
-	CreatedAt         ktime.Time
-	UpdatedAt         ktime.Time
-}
-
 type OrderExecution struct {
 	ID          uuidx.UUID
 	Ticker      string

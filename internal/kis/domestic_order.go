@@ -21,7 +21,7 @@ type DomesticOrderClient struct {
 
 // PlaceOrder places a domestic order and returns the raw KIS response.
 // exchange is ignored for domestic orders (always KRX).
-func (c *DomesticOrderClient) PlaceOrder(ticker, side string, quantity int, exchange string) (map[string]any, error) {
+func (c *DomesticOrderClient) PlaceOrder(ticker, side string, quantity int, _ string) (map[string]any, error) {
 	trID, err := TrIDForEnv(c.Env, domesticOrderTrID(side, false), domesticOrderTrID(side, true))
 	if err != nil {
 		return nil, err
