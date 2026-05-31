@@ -45,6 +45,6 @@ jobs:
         run: |
           PKGS=$(go list ./... | grep -vE '/(db/sqlc|cmd|container|models|web/templates)($|/)' | tr '\n' ' ')
           go test $PKGS -coverprofile=coverage.out -covermode=atomic
-          total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",\$3); print \$3}')
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
           echo "total coverage: ${total}%"
           awk "BEGIN { exit (${total} < 85.0) }" || { echo "coverage below 85%"; exit 1; }
