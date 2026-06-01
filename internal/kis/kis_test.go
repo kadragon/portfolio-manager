@@ -1087,6 +1087,54 @@ func TestParseOverseasHistoricalEmpty(t *testing.T) {
 	}
 }
 
+// TestOverseasPriceClientFetchCurrentPriceUsesShortEXCD verifies that FetchCurrentPrice
+// sends the short KIS price-endpoint code (NAS/NYS/AMS) over the wire, even when the
+// caller passes the canonical long code (NASD/NYSE/AMEX).
+// The KIS price endpoint HHDFS00000300 requires NAS/NYS/AMS; the order endpoint uses NASD/NYSE/AMEX.
+func TestOverseasPriceClientFetchCurrentPriceUsesShortEXCD(t *testing.T) {
+	var gotEXCD string
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotEXCD = r.URL.Query().Get("EXCD")
+		fmt.Fprintf(w, `{"output":{"symbol":"AAPL","name":"Apple Inc.","last":"195.89"}}`)
+	}))
+	mgr := makeManager(t, "tok")
+	pc := &OverseasPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	_, err := pc.FetchCurrentPrice("NASD", "AAPL")
+	if err != nil {
+		t.Fatalf("FetchCurrentPrice: %v", err)
+	}
+	if gotEXCD != "NAS" {
+		t.Errorf("EXCD sent to price endpoint = %q, want NAS (price endpoint requires short codes)", gotEXCD)
+	}
+}
+
+// TestOverseasPriceClientFetchHistoricalCloseUsesShortEXCD verifies that FetchHistoricalClose
+// sends NAS/NYS/AMS (not NASD/NYSE/AMEX) to the KIS dailyprice endpoint HHDFS76240000.
+func TestOverseasPriceClientFetchHistoricalCloseUsesShortEXCD(t *testing.T) {
+	var gotEXCD string
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotEXCD = r.URL.Query().Get("EXCD")
+		fmt.Fprintf(w, `{"output2":[{"xymd":"20240101","clos":"195.00"}]}`)
+	}))
+	mgr := makeManager(t, "tok")
+	pc := &OverseasPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	_, err := pc.FetchHistoricalClose("NASD", "AAPL", datex.New(2024, 1, 1))
+	if err != nil {
+		t.Fatalf("FetchHistoricalClose: %v", err)
+	}
+	if gotEXCD != "NAS" {
+		t.Errorf("EXCD sent to dailyprice endpoint = %q, want NAS (price endpoint requires short codes)", gotEXCD)
+	}
+}
+
 // ---------- overseas_info.go ----------
 
 func TestOverseasInfoClientFetchBasicInfo(t *testing.T) {
@@ -1373,7 +1421,7 @@ func TestUnifiedPriceClientGetOverseasPriceNoValidResponse(t *testing.T) {
 	}
 }
 
-func TestPriceToOrderExchange(t *testing.T) {
+func TestShortExchangeCode(t *testing.T) {
 	cases := []struct {
 		in   string
 		want string
@@ -1384,9 +1432,9 @@ func TestPriceToOrderExchange(t *testing.T) {
 		{"OTHER", "OTHER"},
 	}
 	for _, tc := range cases {
-		got := priceToOrderExchange(tc.in)
+		got := shortExchangeCode(tc.in)
 		if got != tc.want {
-			t.Errorf("priceToOrderExchange(%q) = %q, want %q", tc.in, got, tc.want)
+			t.Errorf("shortExchangeCode(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }

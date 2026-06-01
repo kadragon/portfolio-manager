@@ -10,7 +10,10 @@ import (
 // Compile-time assertion that UnifiedPriceClient satisfies services.PriceClient.
 var _ services.PriceClient = (*UnifiedPriceClient)(nil)
 
-// prioritizedExchanges returns exchanges to try in order, preferring the given one.
+// prioritizedExchanges returns canonical exchange codes to try in order, preferring the given one.
+// These are the internal canonical codes (NASD/NYSE/AMEX), which match the order-endpoint form.
+// The price endpoint uses the short form (NAS/NYS/AMS); OverseasPriceClient.FetchCurrentPrice
+// converts them at the wire boundary via priceEndpointEXCD.
 func prioritizedExchanges(preferred string) []string {
 	all := []string{"NASD", "NYSE", "AMEX"}
 	if preferred == "" {
@@ -41,7 +44,9 @@ type UnifiedPriceClient struct {
 }
 
 // GetPrice returns the current quote for ticker. preferredExchange is the
-// price-form code ("NASD", "NYSE", "AMEX") or empty for domestic/auto.
+// canonical/order-form code ("NASD", "NYSE", "AMEX") or empty for domestic/auto.
+// The underlying price endpoint uses short codes (NAS/NYS/AMS); conversion happens inside
+// OverseasPriceClient.
 func (c *UnifiedPriceClient) GetPrice(ticker string, preferredExchange string) (services.PriceQuote, error) {
 	if IsDomesticTicker(ticker) {
 		return c.getDomesticPrice(ticker)
@@ -120,8 +125,8 @@ func (c *UnifiedPriceClient) getOverseasPrice(ticker, preferredExchange string) 
 		if excdForInfo == "" && len(exchanges) > 0 {
 			excdForInfo = exchanges[0]
 		}
-		// OverseasInfoClient expects order-form exchange code (NAS, NYS, AMS).
-		orderExcd := priceToOrderExchange(excdForInfo)
+		// search-info endpoint is quotation-family; requires short 3-letter code.
+		orderExcd := shortExchangeCode(excdForInfo)
 		info, infoErr := c.OverseasInfo.FetchBasicInfo(orderExcd, ticker)
 		if infoErr == nil {
 			best.Name = info.Name
@@ -162,17 +167,18 @@ func (c *UnifiedPriceClient) getOverseasHistorical(ticker string, date datex.Dat
 	return 0, nil
 }
 
-// priceToOrderExchange converts price-form to order-form exchange code.
-var priceToOrderExchange = func() func(string) string {
-	m := map[string]string{
-		"NASD": "NAS",
-		"NYSE": "NYS",
-		"AMEX": "AMS",
+// shortExchangeCode converts canonical 4-letter codes (NASD/NYSE/AMEX) to the 3-letter
+// form (NAS/NYS/AMS) required by KIS quotation endpoints (price, dailyprice, search-info).
+// The order endpoint uses the 4-letter canonical form; these two families use opposite conventions.
+func shortExchangeCode(excd string) string {
+	switch excd {
+	case "NASD":
+		return "NAS"
+	case "NYSE":
+		return "NYS"
+	case "AMEX":
+		return "AMS"
+	default:
+		return excd
 	}
-	return func(e string) string {
-		if v, ok := m[e]; ok {
-			return v
-		}
-		return e
-	}
-}()
+}

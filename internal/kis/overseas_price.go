@@ -22,7 +22,7 @@ type OverseasPriceClient struct {
 }
 
 // FetchCurrentPrice calls HHDFS00000300 (overseas-price inquire) for ticker on excd exchange.
-// excd is the price-form exchange code (e.g. "NASD", "NYSE", "AMEX").
+// excd is the canonical code (e.g. "NASD", "NYSE", "AMEX"); converted to short form via shortExchangeCode.
 func (c *OverseasPriceClient) FetchCurrentPrice(excd, ticker string) (KisPriceQuote, error) {
 	trID, err := TrIDForEnv(c.Env, "HHDFS00000300", "HHDFS00000300")
 	if err != nil {
@@ -37,7 +37,7 @@ func (c *OverseasPriceClient) FetchCurrentPrice(excd, ticker string) (KisPriceQu
 		c.BaseURL+"/uapi/overseas-price/v1/quotations/price",
 		map[string]string{
 			"AUTH": "",
-			"EXCD": excd,
+			"EXCD": shortExchangeCode(excd),
 			"SYMB": ticker,
 		},
 		BuildHeaders(token, c.AppKey, c.AppSecret, trID, c.CustType),
@@ -66,7 +66,7 @@ func (c *OverseasPriceClient) FetchHistoricalClose(excd, ticker string, targetDa
 		c.BaseURL+"/uapi/overseas-price/v1/quotations/dailyprice",
 		map[string]string{
 			"AUTH": "",
-			"EXCD": excd,
+			"EXCD": shortExchangeCode(excd),
 			"SYMB": ticker,
 			"GUBN": "0",
 			"BYMD": bymd.Format("20060102"),
