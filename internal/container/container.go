@@ -216,7 +216,7 @@ func resolveSyncService(
 			return s
 		}
 		if *keyID != 1 {
-			log.Printf("warn: no sync service for KisAPIKeyID=%d, falling back to key-1", *keyID)
+			log.Printf("warn: no sync service for KisAPIKeyID=%d, falling back to key-1", *keyID) // codeql[go/clear-text-logging]
 		}
 	}
 	return defaultSync
