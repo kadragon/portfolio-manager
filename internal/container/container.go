@@ -39,6 +39,7 @@ type Container struct {
 	OrderClient        services.OrderClient                      // nil if KIS not configured
 	AccountSync        *services.KisAccountSyncService           // nil if KIS not configured; key-1 service
 	AccountSyncByKeyID map[int64]*services.KisAccountSyncService // keyed by kis_api_key_id
+	PriceSync          *services.PriceSyncService                // nil if KIS not configured
 	KisCano            string
 	KisAcntPrdtCd      string
 }
@@ -111,10 +112,15 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		}
 	}
 
-	priceService := services.NewPriceService(stockPrices, priceClient)
+	priceService := services.NewPriceService(stockPrices)
 	_ = services.NewStockService(stocks, priceService)
 	portfolio := services.NewPortfolioService(groups, stocks, holdings, accounts, deposits, priceService, exchangeRate)
 	rebalance := services.NewRebalanceService()
+
+	var priceSync *services.PriceSyncService
+	if priceClient != nil {
+		priceSync = services.NewPriceSyncService(priceClient, stockPrices, stocks)
+	}
 
 	execRepo := &execRepoAdapter{r: orderExecutions}
 	rebalanceExecution := services.NewRebalanceExecutionService(orderClient, execRepo, rebalanceSync)
@@ -134,6 +140,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		OrderClient:        orderClient,
 		AccountSync:        accountSync,
 		AccountSyncByKeyID: accountSyncByKeyID,
+		PriceSync:          priceSync,
 		KisCano:            kisCano,
 		KisAcntPrdtCd:      kisAcntPrdtCd,
 	}

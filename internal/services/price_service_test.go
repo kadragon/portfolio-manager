@@ -3,7 +3,6 @@ package services_test
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"sync"
 	"testing"
 
@@ -13,32 +12,6 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/repositories"
 	"github.com/kadragon/portfolio-manager/internal/services"
 )
-
-// --- mock PriceClient ---
-
-type mockPriceClient struct {
-	mu        sync.Mutex
-	quotes    map[string]services.PriceQuote
-	getCalls  int
-	histCalls int
-}
-
-func (m *mockPriceClient) GetPrice(ticker, _ string) (services.PriceQuote, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.getCalls++
-	if q, ok := m.quotes[ticker]; ok {
-		return q, nil
-	}
-	return services.PriceQuote{}, fmt.Errorf("ticker %s not found", ticker)
-}
-
-func (m *mockPriceClient) GetHistoricalClose(_ string, _ datex.Date, _ string) (float64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.histCalls++
-	return 70000, nil
-}
 
 // --- helpers ---
 
@@ -52,22 +25,19 @@ func newPriceRepo(t *testing.T) *repositories.StockPriceRepository {
 	return repositories.NewStockPriceRepository(q)
 }
 
-func TestGetStockPriceWithMockClient(t *testing.T) {
+// TestGetStockPriceFromDB verifies that a saved price is returned directly.
+func TestGetStockPriceFromDB(t *testing.T) {
 	r := newPriceRepo(t)
-	client := &mockPriceClient{
-		quotes: map[string]services.PriceQuote{
-			"005930": {
-				Symbol:   "005930",
-				Name:     "삼성전자",
-				Price:    74000,
-				Currency: "KRW",
-				Exchange: "",
-			},
-		},
-	}
-	svc := services.NewPriceService(r, client)
 	ctx := context.Background()
 
+	today, _ := datex.ParseDate("2026-06-01")
+	p, _ := numeric.FromString("74000")
+	_, err := r.Save(ctx, "005930", today, p, "KRW", "삼성전자", sql.NullString{})
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	svc := services.NewPriceService(r)
 	price, currency, name, _ := svc.GetStockPrice(ctx, "005930", "")
 	if !price.IsPositive() {
 		t.Errorf("want positive price, got %v", price)
@@ -78,35 +48,18 @@ func TestGetStockPriceWithMockClient(t *testing.T) {
 	if name != "삼성전자" {
 		t.Errorf("want '삼성전자', got %s", name)
 	}
-	if client.getCalls != 1 {
-		t.Errorf("want 1 GetPrice call, got %d", client.getCalls)
-	}
-
-	// Second call: must return from in-memory cache (no extra client hit).
-	price2, _, _, _ := svc.GetStockPrice(ctx, "005930", "")
-	if !price2.Equal(price.Decimal) {
-		t.Errorf("second call: price changed — want %v, got %v", price, price2)
-	}
-	if client.getCalls != 1 {
-		t.Errorf("want 1 total GetPrice call (cache hit), got %d", client.getCalls)
-	}
 }
 
+// TestGetStockPriceConcurrentAccess verifies no data race under concurrent reads.
 func TestGetStockPriceConcurrentAccess(t *testing.T) {
 	r := newPriceRepo(t)
-	client := &mockPriceClient{
-		quotes: map[string]services.PriceQuote{
-			"005930": {
-				Symbol:   "005930",
-				Name:     "삼성전자",
-				Price:    74000,
-				Currency: "KRW",
-				Exchange: "",
-			},
-		},
-	}
-	svc := services.NewPriceService(r, client)
 	ctx := context.Background()
+
+	today, _ := datex.ParseDate("2026-06-01")
+	p, _ := numeric.FromString("74000")
+	_, _ = r.Save(ctx, "005930", today, p, "KRW", "삼성전자", sql.NullString{})
+
+	svc := services.NewPriceService(r)
 	start := make(chan struct{})
 
 	var wg sync.WaitGroup
@@ -125,14 +78,42 @@ func TestGetStockPriceConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
-func TestGetStockPriceNilClient(t *testing.T) {
+// TestGetStockPriceNoData verifies zero price when DB is empty.
+func TestGetStockPriceNoData(t *testing.T) {
 	r := newPriceRepo(t)
-	svc := services.NewPriceService(r, nil)
+	svc := services.NewPriceService(r)
 	ctx := context.Background()
 
 	price, _, _, _ := svc.GetStockPrice(ctx, "005930", "")
 	if !price.IsZero() {
-		t.Errorf("want zero price with nil client and empty cache, got %v", price)
+		t.Errorf("want zero price with empty cache, got %v", price)
+	}
+}
+
+// TestGetStockPriceStaleReturn verifies that a stale (non-today) price is returned
+// when no today entry exists (e.g. weekend, market holiday).
+func TestGetStockPriceStaleReturn(t *testing.T) {
+	r := newPriceRepo(t)
+	ctx := context.Background()
+
+	staleDate, _ := datex.ParseDate("2026-05-29")
+	cachedPrice, _ := numeric.FromString("159.11")
+	_, err := r.Save(ctx, "VYM", staleDate, cachedPrice, "USD", "VANGUARD HIGH DIVIDEND YIELD",
+		sql.NullString{String: "AMEX", Valid: true})
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	svc := services.NewPriceService(r)
+	price, currency, _, _ := svc.GetStockPrice(ctx, "VYM", "AMEX")
+	if price.IsZero() {
+		t.Error("want stale price from cache, got zero")
+	}
+	if !price.Equal(cachedPrice.Decimal) {
+		t.Errorf("want cached price %v, got %v", cachedPrice, price)
+	}
+	if currency != "USD" {
+		t.Errorf("want USD, got %s", currency)
 	}
 }
 
@@ -147,7 +128,7 @@ func TestGetCachedPrice(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 
-	svc := services.NewPriceService(r, nil)
+	svc := services.NewPriceService(r)
 	got := svc.GetCachedPrice(ctx, "005930", d)
 	if got == nil {
 		t.Fatal("want non-nil cached price, got nil")
@@ -160,87 +141,73 @@ func TestGetCachedPrice(t *testing.T) {
 	}
 }
 
-func TestGetStockChangeRatesEmpty(t *testing.T) {
+// TestGetStockChangeRatesNoData returns nil when DB has no price data.
+func TestGetStockChangeRatesNoData(t *testing.T) {
 	r := newPriceRepo(t)
-	svc := services.NewPriceService(r, nil)
+	svc := services.NewPriceService(r)
 	ctx := context.Background()
 
-	// nil client → GetStockChangeRates returns nil immediately.
 	result := svc.GetStockChangeRates(ctx, "005930", "", []string{"1d"})
 	if result != nil {
-		t.Errorf("want nil result with nil client, got %v", result)
+		t.Errorf("want nil result with no data, got %v", result)
 	}
 }
 
 func TestGetStockChangeRatesEmptyPeriods(t *testing.T) {
 	r := newPriceRepo(t)
-	client := &mockPriceClient{
-		quotes: map[string]services.PriceQuote{
-			"005930": {Symbol: "005930", Price: 74000, Currency: "KRW"},
-		},
-	}
-	svc := services.NewPriceService(r, client)
+	svc := services.NewPriceService(r)
 	ctx := context.Background()
 
-	// Empty periods → returns nil (no valid normalized periods).
 	result := svc.GetStockChangeRates(ctx, "005930", "", []string{})
 	if result != nil {
 		t.Errorf("want nil for empty periods, got %v", result)
 	}
 }
 
-// TestGetStockPriceLiveFailFallsBackToCache covers the weekend/market-closed case:
-// live API returns 0 → service should return the most recent DB-cached price, not zero.
-func TestGetStockPriceLiveFailFallsBackToCache(t *testing.T) {
+// TestGetStockChangeRatesFromDB verifies change rates are computed from DB data.
+func TestGetStockChangeRatesFromDB(t *testing.T) {
 	r := newPriceRepo(t)
 	ctx := context.Background()
 
-	staleDate, _ := datex.ParseDate("2026-05-29")
-	cachedPrice, _ := numeric.FromString("159.11")
-	_, err := r.Save(ctx, "VYM", staleDate, cachedPrice, "USD", "VANGUARD HIGH DIVIDEND YIELD",
-		sql.NullString{String: "AMEX", Valid: true})
-	if err != nil {
-		t.Fatalf("save: %v", err)
-	}
+	// Save current and 1-year-ago prices to DB.
+	todayDate, _ := datex.ParseDate("2026-06-01")
+	currentP, _ := numeric.FromString("100")
+	_, _ = r.Save(ctx, "005930", todayDate, currentP, "KRW", "삼성전자", sql.NullString{})
 
-	// Live client returns Price=0 (market closed / weekend)
-	client := &mockPriceClient{
-		quotes: map[string]services.PriceQuote{
-			"VYM": {Symbol: "VYM", Price: 0, Currency: "USD"},
-		},
-	}
-	svc := services.NewPriceService(r, client)
+	pastDate, _ := datex.ParseDate("2025-05-30") // approx 1y ago (prevBizDay of 2025-06-01)
+	pastP, _ := numeric.FromString("80")
+	_, _ = r.Save(ctx, "005930", pastDate, pastP, "KRW", "삼성전자", sql.NullString{})
 
-	price, currency, _, _ := svc.GetStockPrice(ctx, "VYM", "NAS")
-	if price.IsZero() {
-		t.Error("want non-zero price from cache fallback, got zero")
-	}
-	if !price.Equal(cachedPrice.Decimal) {
-		t.Errorf("want cached price %v, got %v", cachedPrice, price)
-	}
-	if currency != "USD" {
-		t.Errorf("want USD, got %s", currency)
-	}
-}
-
-func TestGetStockChangeRatesSmoke(t *testing.T) {
-	r := newPriceRepo(t)
-	client := &mockPriceClient{
-		quotes: map[string]services.PriceQuote{
-			"005930": {Symbol: "005930", Name: "삼성전자", Price: 74000, Currency: "KRW"},
-		},
-	}
-	svc := services.NewPriceService(r, client)
-	ctx := context.Background()
-
-	result := svc.GetStockChangeRates(ctx, "005930", "", []string{"1d", "1m"})
+	svc := services.NewPriceService(r)
+	result := svc.GetStockChangeRates(ctx, "005930", "", []string{"1y"})
 	if result == nil {
 		t.Fatal("want non-nil result, got nil")
 	}
-	if _, ok := result["1d"]; !ok {
-		t.Error("want '1d' key in result")
+	if _, ok := result["1y"]; !ok {
+		t.Error("want '1y' key in result")
 	}
-	if _, ok := result["1m"]; !ok {
-		t.Error("want '1m' key in result")
+	// rate = (100 - 80) / 80 * 100 = 25%
+	if result["1y"].IsZero() {
+		t.Error("want non-zero 1y rate, got zero")
+	}
+}
+
+// TestGetStockChangeRatesZeroForMissingHistory returns a map with zero rates
+// when current price exists but historical data is missing.
+func TestGetStockChangeRatesZeroForMissingHistory(t *testing.T) {
+	r := newPriceRepo(t)
+	ctx := context.Background()
+
+	todayDate, _ := datex.ParseDate("2026-06-01")
+	p, _ := numeric.FromString("100")
+	_, _ = r.Save(ctx, "005930", todayDate, p, "KRW", "삼성전자", sql.NullString{})
+
+	svc := services.NewPriceService(r)
+	result := svc.GetStockChangeRates(ctx, "005930", "", []string{"1y", "1m"})
+	if result == nil {
+		t.Fatal("want non-nil map (even with zeros), got nil")
+	}
+	if result["1y"].String() != "0" {
+		t.Errorf("want zero 1y rate for missing history, got %v", result["1y"])
 	}
 }
