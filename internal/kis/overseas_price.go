@@ -10,6 +10,23 @@ import (
 
 const overseasDateBufferDays = 7
 
+// priceEndpointEXCD converts the canonical internal exchange code (NASD/NYSE/AMEX) to the
+// short code that the KIS price and dailyprice endpoints require (NAS/NYS/AMS).
+// Note: the order endpoint (OVRS_EXCG_CD) wants the long form; these two endpoint families
+// use opposite conventions, so the conversion happens here at the price wire boundary.
+func priceEndpointEXCD(excd string) string {
+	switch excd {
+	case "NASD":
+		return "NAS"
+	case "NYSE":
+		return "NYS"
+	case "AMEX":
+		return "AMS"
+	default:
+		return excd
+	}
+}
+
 // OverseasPriceClient fetches current and historical prices for overseas stocks.
 type OverseasPriceClient struct {
 	HTTP      *http.Client
@@ -22,7 +39,8 @@ type OverseasPriceClient struct {
 }
 
 // FetchCurrentPrice calls HHDFS00000300 (overseas-price inquire) for ticker on excd exchange.
-// excd is the price-form exchange code (e.g. "NASD", "NYSE", "AMEX").
+// excd is the canonical code (e.g. "NASD", "NYSE", "AMEX"); the price endpoint requires the
+// short form (NAS/NYS/AMS), so this method converts it before sending.
 func (c *OverseasPriceClient) FetchCurrentPrice(excd, ticker string) (KisPriceQuote, error) {
 	trID, err := TrIDForEnv(c.Env, "HHDFS00000300", "HHDFS00000300")
 	if err != nil {
@@ -37,7 +55,7 @@ func (c *OverseasPriceClient) FetchCurrentPrice(excd, ticker string) (KisPriceQu
 		c.BaseURL+"/uapi/overseas-price/v1/quotations/price",
 		map[string]string{
 			"AUTH": "",
-			"EXCD": excd,
+			"EXCD": priceEndpointEXCD(excd),
 			"SYMB": ticker,
 		},
 		BuildHeaders(token, c.AppKey, c.AppSecret, trID, c.CustType),
@@ -66,7 +84,7 @@ func (c *OverseasPriceClient) FetchHistoricalClose(excd, ticker string, targetDa
 		c.BaseURL+"/uapi/overseas-price/v1/quotations/dailyprice",
 		map[string]string{
 			"AUTH": "",
-			"EXCD": excd,
+			"EXCD": priceEndpointEXCD(excd),
 			"SYMB": ticker,
 			"GUBN": "0",
 			"BYMD": bymd.Format("20060102"),

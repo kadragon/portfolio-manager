@@ -10,7 +10,10 @@ import (
 // Compile-time assertion that UnifiedPriceClient satisfies services.PriceClient.
 var _ services.PriceClient = (*UnifiedPriceClient)(nil)
 
-// prioritizedExchanges returns exchanges to try in order, preferring the given one.
+// prioritizedExchanges returns canonical exchange codes to try in order, preferring the given one.
+// These are the internal canonical codes (NASD/NYSE/AMEX), which match the order-endpoint form.
+// The price endpoint uses the short form (NAS/NYS/AMS); OverseasPriceClient.FetchCurrentPrice
+// converts them at the wire boundary via priceEndpointEXCD.
 func prioritizedExchanges(preferred string) []string {
 	all := []string{"NASD", "NYSE", "AMEX"}
 	if preferred == "" {
@@ -41,7 +44,9 @@ type UnifiedPriceClient struct {
 }
 
 // GetPrice returns the current quote for ticker. preferredExchange is the
-// price-form code ("NASD", "NYSE", "AMEX") or empty for domestic/auto.
+// canonical/order-form code ("NASD", "NYSE", "AMEX") or empty for domestic/auto.
+// The underlying price endpoint uses short codes (NAS/NYS/AMS); conversion happens inside
+// OverseasPriceClient.
 func (c *UnifiedPriceClient) GetPrice(ticker string, preferredExchange string) (services.PriceQuote, error) {
 	if IsDomesticTicker(ticker) {
 		return c.getDomesticPrice(ticker)
