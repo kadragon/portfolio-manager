@@ -31,7 +31,6 @@ func main() {
 	addr := defaultAddr()
 
 	syncCtx, syncCancel := context.WithCancel(context.Background())
-	defer syncCancel()
 	if c.PriceSync != nil {
 		go c.PriceSync.Start(syncCtx)
 	}

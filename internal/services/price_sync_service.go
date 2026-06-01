@@ -68,7 +68,7 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 	today := datex.FromTime(ktime.NowKST())
 	targetDates := computeTargetDates(today.Time)
 
-	for _, stock := range allStocks {
+	for idx, stock := range allStocks {
 		if ctx.Err() != nil {
 			return
 		}
@@ -78,7 +78,9 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 			preferredExchange = *stock.Exchange
 		}
 
-		delay(ctx, syncCallDelay)
+		if idx > 0 {
+			delay(ctx, syncCallDelay)
+		}
 		quote, err := s.client.GetPrice(stock.Ticker, preferredExchange)
 		if err != nil {
 			log.Printf("price sync: get price %s: %v", stock.Ticker, err)
@@ -97,15 +99,20 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 		if quote.Exchange != "" {
 			exc = sql.NullString{String: toOrderExchange(quote.Exchange), Valid: true}
 		}
-		_, _ = s.stockPrices.Save(ctx, stock.Ticker, today, price, quote.Currency, quote.Name, exc)
+		if _, err := s.stockPrices.Save(ctx, stock.Ticker, today, price, quote.Currency, quote.Name, exc); err != nil {
+			log.Printf("price sync: save %s: %v", stock.Ticker, err)
+		}
 
-		// Persist resolved exchange to stock when it differs from the stored value.
-		if exc.Valid {
-			resolvedOrder := toOrderExchange(quote.Exchange)
-			if stock.Exchange == nil || *stock.Exchange != resolvedOrder {
-				if _, err := s.stocks.UpdateExchange(ctx, stock.ID, resolvedOrder); err == nil {
-					stock.Exchange = &resolvedOrder
-					preferredExchange = resolvedOrder
+		// Persist resolved exchange (canonical form) to stock when it differs from the stored value.
+		// canonical is the 4-letter code (NASD/NYSE/AMEX) expected by GetPrice/prioritizedExchanges.
+		if quote.Exchange != "" {
+			canonical := quote.Exchange
+			if stock.Exchange == nil || *stock.Exchange != canonical {
+				if _, err := s.stocks.UpdateExchange(ctx, stock.ID, canonical); err == nil {
+					stock.Exchange = &canonical
+					preferredExchange = canonical
+				} else {
+					log.Printf("price sync: update exchange %s: %v", stock.Ticker, err)
 				}
 			}
 		}
@@ -125,7 +132,9 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 			if parseErr != nil || !pastClose.IsPositive() {
 				continue
 			}
-			_, _ = s.stockPrices.Save(ctx, stock.Ticker, targetDate, pastClose, quote.Currency, quote.Name, exc)
+			if _, err := s.stockPrices.Save(ctx, stock.Ticker, targetDate, pastClose, quote.Currency, quote.Name, exc); err != nil {
+				log.Printf("price sync: save historical %s: %v", stock.Ticker, err)
+			}
 		}
 	}
 }

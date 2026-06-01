@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/datex"
@@ -32,22 +31,8 @@ var priceToOrder = map[string]string{
 // PriceService resolves stock prices from the DB cache only.
 // PriceSyncService owns live API access and keeps the DB up to date.
 type PriceService struct {
-	mu            sync.RWMutex
 	stockPrices   *repositories.StockPriceRepository
 	todayProvider func() time.Time
-	priceCache    map[priceCacheKey]priceCacheEntry
-}
-
-type priceCacheKey struct {
-	ticker   string
-	exchange string
-}
-
-type priceCacheEntry struct {
-	price    numeric.Decimal
-	currency string
-	name     string
-	exchange string // order-form code
 }
 
 // NewPriceService creates a DB-only PriceService. Use PriceSyncService for live fetching.
@@ -55,38 +40,25 @@ func NewPriceService(stockPrices *repositories.StockPriceRepository) *PriceServi
 	return &PriceService{
 		stockPrices:   stockPrices,
 		todayProvider: func() time.Time { return ktime.Now().Time },
-		priceCache:    make(map[priceCacheKey]priceCacheEntry),
 	}
+}
+
+// WithTodayProvider overrides the service's date source. Use in tests to fix today's date.
+func (s *PriceService) WithTodayProvider(fn func() time.Time) *PriceService {
+	s.todayProvider = fn
+	return s
 }
 
 // GetStockPrice returns (price, currency, name, exchange) for ticker from DB.
 // Returns today's price if available, otherwise the most recent cached price.
 // Returns zero when no data exists.
 func (s *PriceService) GetStockPrice(ctx context.Context, ticker, preferredExchange string) (numeric.Decimal, string, string, string) {
-	cacheExch := toOrderExchange(preferredExchange)
-	k := priceCacheKey{ticker: ticker, exchange: cacheExch}
-	s.mu.RLock()
-	if e, ok := s.priceCache[k]; ok {
-		s.mu.RUnlock()
-		return e.price, e.currency, e.name, e.exchange
-	}
-	s.mu.RUnlock()
-
+	orderExch := toOrderExchange(preferredExchange)
 	today := datex.FromTime(s.todayProvider())
 	if sp := s.loadCached(ctx, ticker, today); sp != nil {
-		e := priceCacheEntry{
-			price:    sp.Price,
-			currency: sp.Currency,
-			name:     sp.Name,
-			exchange: toOrderExchange(sp.Exchange.String),
-		}
-		s.mu.Lock()
-		s.priceCache[k] = e
-		s.mu.Unlock()
-		return e.price, e.currency, e.name, e.exchange
+		return sp.Price, sp.Currency, sp.Name, toOrderExchange(sp.Exchange.String)
 	}
-
-	return numeric.Zero, "KRW", "", cacheExch
+	return numeric.Zero, "KRW", "", orderExch
 }
 
 // GetCachedPrice returns the stored price for (ticker, date) from the DB, or nil.
@@ -95,6 +67,7 @@ func (s *PriceService) GetCachedPrice(ctx context.Context, ticker string, date d
 }
 
 // loadCached returns today's price or, if absent, the most-recent stored price (stale fallback).
+// Use getExact when the fallback would give misleading results (e.g. change-rate history).
 func (s *PriceService) loadCached(ctx context.Context, ticker string, date datex.Date) *models.StockPrice {
 	if s.stockPrices == nil {
 		return nil
@@ -103,8 +76,21 @@ func (s *PriceService) loadCached(ctx context.Context, ticker string, date datex
 	if sp != nil && sp.Price.IsPositive() {
 		return sp
 	}
-	// Always fall back to the latest available price (handles weekends and holidays).
+	// Fall back to most-recent available price (handles weekends and holidays).
 	sp, _ = s.stockPrices.GetLatestByTicker(ctx, ticker)
+	if sp != nil && sp.Price.IsPositive() {
+		return sp
+	}
+	return nil
+}
+
+// getExact returns the stored price for exactly the given date, or nil.
+// Does not fall back to the latest price — use for historical change-rate lookups.
+func (s *PriceService) getExact(ctx context.Context, ticker string, date datex.Date) *models.StockPrice {
+	if s.stockPrices == nil {
+		return nil
+	}
+	sp, _ := s.stockPrices.GetByTickerAndDate(ctx, ticker, date)
 	if sp != nil && sp.Price.IsPositive() {
 		return sp
 	}
@@ -144,7 +130,7 @@ func (s *PriceService) GetStockChangeRates(ctx context.Context, ticker, preferre
 		targetDate := datex.FromTime(target)
 
 		var pastClose numeric.Decimal
-		if cached := s.loadCached(ctx, ticker, targetDate); cached != nil && cached.Price.IsPositive() {
+		if cached := s.getExact(ctx, ticker, targetDate); cached != nil && cached.Price.IsPositive() {
 			pastClose = cached.Price
 		}
 

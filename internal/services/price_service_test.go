@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/datex"
 	"github.com/kadragon/portfolio-manager/internal/db"
@@ -169,16 +170,20 @@ func TestGetStockChangeRatesFromDB(t *testing.T) {
 	r := newPriceRepo(t)
 	ctx := context.Background()
 
+	// Pin today so computeTargetDates is deterministic.
+	fixedToday := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
 	// Save current and 1-year-ago prices to DB.
 	todayDate, _ := datex.ParseDate("2026-06-01")
 	currentP, _ := numeric.FromString("100")
 	_, _ = r.Save(ctx, "005930", todayDate, currentP, "KRW", "삼성전자", sql.NullString{})
 
-	pastDate, _ := datex.ParseDate("2025-05-30") // approx 1y ago (prevBizDay of 2025-06-01)
+	// prevBizDay(shiftYears(2026-06-01, 1)) = prevBizDay(2025-06-01 Sunday) = 2025-05-30
+	pastDate, _ := datex.ParseDate("2025-05-30")
 	pastP, _ := numeric.FromString("80")
 	_, _ = r.Save(ctx, "005930", pastDate, pastP, "KRW", "삼성전자", sql.NullString{})
 
-	svc := services.NewPriceService(r)
+	svc := services.NewPriceService(r).WithTodayProvider(func() time.Time { return fixedToday })
 	result := svc.GetStockChangeRates(ctx, "005930", "", []string{"1y"})
 	if result == nil {
 		t.Fatal("want non-nil result, got nil")

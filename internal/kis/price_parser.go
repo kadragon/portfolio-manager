@@ -103,14 +103,16 @@ func extractFirstOutput(data []byte) map[string]string {
 }
 
 // ParseKISStatus reads the top-level rt_cd/msg_cd/msg1 from a KIS response.
-// Returns rtCd, msgCd, msg1. On unmarshal failure all are empty.
+// Returns rtCd="1" on unmarshal failure so callers treat it as an error.
 func ParseKISStatus(data []byte) (rtCd, msgCd, msg1 string) {
 	var meta struct {
 		RtCd  string `json:"rt_cd"`
 		MsgCd string `json:"msg_cd"`
 		Msg1  string `json:"msg1"`
 	}
-	_ = json.Unmarshal(data, &meta)
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return "1", "parse_error", err.Error()
+	}
 	return meta.RtCd, meta.MsgCd, meta.Msg1
 }
 
