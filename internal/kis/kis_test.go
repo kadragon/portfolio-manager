@@ -1421,7 +1421,7 @@ func TestUnifiedPriceClientGetOverseasPriceNoValidResponse(t *testing.T) {
 	}
 }
 
-func TestPriceToOrderExchange(t *testing.T) {
+func TestShortExchangeCode(t *testing.T) {
 	cases := []struct {
 		in   string
 		want string
@@ -1432,9 +1432,9 @@ func TestPriceToOrderExchange(t *testing.T) {
 		{"OTHER", "OTHER"},
 	}
 	for _, tc := range cases {
-		got := priceToOrderExchange(tc.in)
+		got := shortExchangeCode(tc.in)
 		if got != tc.want {
-			t.Errorf("priceToOrderExchange(%q) = %q, want %q", tc.in, got, tc.want)
+			t.Errorf("shortExchangeCode(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }
