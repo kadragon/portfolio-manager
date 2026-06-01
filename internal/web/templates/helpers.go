@@ -7,6 +7,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/accountformat"
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
+	"github.com/kadragon/portfolio-manager/internal/stockformat"
 	"github.com/kadragon/portfolio-manager/internal/web/format"
 )
 
@@ -60,10 +61,10 @@ func diffColorClass(d numeric.Decimal) string {
 	return ""
 }
 
-// stockName returns name if non-empty, else ticker.
+// stockName returns the formatted name if non-empty, else ticker.
 func stockName(name, ticker string) string {
-	if name != "" {
-		return name
+	if formatted := stockformat.FormatName(name); formatted != "" {
+		return formatted
 	}
 	return ticker
 }
