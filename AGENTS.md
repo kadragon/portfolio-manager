@@ -26,9 +26,9 @@ Invariants. (1)(3) enforced by `internal/arch/arch_test.go`. (4) by golangci-lin
    import "github.com/kadragon/portfolio-manager/internal/db/sqlc"
    ```
 
-2. **KIS live tests carry `//go:build integration`** — e.g. `internal/kis/overseas_price_live_test.go`. Default `go test` (no `-tags integration`) excludes them; CI's `go test $PKGS` skips live KIS calls. Token issuance rate-limited to 1/min.
+2. **KIS live tests guard with `KIS_LIVE=1`** — e.g. `internal/kis/overseas_price_live_test.go`. The test calls `t.Skip` unless `KIS_LIVE=1` is set; CI never sets it. Token issuance rate-limited to 1/min.
 
-3. **Layer dependency direction** — `web/ → services/ → repositories/ → db/sqlc`. Reverse imports are violations. Enforced by `TestServicesDoNotImportWeb`, `TestRepositoriesDoNotImportWeb`, `TestRepositoriesDoNotImportServices` in `internal/arch/arch_test.go`.
+3. **Layer dependency direction** — `internal/web → internal/services → internal/repositories → internal/db`. Reverse imports are violations. Enforced by `TestServicesDoNotImportWeb`, `TestRepositoriesDoNotImportWeb`, `TestRepositoriesDoNotImportServices` in `internal/arch/arch_test.go`.
 
 4. **Secrets via `.env` only** — No hardcoded credentials, keys, or tokens in source. Enforced by gosec (via golangci-lint) in pre-commit + CI.
 
