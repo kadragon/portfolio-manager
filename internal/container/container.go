@@ -473,6 +473,8 @@ func buildKISAuthExtra(id int, base *kisAuth) *kisAuth {
 
 // buildExchangeRate reads USD_KRW_RATE or EXIM_AUTH_KEY env vars.
 // Priority: fixed rate > EXIM client > nil.
+// When nil, USD holdings will show ₩0 for KRW values on the dashboard.
+// Set USD_KRW_RATE=<rate> (e.g. 1380) or EXIM_AUTH_KEY to enable conversion.
 func buildExchangeRate() *services.ExchangeRateService {
 	if raw := strings.TrimSpace(os.Getenv("USD_KRW_RATE")); raw != "" {
 		rate, err := numeric.FromString(raw)
@@ -480,6 +482,7 @@ func buildExchangeRate() *services.ExchangeRateService {
 			log.Printf("invalid USD_KRW_RATE: %v", err)
 			return nil
 		}
+		log.Printf("exchange rate: fixed USD/KRW = %s", rate.String())
 		return services.NewFixedExchangeRateService(rate)
 	}
 
@@ -489,8 +492,10 @@ func buildExchangeRate() *services.ExchangeRateService {
 			BaseURL:    "https://oapi.koreaexim.go.kr",
 			AuthKey:    authKey,
 		}
+		log.Printf("exchange rate: EXIM live feed enabled")
 		return services.NewEximExchangeRateService(eximClient)
 	}
 
+	log.Printf("exchange rate: not configured (USD_KRW_RATE or EXIM_AUTH_KEY missing) — USD holdings will show ₩0 KRW value")
 	return nil
 }
