@@ -1,6 +1,6 @@
 # Portfolio Manager Agent Rules
 
-FastAPI + HTMX 포트폴리오 관리 앱. SQLite + Peewee ORM, KIS Open Trading API 연동.
+Go (Echo + HTMX) 포트폴리오 관리 앱. SQLite (modernc pure-Go) + sqlc, KIS Open Trading API 연동.
 
 ## Docs Index (read on demand)
 
@@ -16,23 +16,23 @@ FastAPI + HTMX 포트폴리오 관리 앱. SQLite + Peewee ORM, KIS Open Trading
 
 ## Golden Principles
 
-Invariants. (1)(3) enforced by `pytest tests/arch/`. (2)(4) enforced by pytest config + bandit. (5) convention only.
+Invariants. (1)(3) enforced by `internal/arch/arch_test.go`. (4) by golangci-lint (gosec) in pre-commit + CI. (2)(5) convention only.
 
-1. **Repository layer owns all DB access** — `web/` and `services/` do not call ORM query methods directly. All DB access goes through `*Repository` methods injected via `ServiceContainer`. Enforced by `tests/arch/test_layer_boundaries.py`.
-   ```python
-   # correct
-   account = container.account_repository.get_by_id(id)
-   # violation — blocked by arch test
-   account = AccountModel.get_by_id(id)  # in web/ or services/
+1. **Repository layer owns all DB access** — `web/` and `services/` must not import `internal/db` (or `internal/db/sqlc`). All DB access goes through `*Repository` fields on `container.Container` (`Accounts`, `Stocks`, `Holdings`, …). Enforced by `TestWebHasNoDirectDBAccess` / `TestServicesHaveNoDirectDBAccess` in `internal/arch/arch_test.go`.
+   ```go
+   // correct — repository injected via container
+   account, err := c.Accounts.GetByID(ctx, id)
+   // violation — blocked by arch test (web/ or services/ importing the DB layer)
+   import "github.com/kadragon/portfolio-manager/internal/db/sqlc"
    ```
 
-2. **KIS live tests carry `@pytest.mark.integration`** — Tests that call real KIS APIs must be marked. CI excludes them (`-m "not integration"` in addopts). Token issuance is rate-limited to 1/min.
+2. **KIS live tests guard with `KIS_LIVE=1`** — e.g. `internal/kis/overseas_price_live_test.go`. The test calls `t.Skip` unless `KIS_LIVE=1` is set; CI never sets it. Token issuance rate-limited to 1/min.
 
-3. **Layer dependency direction** — `web/ → services/ → repositories/ → services/database (Peewee ORM)`. Reverse imports are violations. Enforced by `tests/arch/test_layer_boundaries.py`.
+3. **Layer dependency direction** — `internal/web → internal/services → internal/repositories → internal/db`. Reverse imports are violations. Enforced by `TestServicesDoNotImportWeb`, `TestRepositoriesDoNotImportWeb`, `TestRepositoriesDoNotImportServices` in `internal/arch/arch_test.go`.
 
-4. **Secrets via `.env` only** — No hardcoded credentials, keys, or tokens in source. Enforced by bandit in pre-commit + CI.
+4. **Secrets via `.env` only** — No hardcoded credentials, keys, or tokens in source. Enforced by gosec (via golangci-lint) in pre-commit + CI.
 
-5. **Commit messages use `[TYPE]` prefix** — `[FEAT]` · `[FIX]` · `[REFACTOR]` · `[DOCS]` · `[CONSTRAINT]` · `[HARNESS]` · `[PLAN]`. Convention — not yet mechanically enforced.
+5. **Commit messages use `[TYPE]` prefix** — `[FEAT]` · `[FIX]` · `[REFACTOR]` · `[TEST]` · `[DOCS]` · `[CONSTRAINT]` · `[HARNESS]` · `[PLAN]`. Convention — not yet mechanically enforced.
 
 ## Delegation
 
