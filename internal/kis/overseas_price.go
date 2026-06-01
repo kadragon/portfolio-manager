@@ -2,6 +2,7 @@ package kis
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -46,6 +47,9 @@ func (c *OverseasPriceClient) FetchCurrentPrice(excd, ticker string) (KisPriceQu
 	if err != nil {
 		return KisPriceQuote{}, err
 	}
+	if rtCd, msgCd, msg1 := ParseKISStatus(body); rtCd != "" && rtCd != "0" {
+		return KisPriceQuote{}, fmt.Errorf("KIS price [%s@%s] rt_cd=%s %s: %s", ticker, excd, rtCd, msgCd, msg1)
+	}
 	return ParseUSPrice(body, ticker, excd), nil
 }
 
@@ -77,6 +81,9 @@ func (c *OverseasPriceClient) FetchHistoricalClose(excd, ticker string, targetDa
 	)
 	if err != nil {
 		return 0, err
+	}
+	if rtCd, msgCd, msg1 := ParseKISStatus(body); rtCd != "" && rtCd != "0" {
+		return 0, fmt.Errorf("KIS dailyprice [%s@%s] rt_cd=%s %s: %s", ticker, excd, rtCd, msgCd, msg1)
 	}
 	return parseOverseasHistorical(body, targetDate.Time.Format("20060102")), nil
 }

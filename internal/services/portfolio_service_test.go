@@ -2,6 +2,7 @@ package services_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -11,16 +12,6 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/services"
 )
-
-type mockPriceClientForPortfolio struct{}
-
-func (m *mockPriceClientForPortfolio) GetPrice(ticker, _ string) (services.PriceQuote, error) {
-	return services.PriceQuote{Symbol: ticker, Price: 74000, Currency: "KRW"}, nil
-}
-
-func (m *mockPriceClientForPortfolio) GetHistoricalClose(_ string, _ datex.Date, _ string) (float64, error) {
-	return 70000, nil
-}
 
 func newPortfolioContainer(t *testing.T) *container.Container {
 	t.Helper()
@@ -42,7 +33,7 @@ func TestHasPriceServiceFalse(t *testing.T) {
 
 func TestHasPriceServiceTrue(t *testing.T) {
 	c := newPortfolioContainer(t)
-	priceService := services.NewPriceService(c.StockPrices, nil)
+	priceService := services.NewPriceService(c.StockPrices)
 	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
 	if !ps.HasPriceService() {
 		t.Error("HasPriceService() with non-nil priceService should be true")
@@ -92,11 +83,11 @@ func TestGetPortfolioSummaryNoPriceService(t *testing.T) {
 	}
 }
 
-func TestGetPortfolioSummaryWithMockClient(t *testing.T) {
+func TestGetPortfolioSummaryWithDBPrices(t *testing.T) {
 	c := newPortfolioContainer(t)
 	ctx := context.Background()
 
-	priceService := services.NewPriceService(c.StockPrices, &mockPriceClientForPortfolio{})
+	priceService := services.NewPriceService(c.StockPrices)
 	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
 
 	summary, err := ps.GetPortfolioSummary(ctx, false)
@@ -117,7 +108,12 @@ func TestGetPortfolioSummaryWithData(t *testing.T) {
 	acc, _ := c.Accounts.Create(ctx, "내 계좌", numeric.FromInt(1000000))
 	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(10))
 
-	priceService := services.NewPriceService(c.StockPrices, &mockPriceClientForPortfolio{})
+	// Seed price into DB (PriceService is DB-only).
+	today, _ := datex.ParseDate("2026-06-01")
+	p, _ := numeric.FromString("74000")
+	_, _ = c.StockPrices.Save(ctx, "005930", today, p, "KRW", "삼성전자", sql.NullString{})
+
+	priceService := services.NewPriceService(c.StockPrices)
 	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
 
 	summary, err := ps.GetPortfolioSummary(ctx, false)
@@ -133,16 +129,6 @@ func TestGetPortfolioSummaryWithData(t *testing.T) {
 	}
 }
 
-type mockUSDPriceClient struct{}
-
-func (m *mockUSDPriceClient) GetPrice(ticker, _ string) (services.PriceQuote, error) {
-	return services.PriceQuote{Symbol: ticker, Price: 195.89, Currency: "USD"}, nil
-}
-
-func (m *mockUSDPriceClient) GetHistoricalClose(_ string, _ datex.Date, _ string) (float64, error) {
-	return 190, nil
-}
-
 func TestGetPortfolioSummaryUSDStock(t *testing.T) {
 	c := newPortfolioContainer(t)
 	ctx := context.Background()
@@ -155,9 +141,14 @@ func TestGetPortfolioSummaryUSDStock(t *testing.T) {
 	acc, _ := c.Accounts.Create(ctx, "해외계좌", numeric.Zero)
 	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(5))
 
+	// Seed USD price into DB.
+	today, _ := datex.ParseDate("2026-06-01")
+	p, _ := numeric.FromString("195.89")
+	_, _ = c.StockPrices.Save(ctx, "AAPL", today, p, "USD", "Apple Inc.", sql.NullString{String: "NASD", Valid: true})
+
 	rate, _ := numeric.FromString("1300")
 	exchangeRate := services.NewFixedExchangeRateService(rate)
-	priceService := services.NewPriceService(c.StockPrices, &mockUSDPriceClient{})
+	priceService := services.NewPriceService(c.StockPrices)
 	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, exchangeRate)
 
 	summary, err := ps.GetPortfolioSummary(ctx, false)
@@ -176,9 +167,9 @@ func TestResolveAndPersistNameWithPriceService(t *testing.T) {
 	g, _ := c.Groups.Create(ctx, "테스트그룹", 100.0)
 	stock, _ := c.Stocks.Create(ctx, "AAPL", g.ID)
 
-	priceService := services.NewPriceService(c.StockPrices, &mockPriceClientForPortfolio{})
+	priceService := services.NewPriceService(c.StockPrices)
 	ss := services.NewStockService(c.Stocks, priceService)
 	result := ss.ResolveAndPersistName(ctx, &stock)
-	// mock returns empty name for AAPL, so result is ""
+	// DB has no price/name data, result is ""
 	_ = result
 }

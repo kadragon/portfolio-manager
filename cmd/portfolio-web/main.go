@@ -30,6 +30,11 @@ func main() {
 
 	addr := defaultAddr()
 
+	syncCtx, syncCancel := context.WithCancel(context.Background())
+	if c.PriceSync != nil {
+		go c.PriceSync.Start(syncCtx)
+	}
+
 	go func() {
 		if err := e.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server: %v", err)
@@ -40,6 +45,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
+	syncCancel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := e.Shutdown(ctx); err != nil {

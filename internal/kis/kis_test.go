@@ -1537,3 +1537,90 @@ func TestKisAPIBusinessError(t *testing.T) {
 		t.Errorf("Error() = %q, want %q", got, want)
 	}
 }
+
+// ---------- ParseUSPrice base fallback ----------
+
+// TestParseUSPriceBaseWhenLastZero verifies that ParseUSPrice falls back to the
+// "base" (previous close) field when "last" is "0" (market closed) or absent.
+// KIS price endpoint returns last="0" outside trading hours; base holds the prior close.
+func TestParseUSPriceBaseWhenLastZero(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want float64
+	}{
+		{
+			name: "last=0, base has value",
+			body: `{"output":{"last":"0","base":"195.00"}}`,
+			want: 195.00,
+		},
+		{
+			name: "last empty, base has value",
+			body: `{"output":{"last":"","base":"195.00"}}`,
+			want: 195.00,
+		},
+		{
+			name: "last absent, base has value",
+			body: `{"output":{"base":"195.00"}}`,
+			want: 195.00,
+		},
+		{
+			name: "last positive (normal trading hours)",
+			body: `{"output":{"last":"196.50","base":"195.00"}}`,
+			want: 196.50,
+		},
+		{
+			name: "both absent → 0",
+			body: `{"output":{}}`,
+			want: 0,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			q := ParseUSPrice([]byte(tc.body), "AAPL", "NASD")
+			if q.Price != tc.want {
+				t.Errorf("Price = %v, want %v (body=%s)", q.Price, tc.want, tc.body)
+			}
+		})
+	}
+}
+
+// ---------- FetchCurrentPrice rt_cd error ----------
+
+// TestOverseasPriceClientFetchCurrentPriceReturnsErrorOnRtCdNonZero verifies that
+// FetchCurrentPrice returns an error when KIS responds with rt_cd != "0".
+// Without this, a 200-OK with rt_cd=1 (e.g. permission error, rate-limit) is
+// silently swallowed as price=0 → (0,KRW) fallback, with no log visibility.
+func TestOverseasPriceClientFetchCurrentPriceReturnsErrorOnRtCdNonZero(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"rt_cd":"1","msg_cd":"EGW00201","msg1":"초당 거래건수를 초과하였습니다.","output":{}}`)
+	}))
+	mgr := makeManager(t, "tok")
+	pc := &OverseasPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	_, err := pc.FetchCurrentPrice("NASD", "QQQ")
+	if err == nil {
+		t.Fatal("expected error for rt_cd=1, got nil")
+	}
+}
+
+// TestOverseasPriceClientFetchHistoricalCloseReturnsErrorOnRtCdNonZero is the
+// same gate for the dailyprice endpoint.
+func TestOverseasPriceClientFetchHistoricalCloseReturnsErrorOnRtCdNonZero(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"rt_cd":"1","msg_cd":"EGW00201","msg1":"초당 거래건수를 초과하였습니다.","output2":[]}`)
+	}))
+	mgr := makeManager(t, "tok")
+	pc := &OverseasPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	_, err := pc.FetchHistoricalClose("NASD", "QQQ", datex.New(2024, 1, 1))
+	if err == nil {
+		t.Fatal("expected error for rt_cd=1, got nil")
+	}
+}

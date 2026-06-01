@@ -60,10 +60,17 @@ func ParseUSPrice(data []byte, symbol, exchange string) KisPriceQuote {
 		resolvedSymbol = symbol
 	}
 
+	// Use "last" (real-time); fall back to "base" (previous close) when market is closed.
+	// KIS returns last="0" or absent outside trading hours; base holds the prior session close.
+	priceStr := strings.TrimSpace(output["last"])
+	if priceStr == "" || priceStr == "0" {
+		priceStr = strings.TrimSpace(output["base"])
+	}
+
 	return KisPriceQuote{
 		Symbol:   resolvedSymbol,
 		Name:     name,
-		Price:    parseFloat(strings.TrimSpace(output["last"])),
+		Price:    parseFloat(priceStr),
 		Currency: "USD",
 		Exchange: exchange,
 	}
@@ -93,6 +100,20 @@ func extractFirstOutput(data []byte) map[string]string {
 		return obj
 	}
 	return map[string]string{}
+}
+
+// ParseKISStatus reads the top-level rt_cd/msg_cd/msg1 from a KIS response.
+// Returns rtCd="1" on unmarshal failure so callers treat it as an error.
+func ParseKISStatus(data []byte) (rtCd, msgCd, msg1 string) {
+	var meta struct {
+		RtCd  string `json:"rt_cd"`
+		MsgCd string `json:"msg_cd"`
+		Msg1  string `json:"msg1"`
+	}
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return "1", "parse_error", err.Error()
+	}
+	return meta.RtCd, meta.MsgCd, meta.Msg1
 }
 
 func parseFloat(s string) float64 {
