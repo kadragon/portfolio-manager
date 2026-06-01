@@ -19,7 +19,7 @@ Branch `feat/go-rewrite`. Phases 0–8 done; Phase 9 (LLM/insights) dropped. Cut
 
 ### Phase 10 follow-ups (Go gaps vs Python)
 
-- [ ] [feat] `KIS_APP_KEY_2` round-robin not implemented in Go — `buildKISClient` logs a warning and uses the single key. Port the multi-key-set rotation if a second account is needed. (`internal/container/container.go`)
+- [x] [feat] `KIS_APP_KEY_2` round-robin — ported in #103/#107; `container.Container` now builds per-key-set KIS clients and exposes `AccountSyncByKeyID map[int64]*services.KisAccountSyncService`. (`internal/container/container.go`)
 
 ---
 
