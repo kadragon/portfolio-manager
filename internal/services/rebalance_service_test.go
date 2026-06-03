@@ -127,6 +127,58 @@ func makeHoldingsByAccount(
 
 // --- tests ---
 
+// TestBuildPlanNoTradesWhenAggregateInBand is the thesis of the aggregate-band
+// redesign: when every group (and the region) is within its aggregate band, the
+// engine emits ZERO trades — even if the per-account placement is tax-suboptimal
+// (위탁 holding 국내배당, 연금 holding 국내성장). Rebalancing rides only band
+// breaches; tax-location is corrected gradually on the trades those breaches
+// force, never by proactive relocation (which would realize capital-gains tax).
+func TestBuildPlanNoTradesWhenAggregateInBand(t *testing.T) {
+	groups := makeStandardGroups()
+	stocks := makeStandardStocks(groups)
+	// On-target aggregate: 35/15/25/10/15, region KR=50 / US=50 — all in band.
+	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
+		"국내성장": mustN("350"),
+		"국내배당": mustN("150"),
+		"해외성장": mustN("250"),
+		"해외안정": mustN("100"),
+		"해외배당": mustN("150"),
+	})
+	brokerage := makeTypedAccount("위탁", "0", models.AccountTypeBrokerage)
+	pension := makeTypedAccount("연금", "0", models.AccountTypePension)
+	// Deliberately tax-suboptimal split (위탁 holds 국내배당; 연금 holds 국내성장),
+	// but the aggregate is exactly on target.
+	holdingsByAccount := map[uuidx.UUID][]models.Holding{
+		brokerage.ID: {
+			makeHolding(brokerage.ID, stocks["국내배당"].ID, "150"),
+			makeHolding(brokerage.ID, stocks["해외성장"].ID, "250"),
+			makeHolding(brokerage.ID, stocks["해외안정"].ID, "100"),
+			makeHolding(brokerage.ID, stocks["해외배당"].ID, "150"),
+		},
+		pension.ID: {
+			makeHolding(pension.ID, stocks["국내성장"].ID, "350"),
+		},
+	}
+
+	svc := services.NewRebalanceService()
+	plan, err := svc.BuildPlan(services.BuildPlanParams{
+		Summary:           summary,
+		Accounts:          []models.Account{brokerage, pension},
+		HoldingsByAccount: holdingsByAccount,
+		Groups:            groups,
+		Stocks:            stockSlice(stocks),
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan error: %v", err)
+	}
+	if len(plan.SellRecs) != 0 {
+		t.Errorf("in-band aggregate must produce 0 sells, got %d: %+v", len(plan.SellRecs), plan.SellRecs)
+	}
+	if len(plan.BuyRecs) != 0 {
+		t.Errorf("in-band aggregate must produce 0 buys, got %d: %+v", len(plan.BuyRecs), plan.BuyRecs)
+	}
+}
+
 func TestBuildPlanFlagsUpperAndLowerBandBreaches(t *testing.T) {
 	groups := makeStandardGroups()
 	stocks := makeStandardStocks(groups)
@@ -206,9 +258,13 @@ func TestBuildPlanRegionTrigger(t *testing.T) {
 	}
 }
 
-func TestBuildPlanHalfRuleSellWithSafetyCap(t *testing.T) {
+// TestBuildPlanSellsOverBandGroupToTarget: an over-band group is sold down to its
+// TARGET (not a half-rule midpoint). With both holders taxable (brokerage) and
+// equal placement score, the larger holding is drained first.
+func TestBuildPlanSellsOverBandGroupToTarget(t *testing.T) {
 	groups := makeStandardGroups()
 	stocks := makeStandardStocks(groups)
+	// total 990; 국내성장 500 = 50.5% (> upper 40) → sell to target 35% (346.5) = 153.5.
 	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
 		"국내성장": mustN("500"),
 		"국내배당": mustN("100"),
@@ -234,18 +290,24 @@ func TestBuildPlanHalfRuleSellWithSafetyCap(t *testing.T) {
 		t.Fatalf("BuildPlan error: %v", err)
 	}
 
+	totalGrowthSell := numeric.Zero
 	byAccount := map[string]numeric.Decimal{"A": numeric.Zero, "B": numeric.Zero}
 	for _, rec := range plan.SellRecs {
-		if rec.AccountName == "A" || rec.AccountName == "B" {
-			sum := numeric.Wrap(byAccount[rec.AccountName].Add(rec.AmountKRW.Decimal))
-			byAccount[rec.AccountName] = sum
+		if rec.RebalanceGroupName == "국내성장" {
+			totalGrowthSell = numeric.Wrap(totalGrowthSell.Add(rec.AmountKRW.Decimal))
+			byAccount[rec.AccountName] = numeric.Wrap(byAccount[rec.AccountName].Add(rec.AmountKRW.Decimal))
 		}
 	}
-	if !byAccount["A"].IsZero() {
-		t.Errorf("A: expected no sells, got %v", byAccount["A"])
+	if !numericEq(totalGrowthSell, "153.5") {
+		t.Errorf("국내성장 total sell = %v, want 153.5 (sell to target)", totalGrowthSell)
 	}
-	if !numericEq(byAccount["B"], "120") {
-		t.Errorf("B: expected sell 120, got %v", byAccount["B"])
+	// A holds 300, B holds 200 — both brokerage; larger holder (A) drained first,
+	// and 153.5 < 300 so B is untouched.
+	if !numericEq(byAccount["A"], "153.5") {
+		t.Errorf("A 국내성장 sell = %v, want 153.5", byAccount["A"])
+	}
+	if !byAccount["B"].IsZero() {
+		t.Errorf("B 국내성장 sell = %v, want 0", byAccount["B"])
 	}
 }
 
@@ -318,14 +380,16 @@ func TestBuildPlanSellAllocationFixedDenominator(t *testing.T) {
 	for _, rec := range growthSells {
 		byTicker[rec.Ticker] = rec.AmountKRW
 	}
-	if !numericEq(byTicker["100001"], "50") {
-		t.Errorf("100001: want 50, got %v", byTicker["100001"])
+	// 국내성장 500 = 50% over → sell to target 35% (350) = 150, split across the
+	// three holdings by fixed denominator 250:150:100 → 75:45:30.
+	if !numericEq(byTicker["100001"], "75") {
+		t.Errorf("100001: want 75, got %v", byTicker["100001"])
 	}
-	if !numericEq(byTicker["100002"], "30") {
-		t.Errorf("100002: want 30, got %v", byTicker["100002"])
+	if !numericEq(byTicker["100002"], "45") {
+		t.Errorf("100002: want 45, got %v", byTicker["100002"])
 	}
-	if !numericEq(byTicker["100003"], "20") {
-		t.Errorf("100003: want 20, got %v", byTicker["100003"])
+	if !numericEq(byTicker["100003"], "30") {
+		t.Errorf("100003: want 30, got %v", byTicker["100003"])
 	}
 }
 
@@ -417,9 +481,14 @@ func TestBuildPlanReinvestsCashWithinSameAccount(t *testing.T) {
 	}
 }
 
-func TestBuildPlanOnlySellsInOverheatedAccount(t *testing.T) {
+// TestBuildPlanSellsFromLargerHolderWhenSameTaxStatus: 국내성장 over-band, held in
+// two brokerage accounts (same tax status, same placement score). The larger
+// holding is drained first and the sell stays within it; the smaller holder is
+// untouched.
+func TestBuildPlanSellsFromLargerHolderWhenSameTaxStatus(t *testing.T) {
 	groups := makeStandardGroups()
 	stocks := makeStandardStocks(groups)
+	// total 1200; 국내성장 550 = 45.8% (> 40) → sell to 35% (420) = 130 (< A's 350).
 	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
 		"국내성장": mustN("550"),
 		"국내배당": mustN("150"),
@@ -449,13 +518,14 @@ func TestBuildPlanOnlySellsInOverheatedAccount(t *testing.T) {
 		t.Error("expected sells")
 	}
 	for _, rec := range plan.SellRecs {
-		if rec.AccountName != "B" {
-			t.Errorf("sell should be from B, got %q", rec.AccountName)
+		if rec.AccountName != "A" {
+			t.Errorf("sell should be from larger holder A, got %q", rec.AccountName)
 		}
 	}
+	// Cash isolation: B never sold, so B never buys.
 	for _, rec := range plan.BuyRecs {
-		if rec.AccountName == "A" {
-			t.Errorf("A had no sell cash and should not buy, got buy rec %+v", rec)
+		if rec.AccountName == "B" {
+			t.Errorf("B had no sell cash and should not buy, got buy rec %+v", rec)
 		}
 	}
 }
@@ -598,18 +668,23 @@ func TestBuildPlanSameNameAccountsCorrectAttribution(t *testing.T) {
 	}
 }
 
+// TestBuildPlanPortfolioFallbackBuysIntoNewGroup: 해외성장 is under-band and the
+// only 해외성장 security (QQQ) is held in a different account (B). Account A, which
+// sold its over-band 국내성장, buys QQQ for the under-band group via the
+// portfolio-wide candidate fallback (it holds no 해외성장 of its own).
 func TestBuildPlanPortfolioFallbackBuysIntoNewGroup(t *testing.T) {
 	groups := makeStandardGroups()
 	stocks := makeStandardStocks(groups)
 	accountA := makeAccount("A", "10000")
 	accountB := makeAccount("B", "0")
+	// total 32000; 해외성장 2000 = 6.25% (< 20) under → buy ~6000; 국내성장 30000 over.
 	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
 		"국내성장": mustN("30000"),
-		"해외성장": mustN("10000"),
+		"해외성장": mustN("2000"),
 	})
 	holdingsByAccount := map[uuidx.UUID][]models.Holding{
 		accountA.ID: {makeHolding(accountA.ID, stocks["국내성장"].ID, "30000")},
-		accountB.ID: {makeHolding(accountB.ID, stocks["해외성장"].ID, "10000")},
+		accountB.ID: {makeHolding(accountB.ID, stocks["해외성장"].ID, "2000")},
 	}
 
 	svc := services.NewRebalanceService()
@@ -632,15 +707,14 @@ func TestBuildPlanPortfolioFallbackBuysIntoNewGroup(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("expected A to have a buy rec for QQQ via portfolio fallback")
+		t.Errorf("expected A to buy QQQ (해외성장) via portfolio fallback; buys=%+v", plan.BuyRecs)
 	}
 }
 
-// TestBuildPlanEtfClassificationUnblocksPensionBuy reproduces the user's bug: a
-// 연금저축 account is told to leave 국내배당 in carryover when the only 국내배당
-// security (held in another account) is unclassified (asset_class=nil → isETF=false
-// → canHold blocks it). Once classified as an ETF, the portfolio fallback can buy
-// it into the pension account. Guards the whole data→eligibility→fallback chain.
+// TestBuildPlanEtfClassificationUnblocksPensionBuy guards the data→eligibility
+// chain: a 연금저축 account under-band in 국내배당 may buy the domestic dividend ETF
+// only once it is classified (asset_class=etf). While unclassified (isETF=false),
+// canHold blocks the buy and 국내배당 surfaces as unmet.
 func TestBuildPlanEtfClassificationUnblocksPensionBuy(t *testing.T) {
 	run := func(t *testing.T, assetClass *string) models.AccountRebalanceSummary {
 		t.Helper()
@@ -650,19 +724,19 @@ func TestBuildPlanEtfClassificationUnblocksPensionBuy(t *testing.T) {
 		dom.AssetClass = assetClass
 		stocks["국내배당"] = dom
 
-		pension := makeTypedAccount("연금", "10000", models.AccountTypePension)
-		brokerage := makeTypedAccount("위탁", "0", models.AccountTypeBrokerage)
+		// total 150; 국내배당 10 = 6.7% (< 12) under → buy; 국내성장 140 over → sell.
+		pension := makeTypedAccount("연금", "8500", models.AccountTypePension)
 		summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
-			"국내배당": mustN("10000"), // 국내배당 ETF held only in 위탁
+			"국내성장": mustN("140"),
+			"국내배당": mustN("10"),
 		})
-		holdingsByAccount := map[uuidx.UUID][]models.Holding{
-			brokerage.ID: {makeHolding(brokerage.ID, stocks["국내배당"].ID, "10000")},
-			// 연금 holds nothing in 국내배당 → must come from portfolio fallback
-		}
+		holdingsByAccount := makeHoldingsByAccount([]models.Account{pension}, stocks, map[string]map[string]string{
+			"연금": {"국내성장": "140", "국내배당": "10"},
+		})
 
 		plan, err := services.NewRebalanceService().BuildPlan(services.BuildPlanParams{
 			Summary:           summary,
-			Accounts:          []models.Account{pension, brokerage},
+			Accounts:          []models.Account{pension},
 			HoldingsByAccount: holdingsByAccount,
 			Groups:            groups,
 			Stocks:            stockSlice(stocks),
@@ -688,7 +762,7 @@ func TestBuildPlanEtfClassificationUnblocksPensionBuy(t *testing.T) {
 		}
 	}
 	if !boughtDividendETF {
-		t.Errorf("classified=etf: expected 연금 to buy 000660 via fallback, BuyRecs=%v", classified.BuyRecs)
+		t.Errorf("classified=etf: expected 연금 to buy 000660, BuyRecs=%v", classified.BuyRecs)
 	}
 	if containsString(classified.UnmetGroups, "국내배당") {
 		t.Errorf("classified=etf: 국내배당 should not be unmet, got %v", classified.UnmetGroups)
@@ -701,7 +775,7 @@ func TestBuildPlanEtfClassificationUnblocksPensionBuy(t *testing.T) {
 		}
 	}
 	if !containsString(unclassified.UnmetGroups, "국내배당") {
-		t.Errorf("unclassified: 국내배당 should fall to carryover/unmet, got %v", unclassified.UnmetGroups)
+		t.Errorf("unclassified: 국내배당 should be unmet, got %v", unclassified.UnmetGroups)
 	}
 }
 
@@ -781,9 +855,10 @@ func TestBuildPlanNilAccountNotLiquidated(t *testing.T) {
 	}
 }
 
-func makeStockAC(ticker string, groupID uuidx.UUID, assetClass string) models.Stock {
+// makeStockETF builds a stock pre-classified as an ETF.
+func makeStockETF(ticker string, groupID uuidx.UUID) models.Stock {
 	s := makeStock(ticker, groupID)
-	ac := assetClass
+	ac := "etf"
 	s.AssetClass = &ac
 	return s
 }
@@ -799,21 +874,31 @@ func TestBuildPlanBlocksIneligibleBuyInIRP(t *testing.T) {
 	for _, g := range groups {
 		byName[g.Name] = g
 	}
+	// A balanced-ish spread that leaves 국내배당 (domestic ETF, eligible) and 해외배당
+	// (only the US-listed SCHD, ineligible for IRP) both UNDER their band.
 	stocks := map[string]models.Stock{
-		"국내성장": makeStockAC("069500", byName["국내성장"].ID, "etf"), // domestic ETF
-		"해외배당": makeStockAC("SCHD", byName["해외배당"].ID, "etf"),   // US-listed ETF
+		"국내성장": makeStockETF("069500", byName["국내성장"].ID),
+		"해외성장": makeStockETF("133690", byName["해외성장"].ID),
+		"해외안정": makeStockETF("360750", byName["해외안정"].ID),
+		"국내배당": makeStockETF("000660", byName["국내배당"].ID), // domestic dividend ETF
+		"해외배당": makeStockETF("SCHD", byName["해외배당"].ID),   // US-listed ETF only
 	}
+	// total 760; 국내배당 50 = 6.6% (<12) under, 해외배당 10 = 1.3% (<12) under;
+	// 국내성장/해외성장/해외안정 over-band → sells fund the buys.
 	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
-		"국내성장": mustN("100"),
-		"해외배당": mustN("50"),
+		"국내성장": mustN("350"),
+		"해외성장": mustN("250"),
+		"해외안정": mustN("100"),
+		"국내배당": mustN("50"),
+		"해외배당": mustN("10"),
 	})
 
 	svc := services.NewRebalanceService()
 
 	run := func(accountType string) (buyTickers []string, unmet []string) {
-		acc := makeTypedAccount("ACC", "850", accountType)
+		acc := makeTypedAccount("ACC", "0", accountType)
 		holdings := makeHoldingsByAccount([]models.Account{acc}, stocks, map[string]map[string]string{
-			"ACC": {"국내성장": "100", "해외배당": "50"},
+			"ACC": {"국내성장": "350", "해외성장": "250", "해외안정": "100", "국내배당": "50", "해외배당": "10"},
 		})
 		plan, err := svc.BuildPlan(services.BuildPlanParams{
 			Summary:           summary,
@@ -834,7 +919,7 @@ func TestBuildPlanBlocksIneligibleBuyInIRP(t *testing.T) {
 		return buyTickers, unmet
 	}
 
-	// IRP: SCHD blocked, 해외배당 unmet, but eligible domestic 069500 still bought.
+	// IRP: SCHD blocked, 해외배당 unmet, but eligible domestic 000660 still bought.
 	irpBuys, irpUnmet := run(models.AccountTypeIRP)
 	if containsString(irpBuys, "SCHD") {
 		t.Errorf("IRP must not buy US-listed SCHD; buys = %v", irpBuys)
@@ -842,8 +927,8 @@ func TestBuildPlanBlocksIneligibleBuyInIRP(t *testing.T) {
 	if !containsString(irpUnmet, "해외배당") {
 		t.Errorf("IRP should report 해외배당 unmet; unmet = %v", irpUnmet)
 	}
-	if !containsString(irpBuys, "069500") {
-		t.Errorf("IRP should still buy eligible domestic ETF 069500; buys = %v", irpBuys)
+	if !containsString(irpBuys, "000660") {
+		t.Errorf("IRP should still buy eligible domestic ETF 000660; buys = %v", irpBuys)
 	}
 
 	// Brokerage: SCHD is eligible and gets bought (control).
