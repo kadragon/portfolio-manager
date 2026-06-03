@@ -1113,6 +1113,24 @@ func isTaxPulledIn(st accountGroupState) bool {
 
 func sellReason(st accountGroupState, gname string, accountType *string, availableTypes map[string]bool) string {
 	if isTaxPushedOut(st) {
+		// Capacity-yield case: this account's own type is itself a tax-home for the
+		// group (preferred), yet its target was still driven down — its scarce
+		// capacity was yielded to an even higher-scored group held here. Group
+		// targets hold in aggregate, so this group's target is met in other
+		// accounts. The plain push-out wording would nonsensically name this very
+		// account as the preferred destination, so reframe.
+		if accountType != nil && isPreferredType(gname, *accountType, availableTypes) {
+			if winner := higherPriorityGroup(gname, *accountType); winner != "" {
+				return fmt.Sprintf(
+					"세금 위치 최적화 — 이 계좌(%s)는 %s의 세금 효율이 더 높아 해당 그룹을 우선 배정하고, %s은(는) 비중을 줄여 다른 계좌에서 목표를 충족합니다 (현재 %.2f%% → 이 계좌 목표 %.2f%%)",
+					accountTypeLabel(accountType), winner, gname,
+					floatOf(st.currentPct), floatOf(st.targetPct))
+			}
+			return fmt.Sprintf(
+				"세금 위치 최적화 — 이 계좌(%s) 용량을 세금 효율이 더 높은 그룹에 우선 배정하여 %s 비중을 축소합니다 (다른 계좌에서 목표를 충족, 현재 %.2f%% → 이 계좌 목표 %.2f%%)",
+				accountTypeLabel(accountType), gname,
+				floatOf(st.currentPct), floatOf(st.targetPct))
+		}
 		return fmt.Sprintf(
 			"세금 위치 최적화 — %s은(는) %s에서 세금 효율이 높아 이 계좌(%s) 비중을 축소합니다 (현재 %.2f%% → 목표 %.2f%%)",
 			gname, preferredAccountTypesLabel(gname, availableTypes), accountTypeLabel(accountType),
@@ -1183,6 +1201,37 @@ func preferredAccountTypesLabel(group string, availableTypes map[string]bool) st
 		}
 	}
 	return strings.Join(labels, "·")
+}
+
+// isPreferredType reports whether accountType is among the highest-_placementScore
+// types for group, restricted to the types the user actually holds. True means
+// this account type is itself a tax-home for the group.
+func isPreferredType(group, accountType string, availableTypes map[string]bool) bool {
+	scores := _placementScore[group]
+	maxScore := 0
+	for t, sc := range scores {
+		if (len(availableTypes) == 0 || availableTypes[t]) && sc > maxScore {
+			maxScore = sc
+		}
+	}
+	return scores[accountType] == maxScore
+}
+
+// higherPriorityGroup returns the group most strongly preferred in accountType
+// that outranks `group` there — i.e. the group that won this account's scarce
+// capacity. Returns "" when nothing outranks the group in this account type.
+func higherPriorityGroup(group, accountType string) string {
+	best := ""
+	bestScore := _placementScore[group][accountType]
+	for _, g := range _groupOrder {
+		if g == group {
+			continue
+		}
+		if sc := _placementScore[g][accountType]; sc > bestScore {
+			best, bestScore = g, sc
+		}
+	}
+	return best
 }
 
 func containsStr(ss []string, s string) bool {

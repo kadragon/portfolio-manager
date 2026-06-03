@@ -35,6 +35,38 @@ func TestSellReasonTaxLocation(t *testing.T) {
 	}
 }
 
+// TestSellReasonCapacityYield: 연금저축 sells down 해외성장 even though pension is a
+// tax-home for it — because 국내배당 (higher pension score) won the capacity. The
+// reason must NOT claim the group is tax-efficient elsewhere while naming this
+// very account; it names the displacing group and notes the aggregate target is
+// met in other accounts.
+func TestSellReasonCapacityYield(t *testing.T) {
+	pen := models.AccountTypePension
+	available := map[string]bool{
+		models.AccountTypeBrokerage: true,
+		models.AccountTypePension:   true,
+		models.AccountTypeISA:       true,
+	}
+	st := accountGroupState{
+		currentPct:           decimal.NewFromFloat(23.44),
+		targetPct:            decimal.NewFromFloat(2.25),
+		upperPct:             decimal.NewFromInt(5),
+		targetValueKRW:       decimal.NewFromInt(100),
+		mirrorTargetValueKRW: decimal.NewFromInt(1000), // pushed out: 100 < 0.5*1000
+	}
+	got := sellReason(st, "해외성장", &pen, available)
+	if !strings.Contains(got, "국내배당") {
+		t.Errorf("sell reason = %q, want displacing group 국내배당 named", got)
+	}
+	if !strings.Contains(got, "다른 계좌") {
+		t.Errorf("sell reason = %q, want aggregate-target note (다른 계좌)", got)
+	}
+	// must not produce the self-contradictory "X는 연금저축에서 효율 높아 연금저축 축소"
+	if strings.Contains(got, "해외성장은(는) 연금저축에서 세금 효율이 높아 이 계좌(연금저축)") {
+		t.Errorf("sell reason = %q, still self-contradictory", got)
+	}
+}
+
 func TestSellReasonOverheated(t *testing.T) {
 	bk := models.AccountTypeBrokerage
 	// target == uniform share (no divergence); breach is genuine overweight.
