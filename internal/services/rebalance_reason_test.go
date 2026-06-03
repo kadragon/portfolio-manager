@@ -18,7 +18,12 @@ func TestSellReasonTaxLocation(t *testing.T) {
 		targetValueKRW:       decimal.Zero,
 		mirrorTargetValueKRW: decimal.NewFromInt(1000),
 	}
-	got := sellReason(st, "국내배당", &bk)
+	available := map[string]bool{
+		models.AccountTypeBrokerage: true,
+		models.AccountTypeIRP:       true,
+		models.AccountTypePension:   true,
+	}
+	got := sellReason(st, "국내배당", &bk, available)
 	if !strings.Contains(got, "세금 위치 최적화") {
 		t.Errorf("sell reason = %q, want tax-location explanation", got)
 	}
@@ -40,7 +45,7 @@ func TestSellReasonOverheated(t *testing.T) {
 		targetValueKRW:       decimal.NewFromInt(1000),
 		mirrorTargetValueKRW: decimal.NewFromInt(1000),
 	}
-	got := sellReason(st, "국내배당", &bk)
+	got := sellReason(st, "국내배당", &bk, nil)
 	if strings.Contains(got, "세금 위치 최적화") {
 		t.Errorf("sell reason = %q, want non-tax (overheated) reason", got)
 	}
@@ -83,11 +88,25 @@ func TestBuyReasonShortfall(t *testing.T) {
 }
 
 func TestPreferredAccountTypesLabel(t *testing.T) {
-	got := preferredAccountTypesLabel("국내배당") // IRP & 연금 share top score 10
+	got := preferredAccountTypesLabel("국내배당", nil) // IRP & 연금 share top score 10
 	if !strings.Contains(got, "IRP") || !strings.Contains(got, "연금저축") {
 		t.Errorf("국내배당 preferred = %q, want IRP·연금저축", got)
 	}
-	if got := preferredAccountTypesLabel("해외배당"); got != "위탁" { // brokerage top score 8
+	if got := preferredAccountTypesLabel("해외배당", nil); got != "위탁" { // brokerage top score 8
 		t.Errorf("해외배당 preferred = %q, want 위탁", got)
+	}
+}
+
+// TestPreferredAccountTypesLabelRestricted: the label must reflect only the
+// account types the user actually holds, not the global tax preference. 국내배당
+// globally prefers IRP·연금 (score 10), but a user with only {위탁, ISA} should
+// see ISA (score 9 > 위탁 2), since that is where the group is concentrated.
+func TestPreferredAccountTypesLabelRestricted(t *testing.T) {
+	available := map[string]bool{
+		models.AccountTypeBrokerage: true,
+		models.AccountTypeISA:       true,
+	}
+	if got := preferredAccountTypesLabel("국내배당", available); got != "ISA" {
+		t.Errorf("국내배당 preferred (위탁·ISA only) = %q, want ISA", got)
 	}
 }

@@ -431,31 +431,65 @@ func buildOrderClient(auth *kisAuth) services.OrderClient {
 	}
 }
 
+// domesticInfoClassifier / overseasInfoClassifier are the slices of the KIS info
+// clients that kisAssetClassifier depends on; narrow interfaces so the routing
+// (incl. the overseas exchange fallback) is unit-testable with fakes.
+type domesticInfoClassifier interface {
+	ClassifyAssetClass(ticker string) (string, error)
+}
+
+type overseasInfoClassifier interface {
+	ClassifyAssetClass(excd, ticker string) (string, error)
+}
+
 // kisAssetClassifier routes a ticker to the domestic or overseas KIS info
 // endpoint and reports whether it is an "etf" or a "stock". It satisfies
 // services.AssetClassifier.
 type kisAssetClassifier struct {
-	domestic *kis.DomesticInfoClient
-	overseas *kis.OverseasInfoClient
+	domestic domesticInfoClassifier
+	overseas overseasInfoClassifier
 }
+
+// _overseasEXCDFallback is the order in which US exchanges are tried when the
+// stored exchange code does not pin a market (empty/unrecognized).
+var _overseasEXCDFallback = []string{"NAS", "NYS", "AMS"}
 
 func (k *kisAssetClassifier) ClassifyAssetClass(ticker, exchange string) (string, error) {
 	if kis.IsDomesticTicker(ticker) {
 		return k.domestic.ClassifyAssetClass(ticker)
 	}
-	return k.overseas.ClassifyAssetClass(overseasPriceEXCD(exchange), ticker)
+	if code, ok := overseasPriceEXCD(exchange); ok {
+		return k.overseas.ClassifyAssetClass(code, ticker)
+	}
+	// Unknown/empty exchange: the stored code doesn't identify a market, so try
+	// each US exchange in turn (up to 3× the API calls) and return the first that
+	// resolves. KIS returns a business error (rt_cd != 0) for a wrong-market
+	// lookup, so a non-nil error means "not on this exchange — try the next".
+	var lastErr error
+	for _, code := range _overseasEXCDFallback {
+		ac, err := k.overseas.ClassifyAssetClass(code, ticker)
+		if err == nil {
+			return ac, nil
+		}
+		lastErr = err
+	}
+	return "", lastErr
 }
 
 // overseasPriceEXCD maps a stored long exchange code (NASD/NYSE/AMEX) to the
-// short KIS info/price code (NAS/NYS/AMS). Unknown/empty defaults to NAS.
-func overseasPriceEXCD(exchange string) string {
+// short KIS info/price code (NAS/NYS/AMS). The bool is false when the code is
+// empty or unrecognized, signalling the caller to fall back to trying each
+// exchange in turn rather than silently assuming NASDAQ.
+func overseasPriceEXCD(exchange string) (string, bool) {
 	switch strings.ToUpper(strings.TrimSpace(exchange)) {
+	case "NASD", "NAS":
+		return "NAS", true
 	case "NYSE", "NYS":
-		return "NYS"
+		return "NYS", true
 	case "AMEX", "AMS":
-		return "AMS"
+		return "AMS", true
 	default:
-		return "NAS"
+		return "", false
 	}
 }
 

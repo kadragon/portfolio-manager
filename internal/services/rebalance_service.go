@@ -100,13 +100,17 @@ func (s *RebalanceService) BuildPlan(p BuildPlanParams) (models.RebalancePlan, e
 	accountGroupState := s.buildAccountGroupState(p.Accounts, positions, accountAUM, targetByAccountGroup, targetByGroup)
 
 	accountTypeByID := map[uuidx.UUID]*string{}
+	availableTypes := map[string]bool{}
 	for _, a := range p.Accounts {
 		accountTypeByID[a.ID] = a.AccountType
+		if a.AccountType != nil && models.ValidAccountType(*a.AccountType) {
+			availableTypes[*a.AccountType] = true
+		}
 	}
 
 	sellByAccountGroup := s.calcSellAmounts(p.Accounts, accountGroupState, accountAUM, positions, p.RestrictOverseas)
 	sellRecs, sellCashByAccount, soldByAccountGroup, sellRecsByAccountID := s.buildSellRecs(
-		sellByAccountGroup, positions, accountGroupState, accountTypeByID, p.RestrictOverseas,
+		sellByAccountGroup, positions, accountGroupState, accountTypeByID, availableTypes, p.RestrictOverseas,
 	)
 
 	buyRecs, unusedCashByAccount, unmetByAccount, buyRecsByAccountID := s.buildBuyRecs(
@@ -619,6 +623,7 @@ func (s *RebalanceService) buildSellRecs(
 	positions []accountPosition,
 	state map[[2]string]accountGroupState,
 	accountTypeByID map[uuidx.UUID]*string,
+	availableTypes map[string]bool,
 	restrictOverseas bool,
 ) (
 	[]models.RebalanceRecommendation,
@@ -728,7 +733,7 @@ func (s *RebalanceService) buildSellRecs(
 					GroupName:          pos.sourceGroup,
 					AccountName:        pos.accountName,
 					RebalanceGroupName: gname,
-					Reason:             sellReason(st, gname, accountTypeByID[e.accountID]),
+					Reason:             sellReason(st, gname, accountTypeByID[e.accountID], availableTypes),
 					TriggerType:        "group",
 					AmountKRW:          numeric.Wrap(sellKRW),
 					AmountLocal:        numeric.Wrap(amountLocal),
@@ -1097,16 +1102,20 @@ func isTaxPushedOut(st accountGroupState) bool {
 func isTaxPulledIn(st accountGroupState) bool {
 	mirror := st.mirrorTargetValueKRW
 	if !mirror.IsPositive() {
-		return st.targetValueKRW.IsPositive()
+		// targetValueKRW and mirrorTargetValueKRW both derive from
+		// (group target% × account AUM) in planTargetsByAccountGroup, so a
+		// zero mirror implies a zero target — there is nothing to pull in.
+		// Symmetric with isTaxPushedOut's mirror.IsPositive() guard.
+		return false
 	}
 	return st.targetValueKRW.GreaterThan(mirror.Mul(_taxPullInRatio))
 }
 
-func sellReason(st accountGroupState, gname string, accountType *string) string {
+func sellReason(st accountGroupState, gname string, accountType *string, availableTypes map[string]bool) string {
 	if isTaxPushedOut(st) {
 		return fmt.Sprintf(
 			"세금 위치 최적화 — %s은(는) %s에서 세금 효율이 높아 이 계좌(%s) 비중을 축소합니다 (현재 %.2f%% → 목표 %.2f%%)",
-			gname, preferredAccountTypesLabel(gname), accountTypeLabel(accountType),
+			gname, preferredAccountTypesLabel(gname, availableTypes), accountTypeLabel(accountType),
 			floatOf(st.currentPct), floatOf(st.targetPct))
 	}
 	return fmt.Sprintf("과열 그룹 절반 감축 (%.2f%% -> 목표근접, 상단 %.2f%%)",
@@ -1147,21 +1156,29 @@ func accountTypeLabelStr(t string) string {
 }
 
 // preferredAccountTypesLabel returns a "·"-joined label of the account type(s)
-// that hold `group` most tax-efficiently (highest _placementScore).
-func preferredAccountTypesLabel(group string) string {
+// that hold `group` most tax-efficiently (highest _placementScore). The max is
+// taken over the account types the user actually has (availableTypes); an empty
+// set falls back to all types. This keeps the label honest — e.g. 국내배당
+// globally prefers IRP·연금, but for a user holding only {위탁, ISA} it must name
+// ISA, since that is where the engine actually concentrated the group.
+func preferredAccountTypesLabel(group string, availableTypes map[string]bool) string {
 	scores := _placementScore[group]
+	order := []string{
+		models.AccountTypeIRP, models.AccountTypePension,
+		models.AccountTypeISA, models.AccountTypeBrokerage,
+	}
+	consider := func(t string) bool {
+		return len(availableTypes) == 0 || availableTypes[t]
+	}
 	maxScore := 0
-	for _, sc := range scores {
-		if sc > maxScore {
-			maxScore = sc
+	for _, t := range order {
+		if consider(t) && scores[t] > maxScore {
+			maxScore = scores[t]
 		}
 	}
 	var labels []string
-	for _, t := range []string{
-		models.AccountTypeIRP, models.AccountTypePension,
-		models.AccountTypeISA, models.AccountTypeBrokerage,
-	} {
-		if scores[t] == maxScore {
+	for _, t := range order {
+		if consider(t) && scores[t] == maxScore {
 			labels = append(labels, accountTypeLabelStr(t))
 		}
 	}

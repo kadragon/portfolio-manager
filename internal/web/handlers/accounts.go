@@ -271,8 +271,12 @@ func (h *AccountHandler) classifyStocks(c echo.Context) error {
 		return templates.ClassifyResultPartial(false,
 			"자산구분 분류 실패: "+html.EscapeString(err.Error())).Render(ctx, c.Response().Writer)
 	}
-	msg := fmt.Sprintf("자산구분 분류 완료 — 전체 %d · 신규분류 %d · 건너뜀 %d · 실패 %d",
-		res.Total, res.Classified, res.Skipped, res.Failed)
+	status := "완료"
+	if res.Failed > 0 {
+		status = "부분 완료" // some stocks could not be classified — surface, don't claim done
+	}
+	msg := fmt.Sprintf("자산구분 분류 %s — 전체 %d · 신규분류 %d · 건너뜀 %d · 실패 %d",
+		status, res.Total, res.Classified, res.Skipped, res.Failed)
 	return templates.ClassifyResultPartial(res.Failed == 0, msg).Render(ctx, c.Response().Writer)
 }
 

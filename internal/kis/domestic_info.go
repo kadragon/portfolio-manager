@@ -26,11 +26,14 @@ func (i DomesticStockInfo) AssetClass() string {
 }
 
 // ClassifyDomesticAssetClass maps KIS search-stock-info classification codes to
-// "etf" or "stock". A KOSPI/KOSDAQ-listed ETF reports scty_grp_id_cd "EF" (or the
-// overseas-ETF variant "FE"); ETFs also carry a non-empty etf_dvsn_cd. Anything
-// else (주권 "ST", ETN, etc.) is treated as a regular stock for eligibility.
+// "etf" or "stock". A KOSPI/KOSDAQ-listed ETF reports scty_grp_id_cd "EF"; ETFs
+// also carry a non-empty etf_dvsn_cd. Anything else (주권 "ST", ETN, etc.) is
+// treated as a regular stock for eligibility.
 func ClassifyDomesticAssetClass(sctyGrpIDCd, etfDvsnCd string) string {
 	grp := strings.ToUpper(strings.TrimSpace(sctyGrpIDCd))
+	// "EF" is the documented ETF code. "FE" is an UNVERIFIED guess at a foreign-ETF
+	// variant — kept defensively; the etf_dvsn_cd check below is the reliable
+	// secondary signal. Remove "FE" if KIS docs/responses confirm it never occurs.
 	if grp == "EF" || grp == "FE" {
 		return "etf"
 	}
