@@ -233,6 +233,31 @@ func TestStockUpdateMoveGroup(t *testing.T) {
 	}
 }
 
+func TestStockUpdateClearsAssetClass(t *testing.T) {
+	e, c := setupStocks(t)
+	g := seedGroup(t, c, "g")
+	s := seedStock(t, c, "CLR", g)
+	if _, err := c.Stocks.UpdateAssetClass(context.Background(), s.ID, "etf"); err != nil {
+		t.Fatalf("seed asset class: %v", err)
+	}
+
+	rec := do(e, http.MethodPut, "/groups/"+g.ID.String()+"/stocks/"+s.ID.String(), url.Values{
+		"ticker":      {"CLR"},
+		"asset_class": {""},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	got, err := c.Stocks.GetByID(context.Background(), s.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.AssetClass != nil {
+		t.Fatalf("asset_class after clear = %v, want nil", *got.AssetClass)
+	}
+}
+
 func TestStockUpdateEmptyTicker422(t *testing.T) {
 	e, c := setupStocks(t)
 	g := seedGroup(t, c, "g")

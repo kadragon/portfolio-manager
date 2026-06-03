@@ -130,10 +130,11 @@ func (r *StockRepository) UpdateExchange(ctx context.Context, id uuidx.UUID, exc
 	return toStock(row), nil
 }
 
-// UpdateAssetClass sets the stock's asset class ("etf" or "stock").
+// UpdateAssetClass sets the stock's asset class ("etf" or "stock"); an empty
+// value clears it back to NULL (unclassified).
 func (r *StockRepository) UpdateAssetClass(ctx context.Context, id uuidx.UUID, assetClass string) (models.Stock, error) {
 	row, err := r.q.UpdateStockAssetClass(ctx, sqlc.UpdateStockAssetClassParams{
-		AssetClass: sql.NullString{String: assetClass, Valid: true},
+		AssetClass: sql.NullString{String: assetClass, Valid: assetClass != ""},
 		UpdatedAt:  ktime.Now(),
 		ID:         id,
 	})

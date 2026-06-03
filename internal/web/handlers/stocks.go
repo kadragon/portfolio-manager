@@ -21,9 +21,13 @@ func NewStockHandler(c *container.Container) *StockHandler {
 	return &StockHandler{c: c}
 }
 
-// assetClassEquals reports whether the stored (nullable) asset class equals want.
+// assetClassEquals reports whether the stored (nullable) asset class equals
+// want, treating a nil class as equal to the empty (unclassified) value.
 func assetClassEquals(current *string, want string) bool {
-	return current != nil && *current == want
+	if current == nil {
+		return want == ""
+	}
+	return *current == want
 }
 
 // Register attaches the stock routes to the Echo instance.
@@ -188,10 +192,11 @@ func (h *StockHandler) update(c echo.Context) error {
 		}
 		updated = upd
 	}
-	// asset_class: "etf" / "stock"; empty or unknown leaves it unchanged.
+	// asset_class: "etf" / "stock", or empty to clear ("미분류"); unknown values
+	// leave it unchanged.
 	if form.Has("asset_class") {
 		assetClass := strings.TrimSpace(form.Get("asset_class"))
-		if (assetClass == "etf" || assetClass == "stock") && !assetClassEquals(updated.AssetClass, assetClass) {
+		if (assetClass == "" || assetClass == "etf" || assetClass == "stock") && !assetClassEquals(updated.AssetClass, assetClass) {
 			upd, uerr := h.c.Stocks.UpdateAssetClass(ctx, s.ID, assetClass)
 			if uerr != nil {
 				return uerr

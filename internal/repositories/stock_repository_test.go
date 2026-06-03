@@ -48,6 +48,35 @@ func TestStockAssetClassRoundTrip(t *testing.T) {
 	}
 }
 
+// TestStockAssetClassClear proves an empty value resets a previously-set
+// asset class back to NULL (the "미분류" option in the edit UI).
+func TestStockAssetClassClear(t *testing.T) {
+	groups, stocks := newStockRepos(t)
+	ctx := context.Background()
+
+	g, _ := groups.Create(ctx, "국내배당", 15.0)
+	s, _ := stocks.Create(ctx, "0052D0", g.ID)
+	if _, err := stocks.UpdateAssetClass(ctx, s.ID, "etf"); err != nil {
+		t.Fatalf("set asset class: %v", err)
+	}
+
+	cleared, err := stocks.UpdateAssetClass(ctx, s.ID, "")
+	if err != nil {
+		t.Fatalf("clear asset class: %v", err)
+	}
+	if cleared.AssetClass != nil {
+		t.Fatalf("asset_class after clear = %v, want nil", *cleared.AssetClass)
+	}
+
+	got, err := stocks.GetByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.AssetClass != nil {
+		t.Fatalf("reloaded asset_class after clear = %v, want nil", *got.AssetClass)
+	}
+}
+
 func TestStockCreateAndList(t *testing.T) {
 	groups, stocks := newStockRepos(t)
 	ctx := context.Background()
