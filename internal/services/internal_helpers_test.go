@@ -7,19 +7,6 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-func TestContainsStr(t *testing.T) {
-	ss := []string{"a", "b", "c"}
-	if !containsStr(ss, "b") {
-		t.Errorf("containsStr should find present element")
-	}
-	if containsStr(ss, "z") {
-		t.Errorf("containsStr should not find absent element")
-	}
-	if containsStr(nil, "a") {
-		t.Errorf("containsStr on nil slice should be false")
-	}
-}
-
 func TestDomKeyAndSellDomKey(t *testing.T) {
 	const domestic = "005930" // 6 digits
 	const overseas = "AAPL"

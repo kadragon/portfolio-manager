@@ -1,6 +1,6 @@
 # 0001: Account-type-aware, tax-optimal rebalancing
 
-**Status:** Accepted
+**Status:** Accepted (decision 4 revised 2026-06-04 — see Revision)
 **Date:** 2026-06-03
 
 ## Context
@@ -125,10 +125,49 @@ sqlc reads `SELECT *` in schema order.
   current data (every 해외 group has a domestic-listed ETF), but worth adding
   snapshot-aware masking later.
 
+## Revision (2026-06-04) — decision 4 superseded
+
+Decision 4 (per-account, tax-concentrated targets via a greedy over
+`_placementScore`, `planTargetsByAccountGroup`) drove **every account** toward its
+tax-optimal concentration regardless of whether the portfolio was already
+balanced. Two problems surfaced in use:
+
+1. **Over-trading.** An already in-band portfolio still churned all accounts to
+   reach per-account concentration — that is a relocation engine, not a
+   rebalancer.
+2. **Tax-realizing relocation.** Concentrating groups meant selling holdings in
+   taxable 위탁 accounts purely to relocate, realizing 양도세/배당소득세 with no
+   rebalancing need — the opposite of tax-optimal, and unmodelable precisely
+   because holdings carry no cost basis.
+
+**New model — aggregate-band-gated, tax-DIRECTED (one-account-type case
+unchanged, but the objective is inverted):**
+
+- Targets and bands hold at the **aggregate (all-accounts) level only**;
+  per-account group balance is not a goal. Trade only groups whose portfolio-wide
+  weight breaches its band — sell over-band down to target, buy under-band up to
+  target. A balanced portfolio produces **zero trades**
+  (`TestBuildPlanNoTradesWhenAggregateInBand`).
+- `_placementScore` no longer forces concentration; it only **directs** the trades
+  a breach already requires: sells are taken from tax-advantaged accounts first
+  (no realized gains tax) then from where the group is least tax-appropriate;
+  buys fill (account, under-group) cells in descending score so each under-band
+  group lands in its tax-home account. Tax-optimal placement is thus reached
+  **gradually**, riding necessary trades, never via a one-time tax-realizing move.
+- Cash isolation, `canHold` eligibility, nil-account-not-liquidated, and
+  unmet/unused reporting are all preserved.
+
+Implemented in `internal/services/rebalance_service.go`:
+`buildGroupAggregates`, `computeGroupNetActions`, `allocateSells`, rewritten
+`buildBuyRecs`. `planTargetsByAccountGroup` / `buildAccountGroupState` /
+`calcSellAmounts` removed. The 해외배당 placement row was also corrected
+(ISA > 연금·IRP > 위탁; the 2025 선환급 폐지 does not make taxable 위탁 preferable).
+
 ## References
 - Phase 1 + 2 implementation: `internal/db/db.go`, `internal/db/schema.sql`,
-  `internal/services/rebalance_service.go` (`canHold`, `_placementScore`,
-  `planTargetsByAccountGroup`), `internal/repositories/*`, account/stock edit UI.
+  `internal/services/rebalance_service.go` (`canHold`, `_placementScore`;
+  aggregate engine: `buildGroupAggregates`, `computeGroupNetActions`,
+  `allocateSells`, `buildBuyRecs`), `internal/repositories/*`, account/stock edit UI.
 - Eligibility & placement research is summarized in the Context section above
   (Korean tax rules as of 2026-06). Load-bearing sources:
   - IRP/연금 hold no individual stocks (ETFs/funds only):

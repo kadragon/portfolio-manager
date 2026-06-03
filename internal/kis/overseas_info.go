@@ -135,6 +135,24 @@ func (c *OverseasInfoClient) FetchBasicInfo(excd, ticker string) (OverseasStockI
 	}, nil
 }
 
+// OverseasSecurityGroup maps an overseas asset class to the KIS security-group
+// code used for foreign-listed securities: "etf" → "FE" (해외ETF), "stock" →
+// "FS" (해외주식). Any other value yields "" (unclassified). KIS's overseas
+// search-info does not return scty_grp_id_cd, so it is derived from the asset
+// class; this is relabeling for display/audit only — it carries no new
+// eligibility signal (foreign-listed securities are already barred from
+// 연금/IRP/ISA).
+func OverseasSecurityGroup(assetClass string) string {
+	switch assetClass {
+	case "etf":
+		return "FE"
+	case "stock":
+		return "FS"
+	default:
+		return ""
+	}
+}
+
 // ClassifyAssetClass looks up an overseas ticker and returns "etf" or "stock".
 // excd is the order-form exchange code (e.g. "NAS"/"NYS"/"AMS").
 func (c *OverseasInfoClient) ClassifyAssetClass(excd, ticker string) (string, error) {

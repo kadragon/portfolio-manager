@@ -64,14 +64,15 @@ type OrderExecution struct {
 }
 
 type Stock struct {
-	ID         uuidx.UUID
-	Ticker     string
-	GroupID    uuidx.UUID
-	Exchange   sql.NullString
-	CreatedAt  ktime.Time
-	UpdatedAt  ktime.Time
-	Name       string
-	AssetClass sql.NullString
+	ID            uuidx.UUID
+	Ticker        string
+	GroupID       uuidx.UUID
+	Exchange      sql.NullString
+	CreatedAt     ktime.Time
+	UpdatedAt     ktime.Time
+	Name          string
+	AssetClass    sql.NullString
+	SecurityGroup sql.NullString
 }
 
 type StockPrice struct {

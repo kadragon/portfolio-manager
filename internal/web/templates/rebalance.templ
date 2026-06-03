@@ -261,7 +261,7 @@ templ rebalanceRecTable(recs []models.RebalanceRecommendation, isBuy bool) {
 					<td>{ rec.RebalanceGroupName }</td>
 					<td>{ rec.GroupName }</td>
 					<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ rec.Ticker }</code></td>
-					<td>{ rec.StockName }</td>
+					<td>{ stockName(rec.StockName, rec.Ticker) }</td>
 					<td class={ "text-right font-mono font-semibold " + recAmountClass(isBuy) }>
 						if rec.Currency == "KRW" {
 							{ accountformat.FormatKRW(rec.Amount) }
@@ -323,7 +323,7 @@ templ rebalanceFailedExecs(execs []models.OrderExecutionResult) {
 				<tbody>
 					for _, ex := range failedExecs(execs) {
 						<tr>
-							<td>{ ex.Intent.StockName }</td>
+							<td>{ stockName(ex.Intent.StockName, ex.Intent.Ticker) }</td>
 							<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ ex.Intent.Ticker }</code></td>
 							<td>{ ex.Intent.Side }</td>
 							<td>{ ex.Status }</td>

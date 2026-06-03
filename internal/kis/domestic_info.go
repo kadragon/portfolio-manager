@@ -114,6 +114,24 @@ func (c *DomesticInfoClient) ClassifyAssetClass(ticker string) (string, error) {
 	return info.AssetClass(), nil
 }
 
+// ClassifySecurity looks up a domestic ticker and returns both its asset class
+// ("etf"/"stock") and its normalized KIS security-group code (scty_grp_id_cd),
+// fetched in a single search-stock-info call.
+func (c *DomesticInfoClient) ClassifySecurity(ticker string) (assetClass, securityGroup string, err error) {
+	info, err := c.FetchBasicInfo("300", ticker)
+	if err != nil {
+		return "", "", err
+	}
+	return info.AssetClass(), NormalizeSecurityGroup(info.SctyGrpIDCd), nil
+}
+
+// NormalizeSecurityGroup trims and upper-cases a raw KIS scty_grp_id_cd. It
+// returns "" for an empty/whitespace code so callers can treat it as
+// "unclassified" rather than persisting a blank.
+func NormalizeSecurityGroup(sctyGrpIDCd string) string {
+	return strings.ToUpper(strings.TrimSpace(sctyGrpIDCd))
+}
+
 func extractOutputObject(raw map[string]json.RawMessage) (map[string]string, error) {
 	blob, ok := raw["output"]
 	if !ok {

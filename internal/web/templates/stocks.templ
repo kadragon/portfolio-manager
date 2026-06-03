@@ -42,12 +42,50 @@ func assetClassMatch(s models.Stock, value string) bool {
 	return s.AssetClass != nil && *s.AssetClass == value
 }
 
+// securityGroupLabel returns a short Korean label for the KIS security-group
+// code (scty_grp_id_cd). Unknown codes render verbatim; nil renders "미지정".
+func securityGroupLabel(s models.Stock) string {
+	if s.SecurityGroup == nil {
+		return "미지정"
+	}
+	switch *s.SecurityGroup {
+	case "ST":
+		return "주식"
+	case "EF":
+		return "국내ETF"
+	case "EN":
+		return "ETN"
+	case "EW":
+		return "ELW"
+	case "MF":
+		return "펀드"
+	case "RT":
+		return "리츠"
+	case "FE":
+		return "해외ETF"
+	case "FS":
+		return "해외주식"
+	default:
+		return *s.SecurityGroup
+	}
+}
+
+// securityGroupValue returns the stored security-group code, or "" when unset,
+// for pre-filling the edit form input.
+func securityGroupValue(s models.Stock) string {
+	if s.SecurityGroup == nil {
+		return ""
+	}
+	return *s.SecurityGroup
+}
+
 // StockRow renders a single stock table row (groups/_stock_row.html).
 templ StockRow(stock models.Stock, groupID uuidx.UUID) {
 	<tr id={ "stock-" + stock.ID.String() }>
 		<td>
 			{ displayName(stock) }
 			<span class="badge badge-ghost badge-sm" title="자산 유형 (IRP/연금 적격성 결정)">{ assetClassLabel(stock) }</span>
+			<span class="badge badge-outline badge-sm" title="KIS 증권그룹 분류 (scty_grp_id_cd)">{ securityGroupLabel(stock) }</span>
 		</td>
 		<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ stock.Ticker }</code></td>
 		<td>{ displayExchange(stock) }</td>
@@ -111,6 +149,16 @@ templ StockForm(stock models.Stock, groupID uuidx.UUID, groups []models.Group) {
 				<option value="etf" if assetClassMatch(stock, "etf") { selected }>ETF</option>
 				<option value="stock" if assetClassMatch(stock, "stock") { selected }>개별주식</option>
 			</select>
+			<label class="sr-only" for={ "stock-secgrp-" + stock.ID.String() }>증권그룹 (KIS)</label>
+			<input
+				id={ "stock-secgrp-" + stock.ID.String() }
+				type="text"
+				name="security_group"
+				value={ securityGroupValue(stock) }
+				placeholder="증권그룹 (예: EF)"
+				autocomplete="off"
+				class="input input-bordered input-sm uppercase mt-1"
+			/>
 		</td>
 		<td>
 			<div class="flex flex-wrap gap-1.5">

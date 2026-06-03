@@ -144,6 +144,20 @@ func (r *StockRepository) UpdateAssetClass(ctx context.Context, id uuidx.UUID, a
 	return toStock(row), nil
 }
 
+// UpdateSecurityGroup sets the stock's KIS security-group code (scty_grp_id_cd);
+// an empty value clears it back to NULL (unclassified).
+func (r *StockRepository) UpdateSecurityGroup(ctx context.Context, id uuidx.UUID, securityGroup string) (models.Stock, error) {
+	row, err := r.q.UpdateStockSecurityGroup(ctx, sqlc.UpdateStockSecurityGroupParams{
+		SecurityGroup: sql.NullString{String: securityGroup, Valid: securityGroup != ""},
+		UpdatedAt:     ktime.Now(),
+		ID:            id,
+	})
+	if err != nil {
+		return models.Stock{}, err
+	}
+	return toStock(row), nil
+}
+
 // UpdateName sets the stock's display name.
 func (r *StockRepository) UpdateName(ctx context.Context, id uuidx.UUID, name string) (models.Stock, error) {
 	row, err := r.q.UpdateStockName(ctx, sqlc.UpdateStockNameParams{
@@ -171,14 +185,19 @@ func toStock(row sqlc.Stock) models.Stock {
 	if row.AssetClass.Valid {
 		assetClass = &row.AssetClass.String
 	}
+	var securityGroup *string
+	if row.SecurityGroup.Valid {
+		securityGroup = &row.SecurityGroup.String
+	}
 	return models.Stock{
-		ID:         row.ID,
-		Ticker:     row.Ticker,
-		GroupID:    row.GroupID,
-		Exchange:   exchange,
-		Name:       row.Name,
-		AssetClass: assetClass,
-		CreatedAt:  row.CreatedAt.Time,
-		UpdatedAt:  row.UpdatedAt.Time,
+		ID:            row.ID,
+		Ticker:        row.Ticker,
+		GroupID:       row.GroupID,
+		Exchange:      exchange,
+		Name:          row.Name,
+		AssetClass:    assetClass,
+		SecurityGroup: securityGroup,
+		CreatedAt:     row.CreatedAt.Time,
+		UpdatedAt:     row.UpdatedAt.Time,
 	}
 }

@@ -60,6 +60,7 @@ type Querier interface {
 	UpdateStockExchange(ctx context.Context, arg UpdateStockExchangeParams) (Stock, error)
 	UpdateStockGroup(ctx context.Context, arg UpdateStockGroupParams) (Stock, error)
 	UpdateStockName(ctx context.Context, arg UpdateStockNameParams) (Stock, error)
+	UpdateStockSecurityGroup(ctx context.Context, arg UpdateStockSecurityGroupParams) (Stock, error)
 	UpdateStockTicker(ctx context.Context, arg UpdateStockTickerParams) (Stock, error)
 	UpsertStockPrice(ctx context.Context, arg UpsertStockPriceParams) (StockPrice, error)
 }

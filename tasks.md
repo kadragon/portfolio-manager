@@ -29,3 +29,18 @@ Schema / lifecycle:
 - [ ] [test] no guard that every `_groupOrder` entry has a `_placementScore` key — silent default-0 score if a group is added without updating the score map (source: pr-review-toolkit:review-pr) — `internal/services/rebalance_service.go:379`
 - [ ] [refactor] `assetClassEquals` two-line helper used once — inline for parity with `accounts.go` (source: pr-review-toolkit:review-pr) — `internal/web/handlers/stocks.go:24`
 - [ ] [refactor] add `models.ValidAssetClass(s)` mirroring `ValidAccountType` to centralize "etf"/"stock" vocabulary (source: pr-review-toolkit:review-pr) — `internal/models/account.go`
+
+## Review Backlog
+
+### PR #114 — KIS ETF classification + tax-location rebalance reasoning (2026-06-03)
+
+- [ ] [debt] ETN (scty_grp_id_cd "EN") classified as "stock" blocks IRP/연금 buys; verify KR ETN eligibility for 연금/IRP and model if eligible (source: pr-review-toolkit:review-pr) — internal/kis/domestic_info.go:34, internal/services/rebalance_service.go canHold
+- [ ] [debt] Unclassifiable/failed tickers keep asset_class=nil and are re-queried on every sync/ClassifyAll; persist an "unknown" sentinel (needs schema + edit-form value decision) to stop redundant KIS calls (source: agy) — internal/services/stock_classification.go:27
+- [ ] [debt] ClassifyAll loops KIS calls synchronously with no throttle inside the web handler; large unclassified sets risk KIS rate-limit and HTTP timeout — add inter-call delay or background job + HTMX polling (source: agy) — internal/services/stock_classification.go:88
+- [ ] [doc] Drop redundant html.EscapeString in classifyStocks/syncAccount handlers (templ auto-escapes `{ message }`, output is double-escaped) — cosmetic, currently consistent with sibling handler (source: security-review) — internal/web/handlers/accounts.go:272
+
+### PR #117 — dead-code cleanup + review backlog (2026-06-04)
+
+- [ ] [debt] `security_group` update handler accepts any free-text (uppercased/trimmed) while `asset_class` enforces an allowlist; an allowlist here must match every code KIS sync legitimately writes (ST/EF/EN/EW/MF/RT/FE/FS + any unseen) or it breaks sync — needs canonical code-set decision before guarding (source: pr-review-toolkit:review-pr) — internal/web/handlers/stocks.go:209
+- [ ] [perf] `calcQuantity`/`krwToLocal` (pre-existing) divide before multiply; decimal.Div truncates, so reorder Mul-before-Div to cut precision loss — behavior-changing on pinned test expectations, needs careful test (source: agy) — internal/services/rebalance_service.go calcQuantity/krwToLocal
+- [ ] [test] no KIS_LIVE-guarded integration test that a real overseas KIS response round-trips through `OverseasSecurityGroup` (FE/FS); unit-tested only (source: pr-review-toolkit:review-pr) — internal/kis/overseas_info.go

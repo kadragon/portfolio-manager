@@ -4,6 +4,7 @@
 .antigravitycli/
 .claude/*.lock
 .claude/worktrees/
+cache/
 
 # Python tooling leftovers (transitional; removed at Go cutover)
 .venv/

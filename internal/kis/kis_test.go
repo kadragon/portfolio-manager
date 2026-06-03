@@ -963,6 +963,54 @@ func TestDomesticInfoClientClassifyAssetClass(t *testing.T) {
 	}
 }
 
+func TestDomesticInfoClientClassifySecurity(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"output":{"pdno":"0052D0","prdt_name":"국내배당ETF","prdt_type_cd":"300","scty_grp_id_cd":"EF","etf_dvsn_cd":"1"}}`)
+	}))
+	mgr := makeManager(t, "tok")
+	ic := &DomesticInfoClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", TrID: "CTPF1002R", CustType: "P",
+		Manager: mgr,
+	}
+	ac, sg, err := ic.ClassifySecurity("0052D0")
+	if err != nil {
+		t.Fatalf("ClassifySecurity: %v", err)
+	}
+	if ac != "etf" || sg != "EF" {
+		t.Errorf("ClassifySecurity = (%q,%q), want (etf,EF)", ac, sg)
+	}
+}
+
+func TestNormalizeSecurityGroup(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"EF", "EF"},
+		{" ef ", "EF"},
+		{"st", "ST"},
+		{"", ""},
+		{"  ", ""},
+	}
+	for _, tc := range cases {
+		if got := NormalizeSecurityGroup(tc.in); got != tc.want {
+			t.Errorf("NormalizeSecurityGroup(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestOverseasSecurityGroup(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"etf", "FE"},
+		{"stock", "FS"},
+		{"", ""},
+		{"bogus", ""},
+	}
+	for _, tc := range cases {
+		if got := OverseasSecurityGroup(tc.in); got != tc.want {
+			t.Errorf("OverseasSecurityGroup(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestClassifyOverseasAssetClass(t *testing.T) {
 	cases := []struct {
 		clsfName string

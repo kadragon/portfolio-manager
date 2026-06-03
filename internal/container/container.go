@@ -436,6 +436,7 @@ func buildOrderClient(auth *kisAuth) services.OrderClient {
 // (incl. the overseas exchange fallback) is unit-testable with fakes.
 type domesticInfoClassifier interface {
 	ClassifyAssetClass(ticker string) (string, error)
+	ClassifySecurity(ticker string) (assetClass, securityGroup string, err error)
 }
 
 type overseasInfoClassifier interface {
@@ -474,6 +475,22 @@ func (k *kisAssetClassifier) ClassifyAssetClass(ticker, exchange string) (string
 		lastErr = err
 	}
 	return "", lastErr
+}
+
+// Classify resolves both the asset class ("etf"/"stock") and the normalized KIS
+// security-group code in a single lookup. Domestic tickers return the real
+// scty_grp_id_cd; overseas tickers derive "FE"/"FS" from the asset class (KIS's
+// overseas search-info carries no scty_grp_id_cd). Satisfies
+// services.AssetClassifier.
+func (k *kisAssetClassifier) Classify(ticker, exchange string) (assetClass, securityGroup string, err error) {
+	if kis.IsDomesticTicker(ticker) {
+		return k.domestic.ClassifySecurity(ticker)
+	}
+	ac, err := k.ClassifyAssetClass(ticker, exchange)
+	if err != nil {
+		return "", "", err
+	}
+	return ac, kis.OverseasSecurityGroup(ac), nil
 }
 
 // overseasPriceEXCD maps a stored long exchange code (NASD/NYSE/AMEX) to the

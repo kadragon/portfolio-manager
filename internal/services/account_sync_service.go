@@ -54,6 +54,7 @@ type syncStockRepo interface {
 	Create(ctx context.Context, ticker string, groupID uuidx.UUID) (models.Stock, error)
 	UpdateName(ctx context.Context, id uuidx.UUID, name string) (models.Stock, error)
 	UpdateAssetClass(ctx context.Context, id uuidx.UUID, assetClass string) (models.Stock, error)
+	UpdateSecurityGroup(ctx context.Context, id uuidx.UUID, securityGroup string) (models.Stock, error)
 }
 
 type syncGroupRepo interface {
@@ -190,11 +191,12 @@ func (s *KisAccountSyncService) SyncAccount(
 			stocksByTicker[st.Ticker] = st
 		}
 
-		// Backfill asset_class for newly-seen or still-unclassified stocks so the
-		// rebalance engine can honor tax-account eligibility (e.g. an IRP/연금 may
-		// buy a domestic-listed ETF but not an individual stock). Best-effort: a
+		// Backfill asset_class + security_group for newly-seen or still-unclassified
+		// stocks so the rebalance engine can honor tax-account eligibility (e.g. an
+		// IRP/연금 may buy a domestic-listed ETF but not an individual stock) and the
+		// UI can show the KIS security-group classification. Best-effort: a
 		// classification failure never blocks the sync.
-		if s.classifier != nil && st.AssetClass == nil {
+		if s.classifier != nil && (st.AssetClass == nil || st.SecurityGroup == nil) {
 			if updated, changed, cerr := classifyStock(ctx, s.stocks, s.classifier, st); cerr != nil {
 				s.logEvent(baseEvent, map[string]any{
 					"event":  "sync_classify_error",

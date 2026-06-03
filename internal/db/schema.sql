@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS "stocks" (
     "updated_at" DATETIME NOT NULL,
     "name" TEXT NOT NULL,
     "asset_class" TEXT,
+    "security_group" TEXT,
     FOREIGN KEY ("group_id") REFERENCES "groups" ("id") ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS "stockmodel_group_id" ON "stocks" ("group_id");

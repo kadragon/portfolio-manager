@@ -204,6 +204,18 @@ func (h *StockHandler) update(c echo.Context) error {
 			updated = upd
 		}
 	}
+	// security_group: KIS scty_grp_id_cd (e.g. "EF"/"ST"), normalized uppercase;
+	// empty clears it back to "미지정". Free-text override of the KIS-derived value.
+	if form.Has("security_group") {
+		securityGroup := strings.ToUpper(strings.TrimSpace(form.Get("security_group")))
+		if !assetClassEquals(updated.SecurityGroup, securityGroup) {
+			upd, uerr := h.c.Stocks.UpdateSecurityGroup(ctx, s.ID, securityGroup)
+			if uerr != nil {
+				return uerr
+			}
+			updated = upd
+		}
+	}
 	return render(c, templates.StockRow(updated, updated.GroupID))
 }
 

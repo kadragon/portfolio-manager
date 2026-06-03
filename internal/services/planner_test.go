@@ -23,120 +23,79 @@ func typedAcct(t string) models.Account {
 	return models.Account{ID: uuidx.New(), AccountType: &at}
 }
 
-func sumGroupAcrossAccounts(target map[[2]string]decimal.Decimal, accounts []models.Account, group string) decimal.Decimal {
-	sum := decimal.Zero
-	for _, a := range accounts {
-		sum = sum.Add(target[[2]string{a.ID.String(), group}])
+// TestComputeGroupNetActions: only aggregate band breaches produce trade needs —
+// over-band sells down to target, under-band buys up to target, in-band nothing.
+func TestComputeGroupNetActions(t *testing.T) {
+	total := decimal.NewFromInt(1000)
+	current := map[string]decimal.Decimal{
+		"국내성장": decimal.NewFromInt(450), // 45% > 40 upper → sell 100 (to 350)
+		"국내배당": decimal.NewFromInt(150), // 15% in band → nothing
+		"해외성장": decimal.NewFromInt(250), // 25% in band → nothing
+		"해외안정": decimal.NewFromInt(100), // 10% in band → nothing
+		"해외배당": decimal.NewFromInt(50),  // 5% < 12 lower → buy 100 (to 150)
 	}
-	return sum
-}
+	agg := buildGroupAggregates(current, standardTargets(), total)
+	sellNeed, buyNeed := computeGroupNetActions(agg)
 
-// TestPlannerNilAccountUniformNotZero is the critical safety case: an
-// unclassified (nil) account must receive the uniform global target, never zero
-// — zero targets would make the engine recommend liquidating the whole account.
-func TestPlannerNilAccountUniformNotZero(t *testing.T) {
-	s := NewRebalanceService()
-	acc := models.Account{ID: uuidx.New()} // AccountType nil
-	aum := map[uuidx.UUID]decimal.Decimal{acc.ID: decimal.NewFromInt(1000)}
-
-	target := s.planTargetsByAccountGroup([]models.Account{acc}, aum, standardTargets())
-
-	// 국내성장 35% of 1000 = 350, etc. — uniform, not zero.
-	want := map[string]int64{"국내성장": 350, "국내배당": 150, "해외성장": 250, "해외안정": 100, "해외배당": 150}
-	total := decimal.Zero
-	for g, w := range want {
-		got := target[[2]string{acc.ID.String(), g}]
-		if !got.Equal(decimal.NewFromInt(w)) {
-			t.Errorf("nil account %s target = %s, want %d", g, got.String(), w)
+	if got := sellNeed["국내성장"]; !got.Equal(decimal.NewFromInt(100)) {
+		t.Errorf("국내성장 sellNeed = %s, want 100", got.String())
+	}
+	if got := buyNeed["해외배당"]; !got.Equal(decimal.NewFromInt(100)) {
+		t.Errorf("해외배당 buyNeed = %s, want 100", got.String())
+	}
+	for _, g := range []string{"국내배당", "해외성장", "해외안정"} {
+		if sellNeed[g].IsPositive() || buyNeed[g].IsPositive() {
+			t.Errorf("%s in band must produce no trade need; sell=%s buy=%s", g, sellNeed[g], buyNeed[g])
 		}
-		total = total.Add(got)
-	}
-	if !total.Equal(decimal.NewFromInt(1000)) {
-		t.Errorf("nil account total target = %s, want 1000 (fully invested, no liquidation)", total.String())
 	}
 }
 
-// TestPlannerSingleTypeMirrors confirms a homogeneous portfolio (all brokerage)
-// gets the uniform mirror — per-account target = globalPct * accountAUM.
-func TestPlannerSingleTypeMirrors(t *testing.T) {
-	s := NewRebalanceService()
-	a := typedAcct(models.AccountTypeBrokerage)
-	b := typedAcct(models.AccountTypeBrokerage)
-	aum := map[uuidx.UUID]decimal.Decimal{
-		a.ID: decimal.NewFromInt(600),
-		b.ID: decimal.NewFromInt(400),
-	}
-	target := s.planTargetsByAccountGroup([]models.Account{a, b}, aum, standardTargets())
-
-	// 국내배당 15%: a=90, b=60 (proportional to AUM).
-	if got := target[[2]string{a.ID.String(), "국내배당"}]; !got.Equal(decimal.NewFromInt(90)) {
-		t.Errorf("a 국내배당 = %s, want 90", got.String())
-	}
-	if got := target[[2]string{b.ID.String(), "국내배당"}]; !got.Equal(decimal.NewFromInt(60)) {
-		t.Errorf("b 국내배당 = %s, want 60", got.String())
-	}
-}
-
-// TestPlannerTaxLocation is the core Phase 2 behavior: with a brokerage and an
-// IRP account, 국내배당 concentrates in IRP (tax-deferred) and 해외배당 in
-// brokerage (post-2025 the foreign-dividend shelter is gone).
-func TestPlannerTaxLocation(t *testing.T) {
-	s := NewRebalanceService()
+// TestAllocateSellsPrefersTaxAdvantaged: when an over-band group is held in both a
+// taxable (위탁) and a tax-advantaged (연금) account, the sell is taken from the
+// tax-advantaged account first to avoid realizing capital-gains tax.
+func TestAllocateSellsPrefersTaxAdvantaged(t *testing.T) {
 	bk := typedAcct(models.AccountTypeBrokerage)
-	irp := typedAcct(models.AccountTypeIRP)
-	accounts := []models.Account{bk, irp}
-	// Equal AUM so capacity isn't the deciding factor — preference is.
-	aum := map[uuidx.UUID]decimal.Decimal{
-		bk.ID:  decimal.NewFromInt(500),
-		irp.ID: decimal.NewFromInt(500),
+	pen := typedAcct(models.AccountTypePension)
+	positions := []accountPosition{
+		{accountID: bk.ID, rebalanceGroup: "국내성장", ticker: "005930", valueKRW: decimal.NewFromInt(200)},
+		{accountID: pen.ID, rebalanceGroup: "국내성장", ticker: "069500", valueKRW: decimal.NewFromInt(200)},
 	}
-	target := s.planTargetsByAccountGroup(accounts, aum, standardTargets())
+	accountTypeByID := map[uuidx.UUID]*string{bk.ID: bk.AccountType, pen.ID: pen.AccountType}
+	sellNeed := map[string]decimal.Decimal{"국내성장": decimal.NewFromInt(150)}
 
-	// 국내배당 (global 15% of 1000 = 150) should land entirely in IRP (capacity 500 >> 150).
-	irpDom := target[[2]string{irp.ID.String(), "국내배당"}]
-	bkDom := target[[2]string{bk.ID.String(), "국내배당"}]
-	if !irpDom.GreaterThan(bkDom) {
-		t.Errorf("국내배당 should prefer IRP: irp=%s brokerage=%s", irpDom.String(), bkDom.String())
-	}
-	if !bkDom.IsZero() {
-		t.Errorf("국내배당 should fully fit in IRP, brokerage share = %s, want 0", bkDom.String())
-	}
+	s := NewRebalanceService()
+	sell := s.allocateSells([]models.Account{bk, pen}, positions, sellNeed, accountTypeByID, false)
 
-	// 해외배당 (global 15% = 150) should prefer brokerage.
-	bkFor := target[[2]string{bk.ID.String(), "해외배당"}]
-	irpFor := target[[2]string{irp.ID.String(), "해외배당"}]
-	if !bkFor.GreaterThan(irpFor) {
-		t.Errorf("해외배당 should prefer brokerage: brokerage=%s irp=%s", bkFor.String(), irpFor.String())
+	if got := sell[[2]string{pen.ID.String(), "국내성장"}]; !got.Equal(decimal.NewFromInt(150)) {
+		t.Errorf("pension sell = %s, want 150 (tax-advantaged exhausted first)", got)
 	}
-
-	// Conservation: each group's total across accounts == global target value.
-	for g, pct := range standardTargets() {
-		want := pct.Div(decimal.NewFromInt(100)).Mul(decimal.NewFromInt(1000))
-		got := sumGroupAcrossAccounts(target, accounts, g)
-		if !got.Equal(want) {
-			t.Errorf("group %s total = %s, want %s (conservation)", g, got.String(), want.String())
-		}
-	}
-
-	// Each account fully invested (targets sum to its AUM).
-	for _, a := range accounts {
-		sum := decimal.Zero
-		for _, g := range _groupOrder {
-			sum = sum.Add(target[[2]string{a.ID.String(), g}])
-		}
-		if !sum.Equal(decimal.NewFromInt(500)) {
-			t.Errorf("account %s targets sum = %s, want 500", a.ID.String(), sum.String())
-		}
+	if got := sell[[2]string{bk.ID.String(), "국내성장"}]; got.IsPositive() {
+		t.Errorf("brokerage sell = %s, want 0 (avoid realizing tax)", got)
 	}
 }
 
-// TestPlannerEmptyAUM returns empty without panicking.
-func TestPlannerEmptyAUM(t *testing.T) {
+// TestAllocateSellsLeastAppropriateFirst: among accounts of equal tax status, the
+// group is sold first from where it is least tax-appropriate (lower placement
+// score), nudging placement in the right direction.
+func TestAllocateSellsLeastAppropriateFirst(t *testing.T) {
+	// 해외성장 placement: pension 8 > ISA 7. Both tax-advantaged. Selling 해외성장
+	// should drain ISA (score 7, less appropriate) before pension (score 8).
+	isa := typedAcct(models.AccountTypeISA)
+	pen := typedAcct(models.AccountTypePension)
+	positions := []accountPosition{
+		{accountID: isa.ID, rebalanceGroup: "해외성장", ticker: "133690", valueKRW: decimal.NewFromInt(200)},
+		{accountID: pen.ID, rebalanceGroup: "해외성장", ticker: "368590", valueKRW: decimal.NewFromInt(200)},
+	}
+	accountTypeByID := map[uuidx.UUID]*string{isa.ID: isa.AccountType, pen.ID: pen.AccountType}
+	sellNeed := map[string]decimal.Decimal{"해외성장": decimal.NewFromInt(150)}
+
 	s := NewRebalanceService()
-	acc := typedAcct(models.AccountTypeBrokerage)
-	aum := map[uuidx.UUID]decimal.Decimal{acc.ID: decimal.Zero}
-	target := s.planTargetsByAccountGroup([]models.Account{acc}, aum, standardTargets())
-	if len(target) != 0 {
-		t.Errorf("zero-AUM portfolio should yield empty targets, got %d entries", len(target))
+	sell := s.allocateSells([]models.Account{isa, pen}, positions, sellNeed, accountTypeByID, false)
+
+	if got := sell[[2]string{isa.ID.String(), "해외성장"}]; !got.Equal(decimal.NewFromInt(150)) {
+		t.Errorf("ISA sell = %s, want 150 (least appropriate drained first)", got)
+	}
+	if got := sell[[2]string{pen.ID.String(), "해외성장"}]; got.IsPositive() {
+		t.Errorf("pension sell = %s, want 0 (more appropriate kept)", got)
 	}
 }

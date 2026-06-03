@@ -15,7 +15,6 @@ import (
 var (
 	_percentBase = decimal.NewFromInt(100)
 	_regionBand  = decimal.NewFromInt(5)
-	_two         = decimal.NewFromInt(2)
 )
 
 var _groupOrder = []string{
@@ -95,10 +94,6 @@ func (s *RebalanceService) BuildPlan(p BuildPlanParams) (models.RebalancePlan, e
 		return models.RebalancePlan{}, err
 	}
 
-	accountAUM := s.buildAccountAUM(p.Accounts, positions)
-	targetByAccountGroup := s.planTargetsByAccountGroup(p.Accounts, accountAUM, targetByGroup)
-	accountGroupState := s.buildAccountGroupState(p.Accounts, positions, accountAUM, targetByAccountGroup, targetByGroup)
-
 	accountTypeByID := map[uuidx.UUID]*string{}
 	availableTypes := map[string]bool{}
 	for _, a := range p.Accounts {
@@ -108,14 +103,23 @@ func (s *RebalanceService) BuildPlan(p BuildPlanParams) (models.RebalancePlan, e
 		}
 	}
 
-	sellByAccountGroup := s.calcSellAmounts(p.Accounts, accountGroupState, accountAUM, positions, p.RestrictOverseas)
-	sellRecs, sellCashByAccount, soldByAccountGroup, sellRecsByAccountID := s.buildSellRecs(
-		sellByAccountGroup, positions, accountGroupState, accountTypeByID, availableTypes, p.RestrictOverseas,
+	// Trade only what the AGGREGATE (all-accounts) band requires: sell groups above
+	// their upper band down to target, buy groups below their lower band up to
+	// target. In-band groups are never touched, so a portfolio already within band
+	// produces no trades. _placementScore only DIRECTS which account sells/buys —
+	// tax-location is reached gradually, riding the trades a breach already forces,
+	// never a proactive relocation that would realize capital-gains tax.
+	aggByGroup := buildGroupAggregates(currentByGroup, targetByGroup, total)
+	sellNeedByGroup, buyNeedByGroup := computeGroupNetActions(aggByGroup)
+
+	sellByAccountGroup := s.allocateSells(p.Accounts, positions, sellNeedByGroup, accountTypeByID, p.RestrictOverseas)
+	sellRecs, sellCashByAccount, sellRecsByAccountID := s.buildSellRecs(
+		sellByAccountGroup, positions, aggByGroup, accountTypeByID, availableTypes, p.RestrictOverseas,
 	)
 
 	buyRecs, unusedCashByAccount, unmetByAccount, buyRecsByAccountID := s.buildBuyRecs(
-		p.Accounts, positions, accountGroupState, accountAUM,
-		soldByAccountGroup, sellCashByAccount, tickerSnapshots, p.RestrictOverseas,
+		p.Accounts, positions, buyNeedByGroup, sellCashByAccount,
+		tickerSnapshots, aggByGroup, accountTypeByID, availableTypes, p.RestrictOverseas,
 	)
 
 	accountSummaries := s.buildAccountSummaries(
@@ -161,19 +165,16 @@ type accountPosition struct {
 	valueKRW       decimal.Decimal
 }
 
-type accountGroupState struct {
+// groupAgg holds a rebalance group's portfolio-wide (aggregate) position vs its
+// target band — the only level at which the engine decides whether to trade.
+type groupAgg struct {
 	currentValueKRW decimal.Decimal
+	targetValueKRW  decimal.Decimal
 	currentPct      decimal.Decimal
 	targetPct       decimal.Decimal
-	upperPct        decimal.Decimal
-	lowerPct        decimal.Decimal
-	targetValueKRW  decimal.Decimal
-	// mirrorTargetValueKRW is the pre-tax-location uniform target (global group
-	// target % × account AUM). Comparing targetValueKRW against it reveals whether
-	// tax-location concentration pushed this group OUT of (≈0) or INTO this account.
-	mirrorTargetValueKRW decimal.Decimal
-	isUpperBreached      bool
-	isLowerBreached      bool
+	bandPct         decimal.Decimal
+	isUpperBreached bool
+	isLowerBreached bool
 }
 
 type buyCandidate struct {
@@ -370,249 +371,163 @@ func (s *RebalanceService) buildAccountPositions(
 	return positions, nil
 }
 
-func (s *RebalanceService) buildAccountAUM(accounts []models.Account, positions []accountPosition) map[uuidx.UUID]decimal.Decimal {
-	posValByAccount := map[uuidx.UUID]decimal.Decimal{}
-	for _, p := range positions {
-		posValByAccount[p.accountID] = posValByAccount[p.accountID].Add(p.valueKRW)
-	}
-	result := map[uuidx.UUID]decimal.Decimal{}
-	for _, a := range accounts {
-		result[a.ID] = posValByAccount[a.ID].Add(a.CashBalance.Decimal)
-	}
-	return result
-}
-
 // _placementScore ranks how tax-preferred it is to place each rebalance group
 // in each account type (higher = stronger preference). Korea, 2026-06. These
 // are the contestable, adjustable tax-opinion knobs of the engine — see
-// docs/adr/0001. Cells most worth auditing: 해외배당 leaning brokerage (2025
-// 선환급 폐지 erased most of the foreign-dividend shelter in tax-advantaged
-// accounts) and 국내성장 (domestic listed-stock capital gains are largely
-// untaxed for retail, so little benefit to occupying scarce tax-advantaged
-// space).
+// docs/adr/0001. Used only to DIRECT trades that a band breach already requires
+// (which account sells / buys), never to force proactive relocation.
+//
+// 해외배당 (국내상장 해외배당 ETF): a general 위탁 account taxes both 매매차익 and
+// 분배금 as 배당소득 15.4% and folds them into 금융소득종합과세. ISA shelters them
+// (비과세 한도 후 9.9% 분리과세), and 연금/IRP defer to 연금소득세 3.3–5.5%. The 2025
+// 선환급 폐지 removed the *foreign-withholding* refund (lost in every account
+// type alike), so it does NOT make 위탁 preferable — ISA still wins, 연금/IRP
+// next, 위탁 last. (Earlier this row leaned brokerage; corrected.)
+// 국내성장 leans 위탁: domestic listed-stock gains are largely untaxed for retail,
+// so it should not occupy scarce tax-advantaged space.
 var _placementScore = map[string]map[string]int{
 	"국내배당": {models.AccountTypeIRP: 10, models.AccountTypePension: 10, models.AccountTypeISA: 9, models.AccountTypeBrokerage: 2},
 	"해외성장": {models.AccountTypeIRP: 8, models.AccountTypePension: 8, models.AccountTypeISA: 7, models.AccountTypeBrokerage: 5},
 	"해외안정": {models.AccountTypeIRP: 7, models.AccountTypePension: 7, models.AccountTypeISA: 6, models.AccountTypeBrokerage: 5},
 	"국내성장": {models.AccountTypeBrokerage: 6, models.AccountTypeISA: 4, models.AccountTypeIRP: 3, models.AccountTypePension: 3},
-	"해외배당": {models.AccountTypeBrokerage: 8, models.AccountTypeISA: 4, models.AccountTypeIRP: 3, models.AccountTypePension: 3},
+	"해외배당": {models.AccountTypeISA: 8, models.AccountTypeIRP: 6, models.AccountTypePension: 6, models.AccountTypeBrokerage: 4},
 }
 
-// planTargetsByAccountGroup computes the per-account, per-group target VALUE
-// (KRW) that the rest of the engine drives toward. Instead of mirroring the
-// global group target into every account, it concentrates each group in the
-// account TYPE that holds it most tax-efficiently, subject to each account's
-// FIXED AUM (no cross-account transfer — the engine only swaps within an
-// account, so contribution caps / withdrawal locks cannot be violated).
-//
-// Allocation is done at the (group × accountType) level then split across the
-// accounts of a type in proportion to AUM. Consequences:
-//   - A single account type (e.g. all brokerage) reproduces the old uniform
-//     mirror exactly (proportional split of the whole-portfolio target).
-//   - Divergence only appears across DIFFERENT types — i.e. when tax-location
-//     actually matters.
-//   - nil / unrecognized account_type is routed to the uniform global target
-//     (NOT zero) so an unclassified account is never told to liquidate.
-//
-// The planner does NOT enforce per-security eligibility (canHold) — that is the
-// job of the buy guard in selectBuyCandidate*. An infeasible target simply
-// surfaces as an unmet group, never an illegal buy.
-func (s *RebalanceService) planTargetsByAccountGroup(
-	accounts []models.Account,
-	accountAUM map[uuidx.UUID]decimal.Decimal,
-	targetByGroup map[string]decimal.Decimal,
-) map[[2]string]decimal.Decimal {
-	target := map[[2]string]decimal.Decimal{}
-
-	totalAUM := decimal.Zero
-	for _, a := range accounts {
-		totalAUM = totalAUM.Add(accountAUM[a.ID])
-	}
-	if !totalAUM.IsPositive() {
-		return target
-	}
-
-	groupRemaining := map[string]decimal.Decimal{}
+// buildGroupAggregates computes each group's portfolio-wide position vs its
+// target band. This is the ONLY level at which the engine decides to trade.
+func buildGroupAggregates(currentByGroup, targetByGroup map[string]decimal.Decimal, total decimal.Decimal) map[string]groupAgg {
+	agg := map[string]groupAgg{}
 	for _, g := range _groupOrder {
-		groupRemaining[g] = targetByGroup[g].Div(_percentBase).Mul(totalAUM)
-	}
-
-	// Partition accounts: recognized type vs unclassified (nil / unknown).
-	typeAccounts := map[string][]models.Account{}
-	var untyped []models.Account
-	for _, a := range accounts {
-		if a.AccountType != nil && models.ValidAccountType(*a.AccountType) {
-			t := *a.AccountType
-			typeAccounts[t] = append(typeAccounts[t], a)
-		} else {
-			untyped = append(untyped, a)
+		currentVal := currentByGroup[g]
+		targetPct := targetByGroup[g]
+		band := _groupBands[g]
+		currentPct := toPercent(currentVal, total)
+		targetVal := targetPct.Div(_percentBase).Mul(total)
+		agg[g] = groupAgg{
+			currentValueKRW: currentVal,
+			targetValueKRW:  targetVal,
+			currentPct:      currentPct,
+			targetPct:       targetPct,
+			bandPct:         band,
+			isUpperBreached: currentPct.GreaterThan(targetPct.Add(band)),
+			isLowerBreached: currentPct.LessThan(targetPct.Sub(band)),
 		}
 	}
-
-	// Unclassified accounts keep the uniform global target; reserve their share.
-	for _, a := range untyped {
-		aum := accountAUM[a.ID]
-		for _, g := range _groupOrder {
-			v := targetByGroup[g].Div(_percentBase).Mul(aum)
-			target[[2]string{a.ID.String(), g}] = v
-			groupRemaining[g] = groupRemaining[g].Sub(v)
-		}
-	}
-
-	// Capacity per recognized type.
-	typeRemaining := map[string]decimal.Decimal{}
-	for t, accs := range typeAccounts {
-		cap := decimal.Zero
-		for _, a := range accs {
-			cap = cap.Add(accountAUM[a.ID])
-		}
-		typeRemaining[t] = cap
-	}
-
-	// Deterministic fill order: score desc, then _groupOrder index, then type.
-	type cell struct {
-		group string
-		typ   string
-		score int
-		gidx  int
-	}
-	var cells []cell
-	for gi, g := range _groupOrder {
-		for t := range typeAccounts {
-			cells = append(cells, cell{g, t, _placementScore[g][t], gi})
-		}
-	}
-	sort.Slice(cells, func(i, j int) bool {
-		if cells[i].score != cells[j].score {
-			return cells[i].score > cells[j].score
-		}
-		if cells[i].gidx != cells[j].gidx {
-			return cells[i].gidx < cells[j].gidx
-		}
-		return cells[i].typ < cells[j].typ
-	})
-
-	targetByType := map[[2]string]decimal.Decimal{} // (group, type) -> value
-	for _, c := range cells {
-		fill := decimal.Min(groupRemaining[c.group], typeRemaining[c.typ])
-		if !fill.IsPositive() {
-			continue
-		}
-		key := [2]string{c.group, c.typ}
-		targetByType[key] = targetByType[key].Add(fill)
-		groupRemaining[c.group] = groupRemaining[c.group].Sub(fill)
-		typeRemaining[c.typ] = typeRemaining[c.typ].Sub(fill)
-	}
-
-	// Split each (group, type) value across that type's accounts ∝ AUM.
-	for t, accs := range typeAccounts {
-		typeCap := decimal.Zero
-		for _, a := range accs {
-			typeCap = typeCap.Add(accountAUM[a.ID])
-		}
-		if !typeCap.IsPositive() {
-			continue
-		}
-		for _, g := range _groupOrder {
-			tv := targetByType[[2]string{g, t}]
-			if !tv.IsPositive() {
-				continue
-			}
-			for _, a := range accs {
-				share := accountAUM[a.ID].Div(typeCap)
-				key := [2]string{a.ID.String(), g}
-				target[key] = target[key].Add(tv.Mul(share))
-			}
-		}
-	}
-	return target
+	return agg
 }
 
-func (s *RebalanceService) buildAccountGroupState(
-	accounts []models.Account,
-	positions []accountPosition,
-	accountAUM map[uuidx.UUID]decimal.Decimal,
-	targetValueByAccountGroup map[[2]string]decimal.Decimal,
-	targetByGroup map[string]decimal.Decimal,
-) map[[2]string]accountGroupState {
-	currentByAccountGroup := map[[2]string]decimal.Decimal{}
-	for _, p := range positions {
-		key := [2]string{p.accountID.String(), p.rebalanceGroup}
-		currentByAccountGroup[key] = currentByAccountGroup[key].Add(p.valueKRW)
-	}
-
-	state := map[[2]string]accountGroupState{}
-	for _, account := range accounts {
-		aum := accountAUM[account.ID]
-		for _, gname := range _groupOrder {
-			key := [2]string{account.ID.String(), gname}
-			currentVal := currentByAccountGroup[key]
-			currentPct := toPercent(currentVal, aum)
-			targetVal := targetValueByAccountGroup[key]
-			targetPct := toPercent(targetVal, aum)
-			mirrorTargetVal := targetByGroup[gname].Div(_percentBase).Mul(aum)
-			band := _groupBands[gname]
-			upperPct := targetPct.Add(band)
-			lowerPct := targetPct.Sub(band)
-			state[key] = accountGroupState{
-				currentValueKRW:      currentVal,
-				currentPct:           currentPct,
-				targetPct:            targetPct,
-				upperPct:             upperPct,
-				lowerPct:             lowerPct,
-				targetValueKRW:       targetVal,
-				mirrorTargetValueKRW: mirrorTargetVal,
-				isUpperBreached:      currentPct.GreaterThan(upperPct),
-				isLowerBreached:      currentPct.LessThan(lowerPct),
+// computeGroupNetActions turns aggregate band breaches into portfolio-level net
+// trade amounts (KRW): an over-band group is sold down to TARGET, an under-band
+// group is bought up to TARGET. In-band groups produce nothing.
+func computeGroupNetActions(agg map[string]groupAgg) (sellNeed, buyNeed map[string]decimal.Decimal) {
+	sellNeed = map[string]decimal.Decimal{}
+	buyNeed = map[string]decimal.Decimal{}
+	for _, g := range _groupOrder {
+		a := agg[g]
+		switch {
+		case a.isUpperBreached:
+			if d := a.currentValueKRW.Sub(a.targetValueKRW); d.IsPositive() {
+				sellNeed[g] = d
+			}
+		case a.isLowerBreached:
+			if d := a.targetValueKRW.Sub(a.currentValueKRW); d.IsPositive() {
+				buyNeed[g] = d
 			}
 		}
 	}
-	return state
+	return sellNeed, buyNeed
 }
 
-func (s *RebalanceService) calcSellAmounts(
+// taxAdvantaged reports whether selling in this account type realizes NO capital
+// gains tax (연금/IRP/ISA defer or shelter; nil/위탁 are taxable). Used to bias
+// sells away from taxable accounts so a band-breach rebalance does not trigger
+// avoidable 양도세/배당소득세.
+func taxAdvantaged(accountType *string) bool {
+	if accountType == nil {
+		return false
+	}
+	switch *accountType {
+	case models.AccountTypeIRP, models.AccountTypePension, models.AccountTypeISA:
+		return true
+	default:
+		return false
+	}
+}
+
+// allocateSells distributes each over-band group's portfolio-level sell amount
+// across the accounts that hold it. Account order, per group:
+//  1. tax-advantaged accounts first (selling there realizes no gains tax),
+//  2. then where the group is least tax-appropriate (ascending _placementScore —
+//     i.e. move it out of accounts it shouldn't occupy, nudging placement),
+//  3. larger holding first, then accountID for determinism.
+//
+// Selling is never blocked by eligibility (canHold guards buys only); RestrictOverseas
+// still skips overseas tickers.
+func (s *RebalanceService) allocateSells(
 	accounts []models.Account,
-	state map[[2]string]accountGroupState,
-	accountAUM map[uuidx.UUID]decimal.Decimal,
 	positions []accountPosition,
+	sellNeedByGroup map[string]decimal.Decimal,
+	accountTypeByID map[uuidx.UUID]*string,
 	restrictOverseas bool,
 ) map[[2]string]decimal.Decimal {
-	var eligibleKeys map[[2]string]bool
-	if restrictOverseas {
-		eligibleKeys = map[[2]string]bool{}
-		for _, p := range positions {
-			if isDomesticTicker(p.ticker) {
-				eligibleKeys[[2]string{p.accountID.String(), p.rebalanceGroup}] = true
-			}
+	heldByAccountGroup := map[[2]string]decimal.Decimal{}
+	for _, p := range positions {
+		if restrictOverseas && !isDomesticTicker(p.ticker) {
+			continue
 		}
+		key := [2]string{p.accountID.String(), p.rebalanceGroup}
+		heldByAccountGroup[key] = heldByAccountGroup[key].Add(p.valueKRW)
 	}
 
 	sell := map[[2]string]decimal.Decimal{}
-	for _, account := range accounts {
-		aum := accountAUM[account.ID]
-		if !aum.IsPositive() {
+	for _, gname := range _groupOrder {
+		need := sellNeedByGroup[gname]
+		if !need.IsPositive() {
 			continue
 		}
-		for _, gname := range _groupOrder {
-			key := [2]string{account.ID.String(), gname}
-			if eligibleKeys != nil && !eligibleKeys[key] {
+		type cand struct {
+			id           uuidx.UUID
+			held         decimal.Decimal
+			taxAdvantage bool
+			score        int
+		}
+		var cands []cand
+		for _, a := range accounts {
+			held := heldByAccountGroup[[2]string{a.ID.String(), gname}]
+			if !held.IsPositive() {
 				continue
 			}
-			st := state[key]
-			if !st.isUpperBreached {
+			at := accountTypeByID[a.ID]
+			sc := 0
+			if at != nil {
+				sc = _placementScore[gname][*at]
+			}
+			cands = append(cands, cand{a.ID, held, taxAdvantaged(at), sc})
+		}
+		sort.Slice(cands, func(i, j int) bool {
+			if cands[i].taxAdvantage != cands[j].taxAdvantage {
+				return cands[i].taxAdvantage // tax-advantaged (no realized tax) first
+			}
+			if cands[i].score != cands[j].score {
+				return cands[i].score < cands[j].score // least tax-appropriate first
+			}
+			if !cands[i].held.Equal(cands[j].held) {
+				return cands[i].held.GreaterThan(cands[j].held)
+			}
+			return cands[i].id.String() < cands[j].id.String()
+		})
+
+		remaining := need
+		for _, c := range cands {
+			if !remaining.IsPositive() {
+				break
+			}
+			take := decimal.Min(remaining, c.held)
+			if !take.IsPositive() {
 				continue
 			}
-			midpoint := st.currentPct.Add(st.targetPct).Div(_two)
-			nextWeight := decimal.Min(midpoint, st.upperPct)
-			sellWeight := st.currentPct.Sub(nextWeight)
-			if !sellWeight.IsPositive() {
-				continue
-			}
-			sellKRW := sellWeight.Div(_percentBase).Mul(aum)
-			sellKRW = decimal.Min(sellKRW, st.currentValueKRW)
-			if sellKRW.IsPositive() {
-				sell[key] = sellKRW
-			}
+			sell[[2]string{c.id.String(), gname}] = take
+			remaining = remaining.Sub(take)
 		}
 	}
 	return sell
@@ -621,19 +536,17 @@ func (s *RebalanceService) calcSellAmounts(
 func (s *RebalanceService) buildSellRecs(
 	sellByAccountGroup map[[2]string]decimal.Decimal,
 	positions []accountPosition,
-	state map[[2]string]accountGroupState,
+	aggByGroup map[string]groupAgg,
 	accountTypeByID map[uuidx.UUID]*string,
 	availableTypes map[string]bool,
 	restrictOverseas bool,
 ) (
 	[]models.RebalanceRecommendation,
 	map[uuidx.UUID]decimal.Decimal,
-	map[[2]string]decimal.Decimal,
 	map[uuidx.UUID][]models.RebalanceRecommendation,
 ) {
 	var recs []models.RebalanceRecommendation
 	sellCashByAccount := map[uuidx.UUID]decimal.Decimal{}
-	soldByAccountGroup := map[[2]string]decimal.Decimal{}
 	recsByAccountID := map[uuidx.UUID][]models.RebalanceRecommendation{}
 
 	for _, gname := range _groupOrder {
@@ -655,8 +568,6 @@ func (s *RebalanceService) buildSellRecs(
 
 		for _, e := range entries {
 			targetSell := e.sellKRW
-			key := [2]string{e.accountID.String(), gname}
-			st := state[key]
 
 			accountPositions := filterPositions(positions, func(p accountPosition) bool {
 				return p.accountID == e.accountID &&
@@ -733,7 +644,7 @@ func (s *RebalanceService) buildSellRecs(
 					GroupName:          pos.sourceGroup,
 					AccountName:        pos.accountName,
 					RebalanceGroupName: gname,
-					Reason:             sellReason(st, gname, accountTypeByID[e.accountID], availableTypes),
+					Reason:             sellReason(aggByGroup[gname], gname, accountTypeByID[e.accountID], availableTypes),
 					TriggerType:        "group",
 					AmountKRW:          numeric.Wrap(sellKRW),
 					AmountLocal:        numeric.Wrap(amountLocal),
@@ -742,21 +653,29 @@ func (s *RebalanceService) buildSellRecs(
 				recsByAccountID[e.accountID] = append(recsByAccountID[e.accountID], rec)
 				remaining = remaining.Sub(sellKRW)
 				sellCashByAccount[e.accountID] = sellCashByAccount[e.accountID].Add(sellKRW)
-				soldByAccountGroup[key] = soldByAccountGroup[key].Add(sellKRW)
 			}
 		}
 	}
-	return recs, sellCashByAccount, soldByAccountGroup, recsByAccountID
+	return recs, sellCashByAccount, recsByAccountID
 }
 
+// buildBuyRecs deploys each account's cash (starting cash + sell proceeds) toward
+// the groups that are UNDER their aggregate band, never beyond the portfolio-level
+// buyNeed. Buys are tax-DIRECTED: (account, under-group) cells are filled in
+// descending _placementScore order, so each under-band group is bought first in
+// the account type that holds it most tax-efficiently — cash isolation intact
+// (an account never buys more than it holds in cash). Eligibility (canHold) gates
+// every buy; a group with remaining need but no eligible candidate in an account
+// surfaces as that account's unmet group (existing reporting preserved).
 func (s *RebalanceService) buildBuyRecs(
 	accounts []models.Account,
 	positions []accountPosition,
-	state map[[2]string]accountGroupState,
-	accountAUM map[uuidx.UUID]decimal.Decimal,
-	soldByAccountGroup map[[2]string]decimal.Decimal,
+	buyNeedByGroup map[string]decimal.Decimal,
 	sellCashByAccount map[uuidx.UUID]decimal.Decimal,
 	snapshots map[string]*tickerSnapshot,
+	aggByGroup map[string]groupAgg,
+	accountTypeByID map[uuidx.UUID]*string,
+	availableTypes map[string]bool,
 	restrictOverseas bool,
 ) (
 	[]models.RebalanceRecommendation,
@@ -765,135 +684,129 @@ func (s *RebalanceService) buildBuyRecs(
 	map[uuidx.UUID][]models.RebalanceRecommendation,
 ) {
 	var recs []models.RebalanceRecommendation
-	unusedCashByAccount := map[uuidx.UUID]decimal.Decimal{}
-	unmetByAccount := map[uuidx.UUID][]string{}
 	recsByAccountID := map[uuidx.UUID][]models.RebalanceRecommendation{}
 
-	for _, account := range accounts {
-		cash := account.CashBalance.Decimal.Add(sellCashByAccount[account.ID])
-		aum := accountAUM[account.ID]
-
-		accountNeed := map[string]decimal.Decimal{}
-		accountProjected := map[string]decimal.Decimal{}
-		for _, gname := range _groupOrder {
-			key := [2]string{account.ID.String(), gname}
-			st := state[key]
-			sold := soldByAccountGroup[key]
-			projected := st.currentValueKRW.Sub(sold)
-			accountNeed[gname] = decimal.Max(decimal.Zero, st.targetValueKRW.Sub(projected))
-			accountProjected[gname] = projected
-		}
-
-		var unmetGroups []string
-		blockedGroups := map[string]bool{}
-
-		for cash.IsPositive() {
-			gname := s.pickNextGroup(accountNeed, blockedGroups)
-			if gname == "" {
-				break
-			}
-			need := accountNeed[gname]
-			if !need.IsPositive() {
-				blockedGroups[gname] = true
-				continue
-			}
-
-			candidate := s.selectBuyCandidateAccountScoped(account.ID, gname, positions, restrictOverseas, account.AccountType)
-			if candidate == nil {
-				candidate = s.selectBuyCandidatePortfolioFallback(gname, snapshots, restrictOverseas, account.AccountType)
-			}
-			if candidate == nil {
-				unmetGroups = append(unmetGroups, gname)
-				blockedGroups[gname] = true
-				continue
-			}
-
-			buyKRW := decimal.Min(cash, need)
-			if !buyKRW.IsPositive() {
-				break
-			}
-
-			amountLocal := krwToLocal(buyKRW, candidate.currency, candidate.valueLocalBase, candidate.valueKRWBase)
-			qty := calcQuantity(amountLocal, candidate.valueLocalBase, candidate.qtyBase)
-
-			key := [2]string{account.ID.String(), gname}
-			st := state[key]
-			projectedPct := toPercent(accountProjected[gname], aum)
-
-			rec := models.RebalanceRecommendation{
-				Ticker:             candidate.ticker,
-				Action:             models.ActionBuy,
-				Amount:             numeric.Wrap(amountLocal),
-				Priority:           len(recs) + 1,
-				Currency:           candidate.currency,
-				Quantity:           ptrDecimal(qty),
-				StockName:          candidate.stockName,
-				GroupName:          candidate.sourceGroup,
-				AccountName:        account.Name,
-				RebalanceGroupName: gname,
-				Reason:             buyReason(st, projectedPct, gname, account.AccountType),
-				TriggerType:        "group",
-				AmountKRW:          numeric.Wrap(buyKRW),
-				AmountLocal:        numeric.Wrap(amountLocal),
-			}
-			recs = append(recs, rec)
-			recsByAccountID[account.ID] = append(recsByAccountID[account.ID], rec)
-
-			cash = cash.Sub(buyKRW)
-			accountProjected[gname] = accountProjected[gname].Add(buyKRW)
-			accountNeed[gname] = decimal.Max(decimal.Zero, accountNeed[gname].Sub(buyKRW))
-		}
-
-		// collect remaining unmet groups (positive need, no candidate found)
-		for _, gname := range _groupOrder {
-			if blockedGroups[gname] {
-				continue
-			}
-			if accountNeed[gname].IsPositive() {
-				candidate := s.selectBuyCandidateAccountScoped(account.ID, gname, positions, restrictOverseas, account.AccountType)
-				if candidate == nil {
-					candidate = s.selectBuyCandidatePortfolioFallback(gname, snapshots, restrictOverseas, account.AccountType)
-				}
-				if candidate == nil && !containsStr(unmetGroups, gname) {
-					unmetGroups = append(unmetGroups, gname)
-				}
-			}
-		}
-
-		unusedCashByAccount[account.ID] = cash
-		unmetByAccount[account.ID] = unmetGroups
+	cashByAccount := map[uuidx.UUID]decimal.Decimal{}
+	for _, a := range accounts {
+		cashByAccount[a.ID] = a.CashBalance.Decimal.Add(sellCashByAccount[a.ID])
 	}
-	return recs, unusedCashByAccount, unmetByAccount, recsByAccountID
-}
-
-func (s *RebalanceService) pickNextGroup(need map[string]decimal.Decimal, blocked map[string]bool) string {
-	type entry struct {
-		name  string
-		need  decimal.Decimal
-		index int
+	remaining := map[string]decimal.Decimal{}
+	for g, v := range buyNeedByGroup {
+		remaining[g] = v
 	}
-	var candidates []entry
-	for i, name := range _groupOrder {
-		if blocked[name] {
+
+	// (account, under-group) cells, filled in descending tax-placement score so the
+	// most tax-appropriate account buys each group first.
+	type cell struct {
+		acctID uuidx.UUID
+		group  string
+		score  int
+		gidx   int
+	}
+	gidxByGroup := map[string]int{}
+	for i, g := range _groupOrder {
+		gidxByGroup[g] = i
+	}
+	var cells []cell
+	for _, a := range accounts {
+		at := accountTypeByID[a.ID]
+		for _, g := range _groupOrder {
+			if !remaining[g].IsPositive() {
+				continue
+			}
+			sc := -1
+			if at != nil {
+				sc = _placementScore[g][*at]
+			}
+			cells = append(cells, cell{a.ID, g, sc, gidxByGroup[g]})
+		}
+	}
+	sort.Slice(cells, func(i, j int) bool {
+		if cells[i].score != cells[j].score {
+			return cells[i].score > cells[j].score
+		}
+		if cells[i].gidx != cells[j].gidx {
+			return cells[i].gidx < cells[j].gidx
+		}
+		return cells[i].acctID.String() < cells[j].acctID.String()
+	})
+
+	accountByID := map[uuidx.UUID]models.Account{}
+	for _, a := range accounts {
+		accountByID[a.ID] = a
+	}
+	// couldNotBuy[acct][group] = the account had cash but no eligible candidate.
+	couldNotBuy := map[uuidx.UUID]map[string]bool{}
+
+	for _, c := range cells {
+		need := remaining[c.group]
+		if !need.IsPositive() {
 			continue
 		}
-		n := need[name]
-		if n.IsPositive() {
-			candidates = append(candidates, entry{name, n, i})
+		cash := cashByAccount[c.acctID]
+		if !cash.IsPositive() {
+			continue
 		}
-	}
-	if len(candidates) == 0 {
-		return ""
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		ci, cj := candidates[i], candidates[j]
-		cmp := ci.need.Cmp(cj.need)
-		if cmp != 0 {
-			return cmp > 0 // highest need first
+		account := accountByID[c.acctID]
+		candidate := s.selectBuyCandidateAccountScoped(c.acctID, c.group, positions, restrictOverseas, account.AccountType)
+		if candidate == nil {
+			candidate = s.selectBuyCandidatePortfolioFallback(c.group, snapshots, restrictOverseas, account.AccountType)
 		}
-		return ci.index > cj.index // tie: later in _groupOrder first (reverse index)
-	})
-	return candidates[0].name
+		if candidate == nil {
+			if couldNotBuy[c.acctID] == nil {
+				couldNotBuy[c.acctID] = map[string]bool{}
+			}
+			couldNotBuy[c.acctID][c.group] = true
+			continue
+		}
+
+		buyKRW := decimal.Min(cash, need)
+		if !buyKRW.IsPositive() {
+			continue
+		}
+		amountLocal := krwToLocal(buyKRW, candidate.currency, candidate.valueLocalBase, candidate.valueKRWBase)
+		qty := calcQuantity(amountLocal, candidate.valueLocalBase, candidate.qtyBase)
+
+		rec := models.RebalanceRecommendation{
+			Ticker:             candidate.ticker,
+			Action:             models.ActionBuy,
+			Amount:             numeric.Wrap(amountLocal),
+			Priority:           len(recs) + 1,
+			Currency:           candidate.currency,
+			Quantity:           ptrDecimal(qty),
+			StockName:          candidate.stockName,
+			GroupName:          candidate.sourceGroup,
+			AccountName:        account.Name,
+			RebalanceGroupName: c.group,
+			Reason:             buyReason(aggByGroup[c.group], c.group, account.AccountType, availableTypes),
+			TriggerType:        "group",
+			AmountKRW:          numeric.Wrap(buyKRW),
+			AmountLocal:        numeric.Wrap(amountLocal),
+		}
+		recs = append(recs, rec)
+		recsByAccountID[c.acctID] = append(recsByAccountID[c.acctID], rec)
+		cashByAccount[c.acctID] = cash.Sub(buyKRW)
+		remaining[c.group] = need.Sub(buyKRW)
+	}
+
+	// Unused cash + unmet groups per account. A group is unmet for an account that
+	// still has cash but could not buy it (ineligible / no candidate) while the
+	// group still needs portfolio-level buying.
+	unusedCashByAccount := map[uuidx.UUID]decimal.Decimal{}
+	unmetByAccount := map[uuidx.UUID][]string{}
+	for _, a := range accounts {
+		unusedCashByAccount[a.ID] = cashByAccount[a.ID]
+		var unmet []string
+		if cashByAccount[a.ID].IsPositive() {
+			for _, g := range _groupOrder {
+				if remaining[g].IsPositive() && couldNotBuy[a.ID][g] {
+					unmet = append(unmet, g)
+				}
+			}
+		}
+		unmetByAccount[a.ID] = unmet
+	}
+	return recs, unusedCashByAccount, unmetByAccount, recsByAccountID
 }
 
 func (s *RebalanceService) selectBuyCandidateAccountScoped(
@@ -1081,73 +994,25 @@ func floatOf(d decimal.Decimal) float64 {
 	return f
 }
 
-// --- recommendation reasons (explain the WHY, incl. tax-location) ---
+// --- recommendation reasons ---
+//
+// Reasons are framed at the AGGREGATE level: a group trades because its
+// portfolio-wide weight breached its band. The account is named only to explain
+// WHERE the necessary trade lands (tax-direction), never implying a per-account
+// target.
 
-var (
-	_taxPushOutRatio = decimal.NewFromFloat(0.5) // target ≤ 50% of uniform share ⇒ pushed out
-	_taxPullInRatio  = decimal.NewFromFloat(1.5) // target ≥ 150% of uniform share ⇒ pulled in
-)
-
-// isTaxPushedOut reports whether tax-location concentration drove this account's
-// target for the group well below its uniform (pre-tax-location) share — i.e. the
-// group is held more tax-efficiently elsewhere, so this account is being emptied.
-func isTaxPushedOut(st accountGroupState) bool {
-	mirror := st.mirrorTargetValueKRW
-	return mirror.IsPositive() && st.targetValueKRW.LessThan(mirror.Mul(_taxPushOutRatio))
+func sellReason(agg groupAgg, gname string, accountType *string, availableTypes map[string]bool) string {
+	return fmt.Sprintf(
+		"합산 비중 초과 — %s 현재 %.2f%% > 목표 %.2f%%(±%.0f%%). 세금 영향이 작은 계좌부터 목표까지 감축, 이 계좌(%s)에서 매도 (세금 선호: %s)",
+		gname, floatOf(agg.currentPct), floatOf(agg.targetPct), floatOf(agg.bandPct),
+		accountTypeLabel(accountType), preferredAccountTypesLabel(gname, availableTypes))
 }
 
-// isTaxPulledIn reports whether tax-location concentration drove this account's
-// target for the group well above its uniform share — i.e. this account type
-// holds the group most tax-efficiently, so the group is concentrated here.
-func isTaxPulledIn(st accountGroupState) bool {
-	mirror := st.mirrorTargetValueKRW
-	if !mirror.IsPositive() {
-		// targetValueKRW and mirrorTargetValueKRW both derive from
-		// (group target% × account AUM) in planTargetsByAccountGroup, so a
-		// zero mirror implies a zero target — there is nothing to pull in.
-		// Symmetric with isTaxPushedOut's mirror.IsPositive() guard.
-		return false
-	}
-	return st.targetValueKRW.GreaterThan(mirror.Mul(_taxPullInRatio))
-}
-
-func sellReason(st accountGroupState, gname string, accountType *string, availableTypes map[string]bool) string {
-	if isTaxPushedOut(st) {
-		// Capacity-yield case: this account's own type is itself a tax-home for the
-		// group (preferred), yet its target was still driven down — its scarce
-		// capacity was yielded to an even higher-scored group held here. Group
-		// targets hold in aggregate, so this group's target is met in other
-		// accounts. The plain push-out wording would nonsensically name this very
-		// account as the preferred destination, so reframe.
-		if accountType != nil && isPreferredType(gname, *accountType, availableTypes) {
-			if winner := higherPriorityGroup(gname, *accountType); winner != "" {
-				return fmt.Sprintf(
-					"세금 위치 최적화 — 이 계좌(%s)는 %s의 세금 효율이 더 높아 해당 그룹을 우선 배정하고, %s은(는) 비중을 줄여 다른 계좌에서 목표를 충족합니다 (현재 %.2f%% → 이 계좌 목표 %.2f%%)",
-					accountTypeLabel(accountType), winner, gname,
-					floatOf(st.currentPct), floatOf(st.targetPct))
-			}
-			return fmt.Sprintf(
-				"세금 위치 최적화 — 이 계좌(%s) 용량을 세금 효율이 더 높은 그룹에 우선 배정하여 %s 비중을 축소합니다 (다른 계좌에서 목표를 충족, 현재 %.2f%% → 이 계좌 목표 %.2f%%)",
-				accountTypeLabel(accountType), gname,
-				floatOf(st.currentPct), floatOf(st.targetPct))
-		}
-		return fmt.Sprintf(
-			"세금 위치 최적화 — %s은(는) %s에서 세금 효율이 높아 이 계좌(%s) 비중을 축소합니다 (현재 %.2f%% → 목표 %.2f%%)",
-			gname, preferredAccountTypesLabel(gname, availableTypes), accountTypeLabel(accountType),
-			floatOf(st.currentPct), floatOf(st.targetPct))
-	}
-	return fmt.Sprintf("과열 그룹 절반 감축 (%.2f%% -> 목표근접, 상단 %.2f%%)",
-		floatOf(st.currentPct), floatOf(st.upperPct))
-}
-
-func buyReason(st accountGroupState, projectedPct decimal.Decimal, gname string, accountType *string) string {
-	if isTaxPulledIn(st) {
-		return fmt.Sprintf(
-			"세금 위치 최적화 — %s 계좌가 %s의 세금 효율이 가장 높아 집중 매수합니다 (목표 %.2f%%)",
-			accountTypeLabel(accountType), gname, floatOf(st.targetPct))
-	}
-	return fmt.Sprintf("목표 대비 부족분 보충 (%.2f%% -> 목표 %.2f%%)",
-		floatOf(projectedPct), floatOf(st.targetPct))
+func buyReason(agg groupAgg, gname string, accountType *string, availableTypes map[string]bool) string {
+	return fmt.Sprintf(
+		"합산 비중 부족 — %s 현재 %.2f%% < 목표 %.2f%%(±%.0f%%). 세금 효율이 높은 이 계좌(%s)에 우선 매수 (세금 선호: %s)",
+		gname, floatOf(agg.currentPct), floatOf(agg.targetPct), floatOf(agg.bandPct),
+		accountTypeLabel(accountType), preferredAccountTypesLabel(gname, availableTypes))
 }
 
 // accountTypeLabel maps an account type code to a Korean display label.
@@ -1201,46 +1066,6 @@ func preferredAccountTypesLabel(group string, availableTypes map[string]bool) st
 		}
 	}
 	return strings.Join(labels, "·")
-}
-
-// isPreferredType reports whether accountType is among the highest-_placementScore
-// types for group, restricted to the types the user actually holds. True means
-// this account type is itself a tax-home for the group.
-func isPreferredType(group, accountType string, availableTypes map[string]bool) bool {
-	scores := _placementScore[group]
-	maxScore := 0
-	for t, sc := range scores {
-		if (len(availableTypes) == 0 || availableTypes[t]) && sc > maxScore {
-			maxScore = sc
-		}
-	}
-	return scores[accountType] == maxScore
-}
-
-// higherPriorityGroup returns the group most strongly preferred in accountType
-// that outranks `group` there — i.e. the group that won this account's scarce
-// capacity. Returns "" when nothing outranks the group in this account type.
-func higherPriorityGroup(group, accountType string) string {
-	best := ""
-	bestScore := _placementScore[group][accountType]
-	for _, g := range _groupOrder {
-		if g == group {
-			continue
-		}
-		if sc := _placementScore[g][accountType]; sc > bestScore {
-			best, bestScore = g, sc
-		}
-	}
-	return best
-}
-
-func containsStr(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 // isDomesticTicker mirrors kis.IsDomesticTicker without creating an import cycle.
