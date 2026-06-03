@@ -258,6 +258,54 @@ func TestStockUpdateClearsAssetClass(t *testing.T) {
 	}
 }
 
+func TestStockUpdateSetsSecurityGroup(t *testing.T) {
+	e, c := setupStocks(t)
+	g := seedGroup(t, c, "g")
+	s := seedStock(t, c, "SEC", g)
+
+	// lowercase input must be normalized to uppercase KIS code on persist.
+	rec := do(e, http.MethodPut, "/groups/"+g.ID.String()+"/stocks/"+s.ID.String(), url.Values{
+		"ticker":         {"SEC"},
+		"security_group": {"ef"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	got, err := c.Stocks.GetByID(context.Background(), s.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.SecurityGroup == nil || *got.SecurityGroup != "EF" {
+		t.Fatalf("security_group = %v, want EF", got.SecurityGroup)
+	}
+}
+
+func TestStockUpdateClearsSecurityGroup(t *testing.T) {
+	e, c := setupStocks(t)
+	g := seedGroup(t, c, "g")
+	s := seedStock(t, c, "SEC", g)
+	if _, err := c.Stocks.UpdateSecurityGroup(context.Background(), s.ID, "ST"); err != nil {
+		t.Fatalf("seed security group: %v", err)
+	}
+
+	rec := do(e, http.MethodPut, "/groups/"+g.ID.String()+"/stocks/"+s.ID.String(), url.Values{
+		"ticker":         {"SEC"},
+		"security_group": {""},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	got, err := c.Stocks.GetByID(context.Background(), s.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.SecurityGroup != nil {
+		t.Fatalf("security_group after clear = %v, want nil", *got.SecurityGroup)
+	}
+}
+
 func TestStockUpdateEmptyTicker422(t *testing.T) {
 	e, c := setupStocks(t)
 	g := seedGroup(t, c, "g")
