@@ -40,6 +40,7 @@ type Querier interface {
 	GetStockByID(ctx context.Context, id uuidx.UUID) (Stock, error)
 	GetStockByTicker(ctx context.Context, ticker string) (Stock, error)
 	GetStockPriceByTickerAndDate(ctx context.Context, arg GetStockPriceByTickerAndDateParams) (StockPrice, error)
+	GetStockPriceOnOrBeforeDate(ctx context.Context, arg GetStockPriceOnOrBeforeDateParams) (StockPrice, error)
 	ListAccounts(ctx context.Context) ([]Account, error)
 	// Phase 6 queries.
 	ListAllHoldings(ctx context.Context) ([]Holding, error)

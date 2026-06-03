@@ -32,7 +32,7 @@ func (h *RebalanceHandler) view(c echo.Context) error {
 
 	if !h.c.Portfolio.HasPriceService() {
 		return templates.RebalancePage(
-			nil, nil, restrictOverseas,
+			nil, nil, nil, restrictOverseas,
 			"가격 서비스가 설정되지 않았습니다. KIS API 키를 확인하세요.",
 			h.c.OrderClient != nil,
 		).Render(ctx, c.Response().Writer)
@@ -40,11 +40,12 @@ func (h *RebalanceHandler) view(c echo.Context) error {
 
 	plan, err := h.buildPlan(c, restrictOverseas)
 	if err != nil {
-		return templates.RebalancePage(nil, nil, restrictOverseas, err.Error(), false).Render(ctx, c.Response().Writer)
+		return templates.RebalancePage(nil, nil, nil, restrictOverseas, err.Error(), false).Render(ctx, c.Response().Writer)
 	}
 
 	summary, _ := h.c.Portfolio.GetPortfolioSummary(ctx, false)
-	return templates.RebalancePage(summary, plan, restrictOverseas, "", h.c.OrderClient != nil).Render(ctx, c.Response().Writer)
+	groupSummary := services.ComputeGroupSummary(summary)
+	return templates.RebalancePage(summary, groupSummary, plan, restrictOverseas, "", h.c.OrderClient != nil).Render(ctx, c.Response().Writer)
 }
 
 func (h *RebalanceHandler) execute(c echo.Context) error {
