@@ -197,6 +197,41 @@ func TestAccountUpdateOK(t *testing.T) {
 	}
 }
 
+func TestAccountUpdateSetsAccountType(t *testing.T) {
+	e, c := setupAccounts(t)
+	a := seedAccount(t, c, "IRP")
+
+	rec := do(e, http.MethodPut, "/accounts/"+a.ID.String(), url.Values{
+		"name":         {"IRP"},
+		"cash_balance": {"0"},
+		"account_type": {"irp"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	got, err := c.Accounts.GetByID(context.Background(), a.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.AccountType == nil || *got.AccountType != "irp" {
+		t.Fatalf("account_type = %v, want irp", got.AccountType)
+	}
+
+	// invalid value → left unclassified (NULL)
+	rec = do(e, http.MethodPut, "/accounts/"+a.ID.String(), url.Values{
+		"name":         {"IRP"},
+		"cash_balance": {"0"},
+		"account_type": {"bogus"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	got, _ = c.Accounts.GetByID(context.Background(), a.ID)
+	if got.AccountType != nil {
+		t.Fatalf("invalid account_type should clear to nil, got %v", *got.AccountType)
+	}
+}
+
 func TestAccountUpdateEmptyNameOK(t *testing.T) {
 	e, c := setupAccounts(t)
 	a := seedAccount(t, c, "이름있음")
@@ -409,7 +444,7 @@ func TestSyncAccountNormalizeKisAccountNo(t *testing.T) {
 	}
 	updated, err := c.Accounts.Update(ctx, acc.ID, acc.Name, acc.CashBalance,
 		sql.NullString{String: "12345678-01", Valid: true},
-		sql.NullInt64{})
+		sql.NullInt64{}, sql.NullString{})
 	if err != nil {
 		t.Fatalf("update account: %v", err)
 	}
@@ -454,7 +489,7 @@ func TestSyncAccountKeyIDRouting(t *testing.T) {
 	}
 	updated, err := c.Accounts.Update(ctx, acc.ID, acc.Name, acc.CashBalance,
 		sql.NullString{String: "4659285601", Valid: true},
-		sql.NullInt64{Int64: 2, Valid: true},
+		sql.NullInt64{Int64: 2, Valid: true}, sql.NullString{},
 	)
 	if err != nil {
 		t.Fatalf("update: %v", err)

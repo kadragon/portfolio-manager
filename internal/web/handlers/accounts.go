@@ -181,7 +181,13 @@ func (h *AccountHandler) update(c echo.Context) error {
 
 	// KIS validation deferred to Phase 8 — skip
 
-	updated, err := h.c.Accounts.Update(ctx, id, name, cashBalance, kisAccountNo, kisAPIKeyID)
+	// account_type: edit form sends one of brokerage/irp/pension/isa; empty → NULL (unclassified)
+	accountType := sql.NullString{}
+	if t := strings.TrimSpace(c.FormValue("account_type")); models.ValidAccountType(t) {
+		accountType = sql.NullString{String: t, Valid: true}
+	}
+
+	updated, err := h.c.Accounts.Update(ctx, id, name, cashBalance, kisAccountNo, kisAPIKeyID, accountType)
 	if err != nil {
 		return err
 	}

@@ -56,6 +56,7 @@ type Querier interface {
 	UpdateDepositWithoutNote(ctx context.Context, arg UpdateDepositWithoutNoteParams) (Deposit, error)
 	UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Group, error)
 	UpdateHolding(ctx context.Context, arg UpdateHoldingParams) (Holding, error)
+	UpdateStockAssetClass(ctx context.Context, arg UpdateStockAssetClassParams) (Stock, error)
 	UpdateStockExchange(ctx context.Context, arg UpdateStockExchangeParams) (Stock, error)
 	UpdateStockGroup(ctx context.Context, arg UpdateStockGroupParams) (Stock, error)
 	UpdateStockName(ctx context.Context, arg UpdateStockNameParams) (Stock, error)

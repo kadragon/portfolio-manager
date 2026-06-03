@@ -22,6 +22,61 @@ var schemaSQL string
 // Schema returns the embedded DDL (used by tests and tooling).
 func Schema() string { return schemaSQL }
 
+// addedColumns are columns introduced by the Go layer after the original
+// Peewee schema. On a fresh database schema.sql already creates them; on an
+// existing production database the CREATE TABLE IF NOT EXISTS is a no-op, so
+// migrate() appends them with ALTER TABLE. Always nullable TEXT (SQLite forbids
+// ALTER ADD COLUMN NOT NULL without a default on a non-empty table).
+var addedColumns = []struct{ table, column string }{
+	{"stocks", "asset_class"},
+	{"accounts", "account_type"},
+}
+
+// migrate applies idempotent ALTER TABLE ADD COLUMN for every entry in
+// addedColumns that is not already present. Safe to run on every Open.
+func migrate(ctx context.Context, db *sql.DB) error {
+	for _, ac := range addedColumns {
+		has, err := hasColumn(ctx, db, ac.table, ac.column)
+		if err != nil {
+			return err
+		}
+		if has {
+			continue
+		}
+		stmt := fmt.Sprintf("ALTER TABLE %q ADD COLUMN %q TEXT", ac.table, ac.column)
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("db: add column %s.%s: %w", ac.table, ac.column, err)
+		}
+	}
+	return nil
+}
+
+// hasColumn reports whether table already has the named column.
+func hasColumn(ctx context.Context, db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%q)", table))
+	if err != nil {
+		return false, fmt.Errorf("db: table_info(%s): %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var (
+			cid     int
+			name    string
+			ctype   string
+			notnull int
+			dflt    sql.NullString
+			pk      int
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, fmt.Errorf("db: scan table_info(%s): %w", table, err)
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
 // DefaultPath resolves the database path the same way the Python app does:
 // PORTFOLIO_DB_PATH if set, otherwise <projectRoot>/.data/portfolio.db.
 func DefaultPath() (string, error) {
@@ -86,6 +141,10 @@ func Open(path string) (*sql.DB, *sqlc.Queries, error) {
 		_ = sqlDB.Close()
 		return nil, nil, fmt.Errorf("db: create tables: %w", err)
 	}
+	if err := migrate(context.Background(), sqlDB); err != nil {
+		_ = sqlDB.Close()
+		return nil, nil, err
+	}
 	return sqlDB, sqlc.New(sqlDB), nil
 }
 
@@ -97,6 +156,10 @@ func OpenMemory() (*sql.DB, *sqlc.Queries, error) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	if _, err := sqlDB.ExecContext(context.Background(), schemaSQL); err != nil {
+		_ = sqlDB.Close()
+		return nil, nil, err
+	}
+	if err := migrate(context.Background(), sqlDB); err != nil {
 		_ = sqlDB.Close()
 		return nil, nil, err
 	}

@@ -20,9 +20,18 @@ func makeStock(ticker string, groupID uuidx.UUID) models.Stock {
 	return models.Stock{ID: uuidx.New(), Ticker: ticker, GroupID: groupID, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 }
 
+// makeAccount builds a brokerage-type account. The pre-eligibility engine
+// treated every account as "anything allowed"; brokerage preserves that for the
+// existing math-focused tests. Use makeTypedAccount to exercise eligibility.
 func makeAccount(name string, cashBalance string) models.Account {
+	a := makeTypedAccount(name, cashBalance, models.AccountTypeBrokerage)
+	return a
+}
+
+func makeTypedAccount(name, cashBalance, accountType string) models.Account {
 	cb, _ := numeric.FromString(cashBalance)
-	return models.Account{ID: uuidx.New(), Name: name, CashBalance: cb, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	at := accountType
+	return models.Account{ID: uuidx.New(), Name: name, CashBalance: cb, AccountType: &at, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 }
 
 func makeHolding(accountID, stockID uuidx.UUID, quantity string) models.Holding {
@@ -665,6 +674,115 @@ func TestBuildPlanAccountSummariesPopulated(t *testing.T) {
 }
 
 // --- test helpers ---
+
+// TestBuildPlanNilAccountNotLiquidated guards the Phase 2 safety net: an
+// unclassified (nil account_type) account holding a balanced, on-target mix must
+// NOT be told to sell everything. The planner routes nil accounts to the uniform
+// global target, so a balanced portfolio stays put.
+func TestBuildPlanNilAccountNotLiquidated(t *testing.T) {
+	groups := makeStandardGroups()
+	stocks := makeStandardStocks(groups)
+	// On-target sleeve values (35/15/25/10/15).
+	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
+		"국내성장": mustN("350"),
+		"국내배당": mustN("150"),
+		"해외성장": mustN("250"),
+		"해외안정": mustN("100"),
+		"해외배당": mustN("150"),
+	})
+	// Account with NO account_type set (nil).
+	acc := models.Account{ID: uuidx.New(), Name: "미분류", CashBalance: numeric.Zero, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	holdings := makeHoldingsByAccount([]models.Account{acc}, stocks, map[string]map[string]string{
+		"미분류": {"국내성장": "350", "국내배당": "150", "해외성장": "250", "해외안정": "100", "해외배당": "150"},
+	})
+
+	svc := services.NewRebalanceService()
+	plan, err := svc.BuildPlan(services.BuildPlanParams{
+		Summary:           summary,
+		Accounts:          []models.Account{acc},
+		HoldingsByAccount: holdings,
+		Groups:            groups,
+		Stocks:            stockSlice(stocks),
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	if len(plan.SellRecs) != 0 {
+		t.Fatalf("nil-type balanced account must not be liquidated; got %d sell recs: %+v", len(plan.SellRecs), plan.SellRecs)
+	}
+}
+
+func makeStockAC(ticker string, groupID uuidx.UUID, assetClass string) models.Stock {
+	s := makeStock(ticker, groupID)
+	ac := assetClass
+	s.AssetClass = &ac
+	return s
+}
+
+// TestBuildPlanBlocksIneligibleBuyInIRP proves the eligibility guard: an IRP
+// account underweight in 해외배당 whose only 해외배당 candidate is the US-listed
+// ETF SCHD must NOT receive a SCHD buy (IRP cannot hold foreign-listed
+// securities) and must report 해외배당 as unmet — even though a SCHD snapshot
+// exists. A brokerage account in the same scenario WOULD buy SCHD.
+func TestBuildPlanBlocksIneligibleBuyInIRP(t *testing.T) {
+	groups := makeStandardGroups()
+	byName := map[string]models.Group{}
+	for _, g := range groups {
+		byName[g.Name] = g
+	}
+	stocks := map[string]models.Stock{
+		"국내성장": makeStockAC("069500", byName["국내성장"].ID, "etf"), // domestic ETF
+		"해외배당": makeStockAC("SCHD", byName["해외배당"].ID, "etf"),   // US-listed ETF
+	}
+	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
+		"국내성장": mustN("100"),
+		"해외배당": mustN("50"),
+	})
+
+	svc := services.NewRebalanceService()
+
+	run := func(accountType string) (buyTickers []string, unmet []string) {
+		acc := makeTypedAccount("ACC", "850", accountType)
+		holdings := makeHoldingsByAccount([]models.Account{acc}, stocks, map[string]map[string]string{
+			"ACC": {"국내성장": "100", "해외배당": "50"},
+		})
+		plan, err := svc.BuildPlan(services.BuildPlanParams{
+			Summary:           summary,
+			Accounts:          []models.Account{acc},
+			HoldingsByAccount: holdings,
+			Groups:            groups,
+			Stocks:            stockSlice(stocks),
+		})
+		if err != nil {
+			t.Fatalf("BuildPlan(%s): %v", accountType, err)
+		}
+		for _, r := range plan.BuyRecs {
+			buyTickers = append(buyTickers, r.Ticker)
+		}
+		for _, sum := range plan.AccountSummaries {
+			unmet = append(unmet, sum.UnmetGroups...)
+		}
+		return buyTickers, unmet
+	}
+
+	// IRP: SCHD blocked, 해외배당 unmet, but eligible domestic 069500 still bought.
+	irpBuys, irpUnmet := run(models.AccountTypeIRP)
+	if containsString(irpBuys, "SCHD") {
+		t.Errorf("IRP must not buy US-listed SCHD; buys = %v", irpBuys)
+	}
+	if !containsString(irpUnmet, "해외배당") {
+		t.Errorf("IRP should report 해외배당 unmet; unmet = %v", irpUnmet)
+	}
+	if !containsString(irpBuys, "069500") {
+		t.Errorf("IRP should still buy eligible domestic ETF 069500; buys = %v", irpBuys)
+	}
+
+	// Brokerage: SCHD is eligible and gets bought (control).
+	bkBuys, _ := run(models.AccountTypeBrokerage)
+	if !containsString(bkBuys, "SCHD") {
+		t.Errorf("brokerage should buy SCHD; buys = %v", bkBuys)
+	}
+}
 
 func mustN(s string) numeric.Decimal {
 	d, err := numeric.FromString(s)

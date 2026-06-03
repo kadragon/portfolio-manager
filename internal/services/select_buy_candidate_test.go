@@ -9,6 +9,7 @@ import (
 
 func TestSelectBuyCandidateAccountScoped(t *testing.T) {
 	s := NewRebalanceService()
+	bk := "brokerage"
 	acc := uuidx.New()
 	other := uuidx.New()
 
@@ -28,7 +29,7 @@ func TestSelectBuyCandidateAccountScoped(t *testing.T) {
 	}
 
 	// restrictOverseas=false: domestic ranks before overseas (domKey), then highest KRW
-	got := s.selectBuyCandidateAccountScoped(acc, "G", positions, false)
+	got := s.selectBuyCandidateAccountScoped(acc, "G", positions, false, &bk)
 	if got == nil {
 		t.Fatalf("expected a candidate, got nil")
 	}
@@ -37,19 +38,20 @@ func TestSelectBuyCandidateAccountScoped(t *testing.T) {
 	}
 
 	// restrictOverseas=true: overseas excluded, still 068270
-	gotR := s.selectBuyCandidateAccountScoped(acc, "G", positions, true)
+	gotR := s.selectBuyCandidateAccountScoped(acc, "G", positions, true, &bk)
 	if gotR == nil || gotR.ticker != "068270" {
 		t.Errorf("restricted winner = %v, want 068270", gotR)
 	}
 
 	// no eligible positions → nil
-	if c := s.selectBuyCandidateAccountScoped(uuidx.New(), "G", positions, false); c != nil {
+	if c := s.selectBuyCandidateAccountScoped(uuidx.New(), "G", positions, false, &bk); c != nil {
 		t.Errorf("unknown account should yield nil, got %v", c)
 	}
 }
 
 func TestSelectBuyCandidatePortfolioFallback(t *testing.T) {
 	s := NewRebalanceService()
+	bk := "brokerage"
 
 	snapshots := map[string]*tickerSnapshot{
 		"005930": {ticker: "005930", rebalanceGroup: "G", totalValueLocal: decimal.NewFromInt(5), totalValueKRW: decimal.NewFromInt(100)},
@@ -60,19 +62,19 @@ func TestSelectBuyCandidatePortfolioFallback(t *testing.T) {
 	}
 
 	// domestic ranks first; highest KRW among domestic → 068270
-	got := s.selectBuyCandidatePortfolioFallback("G", snapshots, false)
+	got := s.selectBuyCandidatePortfolioFallback("G", snapshots, false, &bk)
 	if got == nil || got.ticker != "068270" {
 		t.Errorf("portfolio fallback winner = %v, want 068270", got)
 	}
 
 	// restrictOverseas excludes AAPL — still 068270
-	gotR := s.selectBuyCandidatePortfolioFallback("G", snapshots, true)
+	gotR := s.selectBuyCandidatePortfolioFallback("G", snapshots, true, &bk)
 	if gotR == nil || gotR.ticker != "068270" {
 		t.Errorf("restricted fallback = %v, want 068270", gotR)
 	}
 
 	// group with no eligible snapshots → nil
-	if c := s.selectBuyCandidatePortfolioFallback("NONE", snapshots, false); c != nil {
+	if c := s.selectBuyCandidatePortfolioFallback("NONE", snapshots, false, &bk); c != nil {
 		t.Errorf("empty group should yield nil, got %v", c)
 	}
 }

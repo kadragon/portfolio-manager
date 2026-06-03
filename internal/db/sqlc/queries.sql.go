@@ -19,7 +19,7 @@ const createAccount = `-- name: CreateAccount :one
 
 INSERT INTO accounts (id, name, cash_balance, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?)
-RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type
 `
 
 type CreateAccountParams struct {
@@ -48,6 +48,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.UpdatedAt,
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
+		&i.AccountType,
 	)
 	return i, err
 }
@@ -215,19 +216,20 @@ func (q *Queries) CreateOrderExecution(ctx context.Context, arg CreateOrderExecu
 
 const createStock = `-- name: CreateStock :one
 
-INSERT INTO stocks (id, ticker, group_id, exchange, created_at, updated_at, name)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name
+INSERT INTO stocks (id, ticker, group_id, exchange, created_at, updated_at, name, asset_class)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
 `
 
 type CreateStockParams struct {
-	ID        uuidx.UUID
-	Ticker    string
-	GroupID   uuidx.UUID
-	Exchange  sql.NullString
-	CreatedAt ktime.Time
-	UpdatedAt ktime.Time
-	Name      string
+	ID         uuidx.UUID
+	Ticker     string
+	GroupID    uuidx.UUID
+	Exchange   sql.NullString
+	CreatedAt  ktime.Time
+	UpdatedAt  ktime.Time
+	Name       string
+	AssetClass sql.NullString
 }
 
 // Stock queries (Phase 2).
@@ -240,6 +242,7 @@ func (q *Queries) CreateStock(ctx context.Context, arg CreateStockParams) (Stock
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.Name,
+		arg.AssetClass,
 	)
 	var i Stock
 	err := row.Scan(
@@ -250,6 +253,7 @@ func (q *Queries) CreateStock(ctx context.Context, arg CreateStockParams) (Stock
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Name,
+		&i.AssetClass,
 	)
 	return i, err
 }
@@ -309,7 +313,7 @@ func (q *Queries) DeleteStock(ctx context.Context, id uuidx.UUID) error {
 }
 
 const getAccountByID = `-- name: GetAccountByID :one
-SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id FROM accounts WHERE id = ?
+SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type FROM accounts WHERE id = ?
 `
 
 func (q *Queries) GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, error) {
@@ -323,6 +327,7 @@ func (q *Queries) GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, e
 		&i.UpdatedAt,
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
+		&i.AccountType,
 	)
 	return i, err
 }
@@ -431,7 +436,7 @@ func (q *Queries) GetLatestStockPriceByTicker(ctx context.Context, ticker string
 }
 
 const getStockByID = `-- name: GetStockByID :one
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name FROM stocks WHERE id = ?
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks WHERE id = ?
 `
 
 func (q *Queries) GetStockByID(ctx context.Context, id uuidx.UUID) (Stock, error) {
@@ -445,12 +450,13 @@ func (q *Queries) GetStockByID(ctx context.Context, id uuidx.UUID) (Stock, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Name,
+		&i.AssetClass,
 	)
 	return i, err
 }
 
 const getStockByTicker = `-- name: GetStockByTicker :one
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name FROM stocks WHERE ticker = ?
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks WHERE ticker = ?
 `
 
 func (q *Queries) GetStockByTicker(ctx context.Context, ticker string) (Stock, error) {
@@ -464,6 +470,7 @@ func (q *Queries) GetStockByTicker(ctx context.Context, ticker string) (Stock, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Name,
+		&i.AssetClass,
 	)
 	return i, err
 }
@@ -521,7 +528,7 @@ func (q *Queries) GetStockPriceOnOrBeforeDate(ctx context.Context, arg GetStockP
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id FROM accounts
+SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type FROM accounts
 `
 
 func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
@@ -541,6 +548,7 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 			&i.UpdatedAt,
 			&i.KisAccountNo,
 			&i.KisApiKeyID,
+			&i.AccountType,
 		); err != nil {
 			return nil, err
 		}
@@ -592,7 +600,7 @@ func (q *Queries) ListAllHoldings(ctx context.Context) ([]Holding, error) {
 }
 
 const listAllStocks = `-- name: ListAllStocks :many
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name FROM stocks
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks
 `
 
 func (q *Queries) ListAllStocks(ctx context.Context) ([]Stock, error) {
@@ -612,6 +620,7 @@ func (q *Queries) ListAllStocks(ctx context.Context) ([]Stock, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Name,
+			&i.AssetClass,
 		); err != nil {
 			return nil, err
 		}
@@ -766,7 +775,7 @@ func (q *Queries) ListRecentOrderExecutions(ctx context.Context, limit int64) ([
 }
 
 const listStocksByGroup = `-- name: ListStocksByGroup :many
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name FROM stocks WHERE group_id = ?
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks WHERE group_id = ?
 `
 
 func (q *Queries) ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]Stock, error) {
@@ -786,6 +795,7 @@ func (q *Queries) ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Name,
+			&i.AssetClass,
 		); err != nil {
 			return nil, err
 		}
@@ -802,9 +812,9 @@ func (q *Queries) ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]
 
 const updateAccount = `-- name: UpdateAccount :one
 UPDATE accounts
-SET name = ?, cash_balance = ?, kis_account_no = ?, kis_api_key_id = ?, updated_at = ?
+SET name = ?, cash_balance = ?, kis_account_no = ?, kis_api_key_id = ?, account_type = ?, updated_at = ?
 WHERE id = ?
-RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type
 `
 
 type UpdateAccountParams struct {
@@ -812,6 +822,7 @@ type UpdateAccountParams struct {
 	CashBalance  numeric.Decimal
 	KisAccountNo sql.NullString
 	KisApiKeyID  sql.NullInt64
+	AccountType  sql.NullString
 	UpdatedAt    ktime.Time
 	ID           uuidx.UUID
 }
@@ -822,6 +833,7 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		arg.CashBalance,
 		arg.KisAccountNo,
 		arg.KisApiKeyID,
+		arg.AccountType,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -834,13 +846,14 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		&i.UpdatedAt,
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
+		&i.AccountType,
 	)
 	return i, err
 }
 
 const updateAccountNameCash = `-- name: UpdateAccountNameCash :one
 UPDATE accounts SET name = ?, cash_balance = ?, updated_at = ? WHERE id = ?
-RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type
 `
 
 type UpdateAccountNameCashParams struct {
@@ -866,6 +879,7 @@ func (q *Queries) UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNa
 		&i.UpdatedAt,
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
+		&i.AccountType,
 	)
 	return i, err
 }
@@ -991,9 +1005,36 @@ func (q *Queries) UpdateHolding(ctx context.Context, arg UpdateHoldingParams) (H
 	return i, err
 }
 
+const updateStockAssetClass = `-- name: UpdateStockAssetClass :one
+UPDATE stocks SET asset_class = ?, updated_at = ? WHERE id = ?
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
+`
+
+type UpdateStockAssetClassParams struct {
+	AssetClass sql.NullString
+	UpdatedAt  ktime.Time
+	ID         uuidx.UUID
+}
+
+func (q *Queries) UpdateStockAssetClass(ctx context.Context, arg UpdateStockAssetClassParams) (Stock, error) {
+	row := q.db.QueryRowContext(ctx, updateStockAssetClass, arg.AssetClass, arg.UpdatedAt, arg.ID)
+	var i Stock
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.GroupID,
+		&i.Exchange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+		&i.AssetClass,
+	)
+	return i, err
+}
+
 const updateStockExchange = `-- name: UpdateStockExchange :one
 UPDATE stocks SET exchange = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
 `
 
 type UpdateStockExchangeParams struct {
@@ -1013,13 +1054,14 @@ func (q *Queries) UpdateStockExchange(ctx context.Context, arg UpdateStockExchan
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Name,
+		&i.AssetClass,
 	)
 	return i, err
 }
 
 const updateStockGroup = `-- name: UpdateStockGroup :one
 UPDATE stocks SET group_id = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
 `
 
 type UpdateStockGroupParams struct {
@@ -1039,13 +1081,14 @@ func (q *Queries) UpdateStockGroup(ctx context.Context, arg UpdateStockGroupPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Name,
+		&i.AssetClass,
 	)
 	return i, err
 }
 
 const updateStockName = `-- name: UpdateStockName :one
 UPDATE stocks SET name = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
 `
 
 type UpdateStockNameParams struct {
@@ -1065,13 +1108,14 @@ func (q *Queries) UpdateStockName(ctx context.Context, arg UpdateStockNameParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Name,
+		&i.AssetClass,
 	)
 	return i, err
 }
 
 const updateStockTicker = `-- name: UpdateStockTicker :one
 UPDATE stocks SET ticker = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
 `
 
 type UpdateStockTickerParams struct {
@@ -1091,6 +1135,7 @@ func (q *Queries) UpdateStockTicker(ctx context.Context, arg UpdateStockTickerPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Name,
+		&i.AssetClass,
 	)
 	return i, err
 }

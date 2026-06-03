@@ -21,6 +21,7 @@ type Account struct {
 	UpdatedAt    ktime.Time
 	KisAccountNo sql.NullString
 	KisApiKeyID  sql.NullInt64
+	AccountType  sql.NullString
 }
 
 type Deposit struct {
@@ -63,13 +64,14 @@ type OrderExecution struct {
 }
 
 type Stock struct {
-	ID        uuidx.UUID
-	Ticker    string
-	GroupID   uuidx.UUID
-	Exchange  sql.NullString
-	CreatedAt ktime.Time
-	UpdatedAt ktime.Time
-	Name      string
+	ID         uuidx.UUID
+	Ticker     string
+	GroupID    uuidx.UUID
+	Exchange   sql.NullString
+	CreatedAt  ktime.Time
+	UpdatedAt  ktime.Time
+	Name       string
+	AssetClass sql.NullString
 }
 
 type StockPrice struct {

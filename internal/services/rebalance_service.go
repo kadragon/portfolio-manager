@@ -95,7 +95,8 @@ func (s *RebalanceService) BuildPlan(p BuildPlanParams) (models.RebalancePlan, e
 	}
 
 	accountAUM := s.buildAccountAUM(p.Accounts, positions)
-	accountGroupState := s.buildAccountGroupState(p.Accounts, positions, accountAUM, targetByGroup)
+	targetByAccountGroup := s.planTargetsByAccountGroup(p.Accounts, accountAUM, targetByGroup)
+	accountGroupState := s.buildAccountGroupState(p.Accounts, positions, accountAUM, targetByAccountGroup)
 
 	sellByAccountGroup := s.calcSellAmounts(p.Accounts, accountGroupState, accountAUM, positions, p.RestrictOverseas)
 	sellRecs, sellCashByAccount, soldByAccountGroup, sellRecsByAccountID := s.buildSellRecs(
@@ -130,6 +131,7 @@ type tickerSnapshot struct {
 	sourceGroup     string
 	currency        string
 	stockName       string
+	isETF           bool
 	totalQty        decimal.Decimal
 	totalValueLocal decimal.Decimal
 	totalValueKRW   decimal.Decimal
@@ -143,6 +145,7 @@ type accountPosition struct {
 	sourceGroup    string
 	currency       string
 	stockName      string
+	isETF          bool
 	quantity       decimal.Decimal
 	valueLocal     decimal.Decimal
 	valueKRW       decimal.Decimal
@@ -248,6 +251,7 @@ func (s *RebalanceService) buildTickerSnapshots(summary models.PortfolioSummary)
 				sourceGroup:     pair.Group.Name,
 				currency:        h.Currency,
 				stockName:       name,
+				isETF:           assetIsETF(h.Stock.AssetClass),
 				totalQty:        h.Quantity.Decimal,
 				totalValueLocal: valueLocal,
 				totalValueKRW:   valueKRW,
@@ -342,6 +346,7 @@ func (s *RebalanceService) buildAccountPositions(
 				sourceGroup:    group.Name,
 				currency:       snap.currency,
 				stockName:      snap.stockName,
+				isETF:          assetIsETF(stock.AssetClass),
 				quantity:       h.Quantity.Decimal,
 				valueLocal:     snap.totalValueLocal.Mul(ratio),
 				valueKRW:       snap.totalValueKRW.Mul(ratio),
@@ -363,11 +368,157 @@ func (s *RebalanceService) buildAccountAUM(accounts []models.Account, positions 
 	return result
 }
 
+// _placementScore ranks how tax-preferred it is to place each rebalance group
+// in each account type (higher = stronger preference). Korea, 2026-06. These
+// are the contestable, adjustable tax-opinion knobs of the engine — see
+// docs/adr/0001. Cells most worth auditing: 해외배당 leaning brokerage (2025
+// 선환급 폐지 erased most of the foreign-dividend shelter in tax-advantaged
+// accounts) and 국내성장 (domestic listed-stock capital gains are largely
+// untaxed for retail, so little benefit to occupying scarce tax-advantaged
+// space).
+var _placementScore = map[string]map[string]int{
+	"국내배당": {models.AccountTypeIRP: 10, models.AccountTypePension: 10, models.AccountTypeISA: 9, models.AccountTypeBrokerage: 2},
+	"해외성장": {models.AccountTypeIRP: 8, models.AccountTypePension: 8, models.AccountTypeISA: 7, models.AccountTypeBrokerage: 5},
+	"해외안정": {models.AccountTypeIRP: 7, models.AccountTypePension: 7, models.AccountTypeISA: 6, models.AccountTypeBrokerage: 5},
+	"국내성장": {models.AccountTypeBrokerage: 6, models.AccountTypeISA: 4, models.AccountTypeIRP: 3, models.AccountTypePension: 3},
+	"해외배당": {models.AccountTypeBrokerage: 8, models.AccountTypeISA: 4, models.AccountTypeIRP: 3, models.AccountTypePension: 3},
+}
+
+// planTargetsByAccountGroup computes the per-account, per-group target VALUE
+// (KRW) that the rest of the engine drives toward. Instead of mirroring the
+// global group target into every account, it concentrates each group in the
+// account TYPE that holds it most tax-efficiently, subject to each account's
+// FIXED AUM (no cross-account transfer — the engine only swaps within an
+// account, so contribution caps / withdrawal locks cannot be violated).
+//
+// Allocation is done at the (group × accountType) level then split across the
+// accounts of a type in proportion to AUM. Consequences:
+//   - A single account type (e.g. all brokerage) reproduces the old uniform
+//     mirror exactly (proportional split of the whole-portfolio target).
+//   - Divergence only appears across DIFFERENT types — i.e. when tax-location
+//     actually matters.
+//   - nil / unrecognized account_type is routed to the uniform global target
+//     (NOT zero) so an unclassified account is never told to liquidate.
+//
+// The planner does NOT enforce per-security eligibility (canHold) — that is the
+// job of the buy guard in selectBuyCandidate*. An infeasible target simply
+// surfaces as an unmet group, never an illegal buy.
+func (s *RebalanceService) planTargetsByAccountGroup(
+	accounts []models.Account,
+	accountAUM map[uuidx.UUID]decimal.Decimal,
+	targetByGroup map[string]decimal.Decimal,
+) map[[2]string]decimal.Decimal {
+	target := map[[2]string]decimal.Decimal{}
+
+	totalAUM := decimal.Zero
+	for _, a := range accounts {
+		totalAUM = totalAUM.Add(accountAUM[a.ID])
+	}
+	if !totalAUM.IsPositive() {
+		return target
+	}
+
+	groupRemaining := map[string]decimal.Decimal{}
+	for _, g := range _groupOrder {
+		groupRemaining[g] = targetByGroup[g].Div(_percentBase).Mul(totalAUM)
+	}
+
+	// Partition accounts: recognized type vs unclassified (nil / unknown).
+	typeAccounts := map[string][]models.Account{}
+	var untyped []models.Account
+	for _, a := range accounts {
+		if a.AccountType != nil && models.ValidAccountType(*a.AccountType) {
+			t := *a.AccountType
+			typeAccounts[t] = append(typeAccounts[t], a)
+		} else {
+			untyped = append(untyped, a)
+		}
+	}
+
+	// Unclassified accounts keep the uniform global target; reserve their share.
+	for _, a := range untyped {
+		aum := accountAUM[a.ID]
+		for _, g := range _groupOrder {
+			v := targetByGroup[g].Div(_percentBase).Mul(aum)
+			target[[2]string{a.ID.String(), g}] = v
+			groupRemaining[g] = groupRemaining[g].Sub(v)
+		}
+	}
+
+	// Capacity per recognized type.
+	typeRemaining := map[string]decimal.Decimal{}
+	for t, accs := range typeAccounts {
+		cap := decimal.Zero
+		for _, a := range accs {
+			cap = cap.Add(accountAUM[a.ID])
+		}
+		typeRemaining[t] = cap
+	}
+
+	// Deterministic fill order: score desc, then _groupOrder index, then type.
+	type cell struct {
+		group string
+		typ   string
+		score int
+		gidx  int
+	}
+	var cells []cell
+	for gi, g := range _groupOrder {
+		for t := range typeAccounts {
+			cells = append(cells, cell{g, t, _placementScore[g][t], gi})
+		}
+	}
+	sort.Slice(cells, func(i, j int) bool {
+		if cells[i].score != cells[j].score {
+			return cells[i].score > cells[j].score
+		}
+		if cells[i].gidx != cells[j].gidx {
+			return cells[i].gidx < cells[j].gidx
+		}
+		return cells[i].typ < cells[j].typ
+	})
+
+	targetByType := map[[2]string]decimal.Decimal{} // (group, type) -> value
+	for _, c := range cells {
+		fill := decimal.Min(groupRemaining[c.group], typeRemaining[c.typ])
+		if !fill.IsPositive() {
+			continue
+		}
+		key := [2]string{c.group, c.typ}
+		targetByType[key] = targetByType[key].Add(fill)
+		groupRemaining[c.group] = groupRemaining[c.group].Sub(fill)
+		typeRemaining[c.typ] = typeRemaining[c.typ].Sub(fill)
+	}
+
+	// Split each (group, type) value across that type's accounts ∝ AUM.
+	for t, accs := range typeAccounts {
+		typeCap := decimal.Zero
+		for _, a := range accs {
+			typeCap = typeCap.Add(accountAUM[a.ID])
+		}
+		if !typeCap.IsPositive() {
+			continue
+		}
+		for _, g := range _groupOrder {
+			tv := targetByType[[2]string{g, t}]
+			if !tv.IsPositive() {
+				continue
+			}
+			for _, a := range accs {
+				share := accountAUM[a.ID].Div(typeCap)
+				key := [2]string{a.ID.String(), g}
+				target[key] = target[key].Add(tv.Mul(share))
+			}
+		}
+	}
+	return target
+}
+
 func (s *RebalanceService) buildAccountGroupState(
 	accounts []models.Account,
 	positions []accountPosition,
 	accountAUM map[uuidx.UUID]decimal.Decimal,
-	targetByGroup map[string]decimal.Decimal,
+	targetValueByAccountGroup map[[2]string]decimal.Decimal,
 ) map[[2]string]accountGroupState {
 	currentByAccountGroup := map[[2]string]decimal.Decimal{}
 	for _, p := range positions {
@@ -382,11 +533,11 @@ func (s *RebalanceService) buildAccountGroupState(
 			key := [2]string{account.ID.String(), gname}
 			currentVal := currentByAccountGroup[key]
 			currentPct := toPercent(currentVal, aum)
-			targetPct := targetByGroup[gname]
+			targetVal := targetValueByAccountGroup[key]
+			targetPct := toPercent(targetVal, aum)
 			band := _groupBands[gname]
 			upperPct := targetPct.Add(band)
 			lowerPct := targetPct.Sub(band)
-			targetVal := targetPct.Div(_percentBase).Mul(aum)
 			state[key] = accountGroupState{
 				currentValueKRW: currentVal,
 				currentPct:      currentPct,
@@ -629,9 +780,9 @@ func (s *RebalanceService) buildBuyRecs(
 				continue
 			}
 
-			candidate := s.selectBuyCandidateAccountScoped(account.ID, gname, positions, restrictOverseas)
+			candidate := s.selectBuyCandidateAccountScoped(account.ID, gname, positions, restrictOverseas, account.AccountType)
 			if candidate == nil {
-				candidate = s.selectBuyCandidatePortfolioFallback(gname, snapshots, restrictOverseas)
+				candidate = s.selectBuyCandidatePortfolioFallback(gname, snapshots, restrictOverseas, account.AccountType)
 			}
 			if candidate == nil {
 				unmetGroups = append(unmetGroups, gname)
@@ -682,9 +833,9 @@ func (s *RebalanceService) buildBuyRecs(
 				continue
 			}
 			if accountNeed[gname].IsPositive() {
-				candidate := s.selectBuyCandidateAccountScoped(account.ID, gname, positions, restrictOverseas)
+				candidate := s.selectBuyCandidateAccountScoped(account.ID, gname, positions, restrictOverseas, account.AccountType)
 				if candidate == nil {
-					candidate = s.selectBuyCandidatePortfolioFallback(gname, snapshots, restrictOverseas)
+					candidate = s.selectBuyCandidatePortfolioFallback(gname, snapshots, restrictOverseas, account.AccountType)
 				}
 				if candidate == nil && !containsStr(unmetGroups, gname) {
 					unmetGroups = append(unmetGroups, gname)
@@ -733,12 +884,14 @@ func (s *RebalanceService) selectBuyCandidateAccountScoped(
 	group string,
 	positions []accountPosition,
 	restrictOverseas bool,
+	accountType *string,
 ) *buyCandidate {
 	acc := filterPositions(positions, func(p accountPosition) bool {
 		return p.accountID == accountID &&
 			p.rebalanceGroup == group &&
 			p.valueLocal.IsPositive() &&
-			(!restrictOverseas || isDomesticTicker(p.ticker))
+			(!restrictOverseas || isDomesticTicker(p.ticker)) &&
+			canHold(accountType, p.ticker, p.isETF)
 	})
 	if len(acc) == 0 {
 		return nil
@@ -770,12 +923,14 @@ func (s *RebalanceService) selectBuyCandidatePortfolioFallback(
 	group string,
 	snapshots map[string]*tickerSnapshot,
 	restrictOverseas bool,
+	accountType *string,
 ) *buyCandidate {
 	var snaps []*tickerSnapshot
 	for _, snap := range snapshots {
 		if snap.rebalanceGroup == group &&
 			snap.totalValueLocal.IsPositive() &&
-			(!restrictOverseas || isDomesticTicker(snap.ticker)) {
+			(!restrictOverseas || isDomesticTicker(snap.ticker)) &&
+			canHold(accountType, snap.ticker, snap.isETF) {
 			snaps = append(snaps, snap)
 		}
 	}
@@ -919,8 +1074,37 @@ func containsStr(ss []string, s string) bool {
 }
 
 // isDomesticTicker mirrors kis.IsDomesticTicker without creating an import cycle.
-// A 6-digit numeric string is a KOSPI/KOSDAQ ticker.
+// A 6-digit numeric string is a KOSPI/KOSDAQ ticker (domestic-listed).
 func isDomesticTicker(ticker string) bool { return len(ticker) == 6 }
+
+// assetIsETF reports whether a stock's asset_class marks it as an ETF.
+// nil/unclassified → false (treated strictly: not an ETF).
+func assetIsETF(assetClass *string) bool {
+	return assetClass != nil && *assetClass == "etf"
+}
+
+// canHold reports whether an account of the given type may *buy* a security with
+// the given listing (ticker) and asset class. Korean tax-account eligibility:
+//   - brokerage (위탁): anything
+//   - IRP / 연금저축: domestic-listed ETFs/funds only (no individual stocks,
+//     no foreign-listed securities)
+//   - ISA (중개형): domestic-listed only (ETF or individual stock)
+//   - nil/unknown: blocked (strict — classify the account first)
+func canHold(accountType *string, ticker string, isETF bool) bool {
+	if accountType == nil {
+		return false
+	}
+	switch *accountType {
+	case models.AccountTypeBrokerage:
+		return true
+	case models.AccountTypeIRP, models.AccountTypePension:
+		return isETF && isDomesticTicker(ticker)
+	case models.AccountTypeISA:
+		return isDomesticTicker(ticker)
+	default:
+		return false
+	}
+}
 
 // ensure big is imported for potential future use (shopspring/decimal uses it internally)
 var _ = big.NewInt
