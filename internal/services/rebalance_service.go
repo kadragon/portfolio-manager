@@ -94,9 +94,6 @@ func (s *RebalanceService) BuildPlan(p BuildPlanParams) (models.RebalancePlan, e
 		return models.RebalancePlan{}, err
 	}
 
-	accountAUM := s.buildAccountAUM(p.Accounts, positions)
-	_ = accountAUM
-
 	accountTypeByID := map[uuidx.UUID]*string{}
 	availableTypes := map[string]bool{}
 	for _, a := range p.Accounts {
@@ -116,7 +113,7 @@ func (s *RebalanceService) BuildPlan(p BuildPlanParams) (models.RebalancePlan, e
 	sellNeedByGroup, buyNeedByGroup := computeGroupNetActions(aggByGroup)
 
 	sellByAccountGroup := s.allocateSells(p.Accounts, positions, sellNeedByGroup, accountTypeByID, p.RestrictOverseas)
-	sellRecs, sellCashByAccount, _, sellRecsByAccountID := s.buildSellRecs(
+	sellRecs, sellCashByAccount, sellRecsByAccountID := s.buildSellRecs(
 		sellByAccountGroup, positions, aggByGroup, accountTypeByID, availableTypes, p.RestrictOverseas,
 	)
 
@@ -374,18 +371,6 @@ func (s *RebalanceService) buildAccountPositions(
 	return positions, nil
 }
 
-func (s *RebalanceService) buildAccountAUM(accounts []models.Account, positions []accountPosition) map[uuidx.UUID]decimal.Decimal {
-	posValByAccount := map[uuidx.UUID]decimal.Decimal{}
-	for _, p := range positions {
-		posValByAccount[p.accountID] = posValByAccount[p.accountID].Add(p.valueKRW)
-	}
-	result := map[uuidx.UUID]decimal.Decimal{}
-	for _, a := range accounts {
-		result[a.ID] = posValByAccount[a.ID].Add(a.CashBalance.Decimal)
-	}
-	return result
-}
-
 // _placementScore ranks how tax-preferred it is to place each rebalance group
 // in each account type (higher = stronger preference). Korea, 2026-06. These
 // are the contestable, adjustable tax-opinion knobs of the engine — see
@@ -558,12 +543,10 @@ func (s *RebalanceService) buildSellRecs(
 ) (
 	[]models.RebalanceRecommendation,
 	map[uuidx.UUID]decimal.Decimal,
-	map[[2]string]decimal.Decimal,
 	map[uuidx.UUID][]models.RebalanceRecommendation,
 ) {
 	var recs []models.RebalanceRecommendation
 	sellCashByAccount := map[uuidx.UUID]decimal.Decimal{}
-	soldByAccountGroup := map[[2]string]decimal.Decimal{}
 	recsByAccountID := map[uuidx.UUID][]models.RebalanceRecommendation{}
 
 	for _, gname := range _groupOrder {
@@ -585,7 +568,6 @@ func (s *RebalanceService) buildSellRecs(
 
 		for _, e := range entries {
 			targetSell := e.sellKRW
-			key := [2]string{e.accountID.String(), gname}
 
 			accountPositions := filterPositions(positions, func(p accountPosition) bool {
 				return p.accountID == e.accountID &&
@@ -671,11 +653,10 @@ func (s *RebalanceService) buildSellRecs(
 				recsByAccountID[e.accountID] = append(recsByAccountID[e.accountID], rec)
 				remaining = remaining.Sub(sellKRW)
 				sellCashByAccount[e.accountID] = sellCashByAccount[e.accountID].Add(sellKRW)
-				soldByAccountGroup[key] = soldByAccountGroup[key].Add(sellKRW)
 			}
 		}
 	}
-	return recs, sellCashByAccount, soldByAccountGroup, recsByAccountID
+	return recs, sellCashByAccount, recsByAccountID
 }
 
 // buildBuyRecs deploys each account's cash (starting cash + sell proceeds) toward
