@@ -636,6 +636,75 @@ func TestBuildPlanPortfolioFallbackBuysIntoNewGroup(t *testing.T) {
 	}
 }
 
+// TestBuildPlanEtfClassificationUnblocksPensionBuy reproduces the user's bug: a
+// 연금저축 account is told to leave 국내배당 in carryover when the only 국내배당
+// security (held in another account) is unclassified (asset_class=nil → isETF=false
+// → canHold blocks it). Once classified as an ETF, the portfolio fallback can buy
+// it into the pension account. Guards the whole data→eligibility→fallback chain.
+func TestBuildPlanEtfClassificationUnblocksPensionBuy(t *testing.T) {
+	run := func(t *testing.T, assetClass *string) models.AccountRebalanceSummary {
+		t.Helper()
+		groups := makeStandardGroups()
+		stocks := makeStandardStocks(groups)
+		dom := stocks["국내배당"] // ticker 000660 (domestic)
+		dom.AssetClass = assetClass
+		stocks["국내배당"] = dom
+
+		pension := makeTypedAccount("연금", "10000", models.AccountTypePension)
+		brokerage := makeTypedAccount("위탁", "0", models.AccountTypeBrokerage)
+		summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
+			"국내배당": mustN("10000"), // 국내배당 ETF held only in 위탁
+		})
+		holdingsByAccount := map[uuidx.UUID][]models.Holding{
+			brokerage.ID: {makeHolding(brokerage.ID, stocks["국내배당"].ID, "10000")},
+			// 연금 holds nothing in 국내배당 → must come from portfolio fallback
+		}
+
+		plan, err := services.NewRebalanceService().BuildPlan(services.BuildPlanParams{
+			Summary:           summary,
+			Accounts:          []models.Account{pension, brokerage},
+			HoldingsByAccount: holdingsByAccount,
+			Groups:            groups,
+			Stocks:            stockSlice(stocks),
+		})
+		if err != nil {
+			t.Fatalf("BuildPlan error: %v", err)
+		}
+		for _, s := range plan.AccountSummaries {
+			if s.AccountID == pension.ID {
+				return s
+			}
+		}
+		t.Fatal("pension summary missing")
+		return models.AccountRebalanceSummary{}
+	}
+
+	etf := "etf"
+	classified := run(t, &etf)
+	boughtDividendETF := false
+	for _, rec := range classified.BuyRecs {
+		if rec.Ticker == "000660" {
+			boughtDividendETF = true
+		}
+	}
+	if !boughtDividendETF {
+		t.Errorf("classified=etf: expected 연금 to buy 000660 via fallback, BuyRecs=%v", classified.BuyRecs)
+	}
+	if containsString(classified.UnmetGroups, "국내배당") {
+		t.Errorf("classified=etf: 국내배당 should not be unmet, got %v", classified.UnmetGroups)
+	}
+
+	unclassified := run(t, nil)
+	for _, rec := range unclassified.BuyRecs {
+		if rec.Ticker == "000660" {
+			t.Errorf("unclassified: 연금 must NOT buy 000660 (isETF=false blocks IRP/연금)")
+		}
+	}
+	if !containsString(unclassified.UnmetGroups, "국내배당") {
+		t.Errorf("unclassified: 국내배당 should fall to carryover/unmet, got %v", unclassified.UnmetGroups)
+	}
+}
+
 func TestBuildPlanAccountSummariesPopulated(t *testing.T) {
 	groups := makeStandardGroups()
 	stocks := makeStandardStocks(groups)

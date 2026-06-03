@@ -389,6 +389,19 @@ func TestBulkCashPreservesKIS(t *testing.T) {
 // TestSyncAccountNilService checks that POST /accounts/:id/sync returns the
 // "KIS 계좌 동기화 서비스가 설정되지 않았습니다" message when AccountSync is nil
 // (the default in-memory container).
+// TestClassifyStocksDisabled checks that POST /accounts/classify-stocks renders the
+// not-configured message when KIS (and thus the classifier) is absent.
+func TestClassifyStocksDisabled(t *testing.T) {
+	e, _ := setupAccounts(t)
+	rec := do(e, http.MethodPost, "/accounts/classify-stocks", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "KIS 자산구분 분류 서비스가 설정되지 않았습니다") {
+		t.Errorf("disabled message missing:\n%s", rec.Body.String())
+	}
+}
+
 func TestSyncAccountNilService(t *testing.T) {
 	e, c := setupAccounts(t)
 	a := seedAccount(t, c, "동기화계좌")

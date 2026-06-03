@@ -38,6 +38,7 @@ func (h *AccountHandler) Register(e *echo.Echo) {
 	e.PUT("/accounts/:id", h.update)
 	e.DELETE("/accounts/:id", h.delete)
 	e.POST("/accounts/:id/sync", h.syncAccount)
+	e.POST("/accounts/classify-stocks", h.classifyStocks)
 }
 
 func (h *AccountHandler) list(c echo.Context) error {
@@ -254,6 +255,25 @@ func (h *AccountHandler) syncAccount(c echo.Context) error {
 		return renderSyncResult(c, id.String(), false, msg, nil, false)
 	}
 	return renderSyncResult(c, id.String(), true, "KIS 계좌 동기화 완료", &syncResult, false)
+}
+
+// classifyStocks backfills asset_class (ETF/stock) for unclassified stocks via KIS.
+// Needed so IRP/연금 accounts can be recommended domestic-listed ETFs.
+func (h *AccountHandler) classifyStocks(c echo.Context) error {
+	ctx := c.Request().Context()
+	if h.c.StockClassification == nil || !h.c.StockClassification.Enabled() {
+		return templates.ClassifyResultPartial(false,
+			"KIS 자산구분 분류 서비스가 설정되지 않았습니다. (.env에 KIS_APP_KEY/KIS_APP_SECRET 확인)").
+			Render(ctx, c.Response().Writer)
+	}
+	res, err := h.c.StockClassification.ClassifyAll(ctx)
+	if err != nil {
+		return templates.ClassifyResultPartial(false,
+			"자산구분 분류 실패: "+html.EscapeString(err.Error())).Render(ctx, c.Response().Writer)
+	}
+	msg := fmt.Sprintf("자산구분 분류 완료 — 전체 %d · 신규분류 %d · 건너뜀 %d · 실패 %d",
+		res.Total, res.Classified, res.Skipped, res.Failed)
+	return templates.ClassifyResultPartial(res.Failed == 0, msg).Render(ctx, c.Response().Writer)
 }
 
 func renderSyncResult(c echo.Context, accountIDStr string, success bool, message string, result *models.KisAccountSyncResult, showConfirmEmpty bool) error {

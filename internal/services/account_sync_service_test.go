@@ -73,13 +73,18 @@ func (r *mockSyncHoldingRepo) Delete(_ context.Context, id uuidx.UUID) error {
 }
 
 type mockSyncStockRepo struct {
-	all     []models.Stock
-	created []models.Stock
-	named   []mockStockNameUpdate
+	all        []models.Stock
+	created    []models.Stock
+	named      []mockStockNameUpdate
+	classified []mockStockAssetClassUpdate
 }
 type mockStockNameUpdate struct {
 	id   uuidx.UUID
 	name string
+}
+type mockStockAssetClassUpdate struct {
+	id         uuidx.UUID
+	assetClass string
 }
 
 func (r *mockSyncStockRepo) ListAll(_ context.Context) ([]models.Stock, error) {
@@ -100,6 +105,36 @@ func (r *mockSyncStockRepo) UpdateName(_ context.Context, id uuidx.UUID, name st
 		}
 	}
 	return models.Stock{}, errors.New("stock not found")
+}
+func (r *mockSyncStockRepo) UpdateAssetClass(_ context.Context, id uuidx.UUID, assetClass string) (models.Stock, error) {
+	r.classified = append(r.classified, mockStockAssetClassUpdate{id, assetClass})
+	for i, st := range r.all {
+		if st.ID == id {
+			if assetClass == "" {
+				r.all[i].AssetClass = nil
+			} else {
+				ac := assetClass
+				r.all[i].AssetClass = &ac
+			}
+			return r.all[i], nil
+		}
+	}
+	return models.Stock{}, errors.New("stock not found")
+}
+
+// fakeAssetClassifier is a deterministic AssetClassifier for tests.
+type fakeAssetClassifier struct {
+	byTicker map[string]string
+	err      error
+	calls    int
+}
+
+func (f *fakeAssetClassifier) ClassifyAssetClass(ticker, _ string) (string, error) {
+	f.calls++
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.byTicker[ticker], nil
 }
 
 type mockSyncGroupRepo struct {
@@ -168,6 +203,57 @@ func TestSyncAccount_EmptySnapshotGuard(t *testing.T) {
 	}
 	if !services.IsKisEmptySnapshotError(err) {
 		t.Errorf("want KisEmptySnapshotError, got %T: %v", err, err)
+	}
+}
+
+func TestSyncAccount_ClassifiesUnclassifiedStock(t *testing.T) {
+	account := makeTestAccount()
+	bc := &mockBalanceClient{snapshot: models.KisAccountSnapshot{
+		CashBalance: mustDecimal("0"),
+		Holdings: []models.KisHoldingPosition{
+			{Ticker: "0052D0", Name: "국내배당ETF", Quantity: mustDecimal("10")},
+		},
+	}}
+	stockID := newTestUUID()
+	stocks := &mockSyncStockRepo{all: []models.Stock{{ID: stockID, Ticker: "0052D0"}}} // unclassified
+	svc := makeSyncSvc(bc, &mockSyncAccountRepo{}, &mockSyncHoldingRepo{}, stocks, &mockSyncGroupRepo{})
+	classifier := &fakeAssetClassifier{byTicker: map[string]string{"0052D0": "etf"}}
+	svc.SetClassifier(classifier)
+
+	if _, err := svc.SyncAccount(context.Background(), account, "12345678", "01", false); err != nil {
+		t.Fatalf("SyncAccount: %v", err)
+	}
+	if len(stocks.classified) != 1 {
+		t.Fatalf("asset class updates = %d, want 1 (%+v)", len(stocks.classified), stocks.classified)
+	}
+	if stocks.classified[0].id != stockID || stocks.classified[0].assetClass != "etf" {
+		t.Errorf("classification = %+v, want {%v etf}", stocks.classified[0], stockID)
+	}
+}
+
+func TestSyncAccount_SkipsAlreadyClassifiedStock(t *testing.T) {
+	account := makeTestAccount()
+	bc := &mockBalanceClient{snapshot: models.KisAccountSnapshot{
+		CashBalance: mustDecimal("0"),
+		Holdings: []models.KisHoldingPosition{
+			{Ticker: "0052D0", Name: "국내배당ETF", Quantity: mustDecimal("10")},
+		},
+	}}
+	etf := "etf"
+	stockID := newTestUUID()
+	stocks := &mockSyncStockRepo{all: []models.Stock{{ID: stockID, Ticker: "0052D0", AssetClass: &etf}}} // already classified
+	svc := makeSyncSvc(bc, &mockSyncAccountRepo{}, &mockSyncHoldingRepo{}, stocks, &mockSyncGroupRepo{})
+	classifier := &fakeAssetClassifier{byTicker: map[string]string{"0052D0": "etf"}}
+	svc.SetClassifier(classifier)
+
+	if _, err := svc.SyncAccount(context.Background(), account, "12345678", "01", false); err != nil {
+		t.Fatalf("SyncAccount: %v", err)
+	}
+	if classifier.calls != 0 {
+		t.Errorf("classifier called %d times, want 0 (already classified)", classifier.calls)
+	}
+	if len(stocks.classified) != 0 {
+		t.Errorf("asset class updates = %d, want 0", len(stocks.classified))
 	}
 }
 

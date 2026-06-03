@@ -25,23 +25,24 @@ import (
 
 // Container holds shared dependencies for the web layer.
 type Container struct {
-	DB                 *sql.DB
-	Groups             *repositories.GroupRepository
-	Stocks             *repositories.StockRepository
-	Accounts           *repositories.AccountRepository
-	Holdings           *repositories.HoldingRepository
-	Deposits           *repositories.DepositRepository
-	StockPrices        *repositories.StockPriceRepository
-	OrderExecutions    *repositories.OrderExecutionRepository
-	Portfolio          *services.PortfolioService
-	Rebalance          *services.RebalanceService
-	RebalanceExecution *services.RebalanceExecutionService
-	OrderClient        services.OrderClient                      // nil if KIS not configured
-	AccountSync        *services.KisAccountSyncService           // nil if KIS not configured; key-1 service
-	AccountSyncByKeyID map[int64]*services.KisAccountSyncService // keyed by kis_api_key_id
-	PriceSync          *services.PriceSyncService                // nil if KIS not configured
-	KisCano            string
-	KisAcntPrdtCd      string
+	DB                  *sql.DB
+	Groups              *repositories.GroupRepository
+	Stocks              *repositories.StockRepository
+	Accounts            *repositories.AccountRepository
+	Holdings            *repositories.HoldingRepository
+	Deposits            *repositories.DepositRepository
+	StockPrices         *repositories.StockPriceRepository
+	OrderExecutions     *repositories.OrderExecutionRepository
+	Portfolio           *services.PortfolioService
+	Rebalance           *services.RebalanceService
+	RebalanceExecution  *services.RebalanceExecutionService
+	OrderClient         services.OrderClient                      // nil if KIS not configured
+	AccountSync         *services.KisAccountSyncService           // nil if KIS not configured; key-1 service
+	AccountSyncByKeyID  map[int64]*services.KisAccountSyncService // keyed by kis_api_key_id
+	PriceSync           *services.PriceSyncService                // nil if KIS not configured
+	StockClassification *services.StockClassificationService      // backfills asset_class via KIS; Enabled()==false if KIS absent
+	KisCano             string
+	KisAcntPrdtCd       string
 }
 
 // New opens the database at path (empty = default location) and builds the
@@ -75,6 +76,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	var accountSync *services.KisAccountSyncService
 	accountSyncByKeyID := map[int64]*services.KisAccountSyncService{}
 	var rebalanceSync services.SyncService
+	var assetClassifier services.AssetClassifier
 	kisCano := ""
 	kisAcntPrdtCd := ""
 
@@ -83,10 +85,12 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		priceClient = buildKISClient(kisAuth)
 		exchangeRate = buildExchangeRate()
 		orderClient = buildOrderClient(kisAuth)
+		assetClassifier = buildAssetClassifier(kisAuth)
 
 		kisCano, kisAcntPrdtCd = loadKISAccount()
 		if balanceClient := buildBalanceClient(kisAuth); balanceClient != nil {
 			accountSync = services.NewKisAccountSyncService(accounts, holdings, stocks, groups, balanceClient, ".data/kis_sync.log")
+			accountSync.SetClassifier(assetClassifier)
 			accountSyncByKeyID[1] = accountSync
 		}
 
@@ -96,6 +100,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 					bc := buildBalanceClientFromAuth(auth)
 					svc := services.NewKisAccountSyncService(accounts, holdings, stocks, groups, bc,
 						fmt.Sprintf(".data/kis_sync_%d.log", id))
+					svc.SetClassifier(buildAssetClassifier(auth))
 					accountSyncByKeyID[int64(id)] = svc
 				}
 			}
@@ -124,25 +129,27 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 
 	execRepo := &execRepoAdapter{r: orderExecutions}
 	rebalanceExecution := services.NewRebalanceExecutionService(orderClient, execRepo, rebalanceSync)
+	stockClassification := services.NewStockClassificationService(stocks, assetClassifier)
 
 	return &Container{
-		DB:                 sqlDB,
-		Groups:             groups,
-		Stocks:             stocks,
-		Accounts:           accounts,
-		Holdings:           holdings,
-		Deposits:           deposits,
-		StockPrices:        stockPrices,
-		OrderExecutions:    orderExecutions,
-		Portfolio:          portfolio,
-		Rebalance:          rebalance,
-		RebalanceExecution: rebalanceExecution,
-		OrderClient:        orderClient,
-		AccountSync:        accountSync,
-		AccountSyncByKeyID: accountSyncByKeyID,
-		PriceSync:          priceSync,
-		KisCano:            kisCano,
-		KisAcntPrdtCd:      kisAcntPrdtCd,
+		DB:                  sqlDB,
+		Groups:              groups,
+		Stocks:              stocks,
+		Accounts:            accounts,
+		Holdings:            holdings,
+		Deposits:            deposits,
+		StockPrices:         stockPrices,
+		OrderExecutions:     orderExecutions,
+		Portfolio:           portfolio,
+		Rebalance:           rebalance,
+		RebalanceExecution:  rebalanceExecution,
+		OrderClient:         orderClient,
+		AccountSync:         accountSync,
+		AccountSyncByKeyID:  accountSyncByKeyID,
+		PriceSync:           priceSync,
+		StockClassification: stockClassification,
+		KisCano:             kisCano,
+		KisAcntPrdtCd:       kisAcntPrdtCd,
 	}
 }
 
@@ -419,6 +426,70 @@ func buildOrderClient(auth *kisAuth) services.OrderClient {
 			AppSecret: auth.appSecret,
 			CustType:  auth.custType,
 			Env:       auth.env,
+			Manager:   auth.tokenManager,
+		},
+	}
+}
+
+// kisAssetClassifier routes a ticker to the domestic or overseas KIS info
+// endpoint and reports whether it is an "etf" or a "stock". It satisfies
+// services.AssetClassifier.
+type kisAssetClassifier struct {
+	domestic *kis.DomesticInfoClient
+	overseas *kis.OverseasInfoClient
+}
+
+func (k *kisAssetClassifier) ClassifyAssetClass(ticker, exchange string) (string, error) {
+	if kis.IsDomesticTicker(ticker) {
+		return k.domestic.ClassifyAssetClass(ticker)
+	}
+	return k.overseas.ClassifyAssetClass(overseasPriceEXCD(exchange), ticker)
+}
+
+// overseasPriceEXCD maps a stored long exchange code (NASD/NYSE/AMEX) to the
+// short KIS info/price code (NAS/NYS/AMS). Unknown/empty defaults to NAS.
+func overseasPriceEXCD(exchange string) string {
+	switch strings.ToUpper(strings.TrimSpace(exchange)) {
+	case "NYSE", "NYS":
+		return "NYS"
+	case "AMEX", "AMS":
+		return "AMS"
+	default:
+		return "NAS"
+	}
+}
+
+// buildAssetClassifier builds a KIS-backed asset classifier, or nil if KIS keys
+// are absent (a nil classifier disables classification downstream).
+func buildAssetClassifier(auth *kisAuth) services.AssetClassifier {
+	if auth == nil {
+		return nil
+	}
+	domesticInfoTrID := strings.TrimSpace(os.Getenv("KIS_DOMESTIC_INFO_TR_ID"))
+	if domesticInfoTrID == "" {
+		domesticInfoTrID = "CTPF1002R"
+	}
+	overseasInfoTrID := strings.TrimSpace(os.Getenv("KIS_OVERSEAS_INFO_TR_ID"))
+	if overseasInfoTrID == "" {
+		overseasInfoTrID = "CTPF1702R"
+	}
+	return &kisAssetClassifier{
+		domestic: &kis.DomesticInfoClient{
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			TrID:      domesticInfoTrID,
+			CustType:  auth.custType,
+			Manager:   auth.tokenManager,
+		},
+		overseas: &kis.OverseasInfoClient{
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			TrID:      overseasInfoTrID,
+			CustType:  auth.custType,
 			Manager:   auth.tokenManager,
 		},
 	}
