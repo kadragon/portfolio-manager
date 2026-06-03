@@ -124,8 +124,8 @@ func TestPreferredAccountTypesLabel(t *testing.T) {
 	if !strings.Contains(got, "IRP") || !strings.Contains(got, "연금저축") {
 		t.Errorf("국내배당 preferred = %q, want IRP·연금저축", got)
 	}
-	if got := preferredAccountTypesLabel("해외배당", nil); got != "위탁" { // brokerage top score 8
-		t.Errorf("해외배당 preferred = %q, want 위탁", got)
+	if got := preferredAccountTypesLabel("해외배당", nil); got != "ISA" { // ISA top score 8 (corrected from brokerage)
+		t.Errorf("해외배당 preferred = %q, want ISA", got)
 	}
 }
 

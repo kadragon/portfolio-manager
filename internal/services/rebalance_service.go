@@ -385,17 +385,23 @@ func (s *RebalanceService) buildAccountAUM(accounts []models.Account, positions 
 // _placementScore ranks how tax-preferred it is to place each rebalance group
 // in each account type (higher = stronger preference). Korea, 2026-06. These
 // are the contestable, adjustable tax-opinion knobs of the engine — see
-// docs/adr/0001. Cells most worth auditing: 해외배당 leaning brokerage (2025
-// 선환급 폐지 erased most of the foreign-dividend shelter in tax-advantaged
-// accounts) and 국내성장 (domestic listed-stock capital gains are largely
-// untaxed for retail, so little benefit to occupying scarce tax-advantaged
-// space).
+// docs/adr/0001. Used only to DIRECT trades that a band breach already requires
+// (which account sells / buys), never to force proactive relocation.
+//
+// 해외배당 (국내상장 해외배당 ETF): a general 위탁 account taxes both 매매차익 and
+// 분배금 as 배당소득 15.4% and folds them into 금융소득종합과세. ISA shelters them
+// (비과세 한도 후 9.9% 분리과세), and 연금/IRP defer to 연금소득세 3.3–5.5%. The 2025
+// 선환급 폐지 removed the *foreign-withholding* refund (lost in every account
+// type alike), so it does NOT make 위탁 preferable — ISA still wins, 연금/IRP
+// next, 위탁 last. (Earlier this row leaned brokerage; corrected.)
+// 국내성장 leans 위탁: domestic listed-stock gains are largely untaxed for retail,
+// so it should not occupy scarce tax-advantaged space.
 var _placementScore = map[string]map[string]int{
 	"국내배당": {models.AccountTypeIRP: 10, models.AccountTypePension: 10, models.AccountTypeISA: 9, models.AccountTypeBrokerage: 2},
 	"해외성장": {models.AccountTypeIRP: 8, models.AccountTypePension: 8, models.AccountTypeISA: 7, models.AccountTypeBrokerage: 5},
 	"해외안정": {models.AccountTypeIRP: 7, models.AccountTypePension: 7, models.AccountTypeISA: 6, models.AccountTypeBrokerage: 5},
 	"국내성장": {models.AccountTypeBrokerage: 6, models.AccountTypeISA: 4, models.AccountTypeIRP: 3, models.AccountTypePension: 3},
-	"해외배당": {models.AccountTypeBrokerage: 8, models.AccountTypeISA: 4, models.AccountTypeIRP: 3, models.AccountTypePension: 3},
+	"해외배당": {models.AccountTypeISA: 8, models.AccountTypeIRP: 6, models.AccountTypePension: 6, models.AccountTypeBrokerage: 4},
 }
 
 // planTargetsByAccountGroup computes the per-account, per-group target VALUE
