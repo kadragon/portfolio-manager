@@ -38,16 +38,12 @@ func (h *RebalanceHandler) view(c echo.Context) error {
 		).Render(ctx, c.Response().Writer)
 	}
 
-	plan, err := h.buildPlan(c, restrictOverseas)
+	summary, plan, err := h.buildPlan(c, restrictOverseas)
 	if err != nil {
 		return templates.RebalancePage(nil, nil, nil, restrictOverseas, err.Error(), false).Render(ctx, c.Response().Writer)
 	}
 
-	summary, _ := h.c.Portfolio.GetPortfolioSummary(ctx, false)
-	var groupSummary []models.GroupSummaryRow
-	if summary != nil {
-		groupSummary = services.ComputeGroupSummary(summary)
-	}
+	groupSummary := services.ComputeGroupSummary(summary)
 	return templates.RebalancePage(summary, groupSummary, plan, restrictOverseas, "", h.c.OrderClient != nil).Render(ctx, c.Response().Writer)
 }
 
@@ -59,7 +55,7 @@ func (h *RebalanceHandler) execute(c echo.Context) error {
 		return templates.RebalanceResultPartial(nil, "가격 서비스 없음", false).Render(ctx, c.Response().Writer)
 	}
 
-	plan, err := h.buildPlan(c, restrictOverseas)
+	_, plan, err := h.buildPlan(c, restrictOverseas)
 	if err != nil {
 		return templates.RebalanceResultPartial(nil, err.Error(), false).Render(ctx, c.Response().Writer)
 	}
@@ -77,17 +73,19 @@ func (h *RebalanceHandler) execute(c echo.Context) error {
 	return templates.RebalanceResultPartial(&result, "주문 실행 완료", true).Render(ctx, c.Response().Writer)
 }
 
-func (h *RebalanceHandler) buildPlan(c echo.Context, restrictOverseas bool) (*models.RebalancePlan, error) {
+// buildPlan computes the rebalance plan and returns the portfolio summary it was
+// built from, so callers can reuse the summary without re-querying.
+func (h *RebalanceHandler) buildPlan(c echo.Context, restrictOverseas bool) (*models.PortfolioSummary, *models.RebalancePlan, error) {
 	ctx := c.Request().Context()
 
 	summary, err := h.c.Portfolio.GetPortfolioSummary(ctx, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	allAccounts, err := h.c.Accounts.ListAll(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	holdingsByAccount := make(map[uuidx.UUID][]models.Holding, len(allAccounts))
@@ -111,7 +109,7 @@ func (h *RebalanceHandler) buildPlan(c echo.Context, restrictOverseas bool) (*mo
 		RestrictOverseas:  restrictOverseas,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &plan, nil
+	return summary, &plan, nil
 }

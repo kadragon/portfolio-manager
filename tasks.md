@@ -20,5 +20,4 @@ Schema / lifecycle:
 
 ### PR #112 — [FEAT] resolve historical prices to nearest prior trading day (2026-06-03)
 
-- [ ] [perf] `RebalanceHandler.view` calls `GetPortfolioSummary` twice per request (once in `buildPlan`, once in `view`) — return the summary from `buildPlan` and reuse it instead of re-querying (pre-existing; surfaced by FX eager-fetch) (source: agy) — `internal/web/handlers/rebalance.go:46`
 - [ ] [perf] `GetPortfolioSummary` fetches `GetUSDKRW()` eagerly to populate the display rate, adding one cold EXIM lookup for KRW-only portfolios — bounded to 1 fetch/day by `cachedRates`, but consider decoupling the display-rate fetch from valuation if it shows up in latency (source: codex) — `internal/services/portfolio_service.go:133`
