@@ -130,4 +130,18 @@ sqlc reads `SELECT *` in schema order.
   `internal/services/rebalance_service.go` (`canHold`, `_placementScore`,
   `planTargetsByAccountGroup`), `internal/repositories/*`, account/stock edit UI.
 - Eligibility & placement research is summarized in the Context section above
-  (Korean tax rules as of 2026-06).
+  (Korean tax rules as of 2026-06). Load-bearing sources:
+  - IRP/연금 hold no individual stocks (ETFs/funds only):
+    [KB](https://kbthink.com/year-end-tax/pension-savings-vs-irp.html),
+    [Mirae Asset](https://magazine.securities.miraeasset.com/contents.php?idx=156)
+  - 2025 외국납부세액 선환급 폐지 → foreign-dividend shelter mostly gone inside
+    ISA/연금 (drives 해외배당 → brokerage):
+    [Hankyung](https://www.hankyung.com/article/2025020430051),
+    [Toss Bank](https://www.tossbank.com/articles/dividendtaxation),
+    [KB AM](https://www.kbam.co.kr/board/view/667)
+  - 국내배당 brokerage 15.4% + 2,000만 종합과세; ISA 비과세 한도 then 9.9%
+    분리과세: [KB](https://kbthink.com/main/asset-management/wealth-manage-tip/kbthink-original/202410/kr-stocktax.html),
+    [FSC](https://www.fsc.go.kr/po020201/27339)
+  - Could not fully verify (flagged): 슈퍼 ISA expansion (proposed, not passed as
+    of 2026-06) and the 크레딧 제도 exact effective dates — excluded from the
+    scoring assumptions.
