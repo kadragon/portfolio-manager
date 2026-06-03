@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -389,6 +390,86 @@ func TestBulkCashPreservesKIS(t *testing.T) {
 // TestSyncAccountNilService checks that POST /accounts/:id/sync returns the
 // "KIS 계좌 동기화 서비스가 설정되지 않았습니다" message when AccountSync is nil
 // (the default in-memory container).
+// TestClassifyStocksDisabled checks that POST /accounts/classify-stocks renders the
+// not-configured message when KIS (and thus the classifier) is absent.
+func TestClassifyStocksDisabled(t *testing.T) {
+	e, _ := setupAccounts(t)
+	rec := do(e, http.MethodPost, "/accounts/classify-stocks", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "KIS 자산구분 분류 서비스가 설정되지 않았습니다") {
+		t.Errorf("disabled message missing:\n%s", rec.Body.String())
+	}
+}
+
+// stubAssetClassifier resolves each ticker from a map; a missing entry errors,
+// driving the StockClassificationService's Failed counter.
+type stubAssetClassifier struct {
+	byTicker map[string]string
+}
+
+func (s stubAssetClassifier) ClassifyAssetClass(ticker, _ string) (string, error) {
+	if ac, ok := s.byTicker[ticker]; ok {
+		return ac, nil
+	}
+	return "", errors.New("classify failed")
+}
+
+func seedNilAssetStock(t *testing.T, c *container.Container, ticker string) {
+	t.Helper()
+	ctx := context.Background()
+	g, err := c.Groups.Create(ctx, "국내성장", 100.0)
+	if err != nil {
+		t.Fatalf("seed group: %v", err)
+	}
+	if _, err := c.Stocks.Create(ctx, ticker, g.ID); err != nil {
+		t.Fatalf("seed stock: %v", err)
+	}
+}
+
+// TestClassifyStocksSuccess exercises the enabled success path: every stock
+// classified, no failures → "완료" and success styling.
+func TestClassifyStocksSuccess(t *testing.T) {
+	e, c := setupAccounts(t)
+	seedNilAssetStock(t, c, "005930")
+	c.StockClassification = services.NewStockClassificationService(
+		c.Stocks, stubAssetClassifier{byTicker: map[string]string{"005930": "etf"}})
+
+	rec := do(e, http.MethodPost, "/accounts/classify-stocks", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "자산구분 분류 완료") || strings.Contains(body, "부분 완료") {
+		t.Errorf("want full-success 완료 message, got:\n%s", body)
+	}
+	if !strings.Contains(body, "신규분류 1") || !strings.Contains(body, "실패 0") {
+		t.Errorf("want Classified 1 / Failed 0, got:\n%s", body)
+	}
+}
+
+// TestClassifyStocksPartialFailure: a stock the classifier can't resolve must
+// surface as "부분 완료", not "완료".
+func TestClassifyStocksPartialFailure(t *testing.T) {
+	e, c := setupAccounts(t)
+	seedNilAssetStock(t, c, "999999")
+	c.StockClassification = services.NewStockClassificationService(
+		c.Stocks, stubAssetClassifier{byTicker: map[string]string{}})
+
+	rec := do(e, http.MethodPost, "/accounts/classify-stocks", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "부분 완료") {
+		t.Errorf("want 부분 완료 on failure, got:\n%s", body)
+	}
+	if !strings.Contains(body, "실패 1") {
+		t.Errorf("want Failed 1, got:\n%s", body)
+	}
+}
+
 func TestSyncAccountNilService(t *testing.T) {
 	e, c := setupAccounts(t)
 	a := seedAccount(t, c, "동기화계좌")

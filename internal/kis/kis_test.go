@@ -922,6 +922,87 @@ func TestDomesticInfoClientNameFallbacks(t *testing.T) {
 	}
 }
 
+func TestClassifyDomesticAssetClass(t *testing.T) {
+	cases := []struct {
+		sctyGrp string
+		etfDvsn string
+		want    string
+	}{
+		{"EF", "", "etf"},    // domestic ETF
+		{"ef", "", "etf"},    // case-insensitive
+		{"FE", "", "etf"},    // overseas-ETF variant
+		{"ST", "", "stock"},  // 주권
+		{"ST", "0", "stock"}, // etf_dvsn_cd "0" ≠ ETF
+		{"", "1", "etf"},     // only etf_dvsn_cd present
+		{"EN", "", "stock"},  // ETN treated as non-ETF
+		{"", "", "stock"},    // unknown → stock
+	}
+	for _, tc := range cases {
+		if got := ClassifyDomesticAssetClass(tc.sctyGrp, tc.etfDvsn); got != tc.want {
+			t.Errorf("ClassifyDomesticAssetClass(%q,%q) = %q, want %q", tc.sctyGrp, tc.etfDvsn, got, tc.want)
+		}
+	}
+}
+
+func TestDomesticInfoClientClassifyAssetClass(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"output":{"pdno":"0052D0","prdt_name":"국내배당ETF","prdt_type_cd":"300","scty_grp_id_cd":"EF","etf_dvsn_cd":"1"}}`)
+	}))
+	mgr := makeManager(t, "tok")
+	ic := &DomesticInfoClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", TrID: "CTPF1002R", CustType: "P",
+		Manager: mgr,
+	}
+	ac, err := ic.ClassifyAssetClass("0052D0")
+	if err != nil {
+		t.Fatalf("ClassifyAssetClass: %v", err)
+	}
+	if ac != "etf" {
+		t.Errorf("asset class = %q, want etf", ac)
+	}
+}
+
+func TestClassifyOverseasAssetClass(t *testing.T) {
+	cases := []struct {
+		clsfName string
+		riskCd   string
+		trackMul string
+		want     string
+	}{
+		{"ETF", "", "", "etf"},
+		{"US ETF", "", "", "etf"},
+		{"", "01", "", "etf"}, // risk code present
+		{"", "", "2", "etf"},  // tracking multiple present
+		{"COMMON STOCK", "", "0", "stock"},
+		{"", "", "", "stock"},
+	}
+	for _, tc := range cases {
+		if got := ClassifyOverseasAssetClass(tc.clsfName, tc.riskCd, tc.trackMul); got != tc.want {
+			t.Errorf("ClassifyOverseasAssetClass(%q,%q,%q) = %q, want %q", tc.clsfName, tc.riskCd, tc.trackMul, got, tc.want)
+		}
+	}
+}
+
+func TestOverseasInfoClientClassifyAssetClass(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"rt_cd":"0","output":{"pdno":"SCHD","prdt_name":"Schwab US Dividend ETF","prdt_clsf_name":"ETF","etp_chas_erng_rt_dbnb":"1"}}`)
+	}))
+	mgr := makeManager(t, "tok")
+	ic := &OverseasInfoClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", TrID: "CTPF1702R", CustType: "P",
+		Manager: mgr,
+	}
+	ac, err := ic.ClassifyAssetClass("NAS", "SCHD")
+	if err != nil {
+		t.Fatalf("ClassifyAssetClass: %v", err)
+	}
+	if ac != "etf" {
+		t.Errorf("asset class = %q, want etf", ac)
+	}
+}
+
 // ---------- domestic_order.go ----------
 
 func TestDomesticOrderTrID(t *testing.T) {

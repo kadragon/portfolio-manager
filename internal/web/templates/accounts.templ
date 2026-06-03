@@ -216,6 +216,11 @@ templ AccountForm(account models.Account, availableKisKeyIDs []int64, errorMessa
 	<tr id={ "sync-result-" + account.ID.String() }></tr>
 }
 
+// ClassifyResultPartial renders the asset-class backfill result (hx-swap innerHTML into #classify-result).
+templ ClassifyResultPartial(success bool, message string) {
+	<div class={ "alert text-sm py-2 " + syncAlertClass(success) }>{ message }</div>
+}
+
 // SyncResultPartial renders the KIS sync result row (hx-swap outerHTML).
 // result may be nil on failure.
 templ SyncResultPartial(accountID string, success bool, message string, result *models.KisAccountSyncResult, showConfirmEmpty bool) {
@@ -326,6 +331,21 @@ templ AccountsPage(accounts []models.Account) {
 							}
 						</tbody>
 					</table>
+				</div>
+				<div class="border-t border-base-300 pt-3 mt-3">
+					<h3 class="text-sm font-semibold text-base-content mb-2">자산구분 분류 (KIS)</h3>
+					<p class="text-xs text-base-content/60 mb-2">
+						미분류 종목의 ETF/주식 구분을 KIS에서 조회해 채웁니다. IRP·연금 계좌의 국내 상장 ETF 매수 추천에 필요합니다.
+					</p>
+					<form
+						hx-post="/accounts/classify-stocks"
+						hx-target="#classify-result"
+						hx-swap="innerHTML"
+						data-request-message="자산구분을 분류하는 중…"
+					>
+						<button type="submit" class="btn btn-secondary btn-sm" hx-disabled-elt="this">자산구분 분류</button>
+					</form>
+					<div id="classify-result" class="mt-2" role="status" aria-live="polite" aria-atomic="true"></div>
 				</div>
 				if len(accounts) > 0 {
 					<div class="border-t border-base-300 pt-3 mt-3">

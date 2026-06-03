@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"strings"
 
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
@@ -96,11 +97,20 @@ func (s *RebalanceService) BuildPlan(p BuildPlanParams) (models.RebalancePlan, e
 
 	accountAUM := s.buildAccountAUM(p.Accounts, positions)
 	targetByAccountGroup := s.planTargetsByAccountGroup(p.Accounts, accountAUM, targetByGroup)
-	accountGroupState := s.buildAccountGroupState(p.Accounts, positions, accountAUM, targetByAccountGroup)
+	accountGroupState := s.buildAccountGroupState(p.Accounts, positions, accountAUM, targetByAccountGroup, targetByGroup)
+
+	accountTypeByID := map[uuidx.UUID]*string{}
+	availableTypes := map[string]bool{}
+	for _, a := range p.Accounts {
+		accountTypeByID[a.ID] = a.AccountType
+		if a.AccountType != nil && models.ValidAccountType(*a.AccountType) {
+			availableTypes[*a.AccountType] = true
+		}
+	}
 
 	sellByAccountGroup := s.calcSellAmounts(p.Accounts, accountGroupState, accountAUM, positions, p.RestrictOverseas)
 	sellRecs, sellCashByAccount, soldByAccountGroup, sellRecsByAccountID := s.buildSellRecs(
-		sellByAccountGroup, positions, accountGroupState, p.RestrictOverseas,
+		sellByAccountGroup, positions, accountGroupState, accountTypeByID, availableTypes, p.RestrictOverseas,
 	)
 
 	buyRecs, unusedCashByAccount, unmetByAccount, buyRecsByAccountID := s.buildBuyRecs(
@@ -158,8 +168,12 @@ type accountGroupState struct {
 	upperPct        decimal.Decimal
 	lowerPct        decimal.Decimal
 	targetValueKRW  decimal.Decimal
-	isUpperBreached bool
-	isLowerBreached bool
+	// mirrorTargetValueKRW is the pre-tax-location uniform target (global group
+	// target % × account AUM). Comparing targetValueKRW against it reveals whether
+	// tax-location concentration pushed this group OUT of (≈0) or INTO this account.
+	mirrorTargetValueKRW decimal.Decimal
+	isUpperBreached      bool
+	isLowerBreached      bool
 }
 
 type buyCandidate struct {
@@ -519,6 +533,7 @@ func (s *RebalanceService) buildAccountGroupState(
 	positions []accountPosition,
 	accountAUM map[uuidx.UUID]decimal.Decimal,
 	targetValueByAccountGroup map[[2]string]decimal.Decimal,
+	targetByGroup map[string]decimal.Decimal,
 ) map[[2]string]accountGroupState {
 	currentByAccountGroup := map[[2]string]decimal.Decimal{}
 	for _, p := range positions {
@@ -535,18 +550,20 @@ func (s *RebalanceService) buildAccountGroupState(
 			currentPct := toPercent(currentVal, aum)
 			targetVal := targetValueByAccountGroup[key]
 			targetPct := toPercent(targetVal, aum)
+			mirrorTargetVal := targetByGroup[gname].Div(_percentBase).Mul(aum)
 			band := _groupBands[gname]
 			upperPct := targetPct.Add(band)
 			lowerPct := targetPct.Sub(band)
 			state[key] = accountGroupState{
-				currentValueKRW: currentVal,
-				currentPct:      currentPct,
-				targetPct:       targetPct,
-				upperPct:        upperPct,
-				lowerPct:        lowerPct,
-				targetValueKRW:  targetVal,
-				isUpperBreached: currentPct.GreaterThan(upperPct),
-				isLowerBreached: currentPct.LessThan(lowerPct),
+				currentValueKRW:      currentVal,
+				currentPct:           currentPct,
+				targetPct:            targetPct,
+				upperPct:             upperPct,
+				lowerPct:             lowerPct,
+				targetValueKRW:       targetVal,
+				mirrorTargetValueKRW: mirrorTargetVal,
+				isUpperBreached:      currentPct.GreaterThan(upperPct),
+				isLowerBreached:      currentPct.LessThan(lowerPct),
 			}
 		}
 	}
@@ -605,6 +622,8 @@ func (s *RebalanceService) buildSellRecs(
 	sellByAccountGroup map[[2]string]decimal.Decimal,
 	positions []accountPosition,
 	state map[[2]string]accountGroupState,
+	accountTypeByID map[uuidx.UUID]*string,
+	availableTypes map[string]bool,
 	restrictOverseas bool,
 ) (
 	[]models.RebalanceRecommendation,
@@ -714,11 +733,10 @@ func (s *RebalanceService) buildSellRecs(
 					GroupName:          pos.sourceGroup,
 					AccountName:        pos.accountName,
 					RebalanceGroupName: gname,
-					Reason: fmt.Sprintf("과열 그룹 절반 감축 (%.2f%% -> 목표근접, 상단 %.2f%%)",
-						floatOf(st.currentPct), floatOf(st.upperPct)),
-					TriggerType: "group",
-					AmountKRW:   numeric.Wrap(sellKRW),
-					AmountLocal: numeric.Wrap(amountLocal),
+					Reason:             sellReason(st, gname, accountTypeByID[e.accountID], availableTypes),
+					TriggerType:        "group",
+					AmountKRW:          numeric.Wrap(sellKRW),
+					AmountLocal:        numeric.Wrap(amountLocal),
 				}
 				recs = append(recs, rec)
 				recsByAccountID[e.accountID] = append(recsByAccountID[e.accountID], rec)
@@ -813,11 +831,10 @@ func (s *RebalanceService) buildBuyRecs(
 				GroupName:          candidate.sourceGroup,
 				AccountName:        account.Name,
 				RebalanceGroupName: gname,
-				Reason: fmt.Sprintf("목표 대비 부족분 보충 (%.2f%% -> 목표 %.2f%%)",
-					floatOf(projectedPct), floatOf(st.targetPct)),
-				TriggerType: "group",
-				AmountKRW:   numeric.Wrap(buyKRW),
-				AmountLocal: numeric.Wrap(amountLocal),
+				Reason:             buyReason(st, projectedPct, gname, account.AccountType),
+				TriggerType:        "group",
+				AmountKRW:          numeric.Wrap(buyKRW),
+				AmountLocal:        numeric.Wrap(amountLocal),
 			}
 			recs = append(recs, rec)
 			recsByAccountID[account.ID] = append(recsByAccountID[account.ID], rec)
@@ -1062,6 +1079,110 @@ func sumValueKRW(positions []accountPosition) decimal.Decimal {
 func floatOf(d decimal.Decimal) float64 {
 	f, _ := d.Float64()
 	return f
+}
+
+// --- recommendation reasons (explain the WHY, incl. tax-location) ---
+
+var (
+	_taxPushOutRatio = decimal.NewFromFloat(0.5) // target ≤ 50% of uniform share ⇒ pushed out
+	_taxPullInRatio  = decimal.NewFromFloat(1.5) // target ≥ 150% of uniform share ⇒ pulled in
+)
+
+// isTaxPushedOut reports whether tax-location concentration drove this account's
+// target for the group well below its uniform (pre-tax-location) share — i.e. the
+// group is held more tax-efficiently elsewhere, so this account is being emptied.
+func isTaxPushedOut(st accountGroupState) bool {
+	mirror := st.mirrorTargetValueKRW
+	return mirror.IsPositive() && st.targetValueKRW.LessThan(mirror.Mul(_taxPushOutRatio))
+}
+
+// isTaxPulledIn reports whether tax-location concentration drove this account's
+// target for the group well above its uniform share — i.e. this account type
+// holds the group most tax-efficiently, so the group is concentrated here.
+func isTaxPulledIn(st accountGroupState) bool {
+	mirror := st.mirrorTargetValueKRW
+	if !mirror.IsPositive() {
+		// targetValueKRW and mirrorTargetValueKRW both derive from
+		// (group target% × account AUM) in planTargetsByAccountGroup, so a
+		// zero mirror implies a zero target — there is nothing to pull in.
+		// Symmetric with isTaxPushedOut's mirror.IsPositive() guard.
+		return false
+	}
+	return st.targetValueKRW.GreaterThan(mirror.Mul(_taxPullInRatio))
+}
+
+func sellReason(st accountGroupState, gname string, accountType *string, availableTypes map[string]bool) string {
+	if isTaxPushedOut(st) {
+		return fmt.Sprintf(
+			"세금 위치 최적화 — %s은(는) %s에서 세금 효율이 높아 이 계좌(%s) 비중을 축소합니다 (현재 %.2f%% → 목표 %.2f%%)",
+			gname, preferredAccountTypesLabel(gname, availableTypes), accountTypeLabel(accountType),
+			floatOf(st.currentPct), floatOf(st.targetPct))
+	}
+	return fmt.Sprintf("과열 그룹 절반 감축 (%.2f%% -> 목표근접, 상단 %.2f%%)",
+		floatOf(st.currentPct), floatOf(st.upperPct))
+}
+
+func buyReason(st accountGroupState, projectedPct decimal.Decimal, gname string, accountType *string) string {
+	if isTaxPulledIn(st) {
+		return fmt.Sprintf(
+			"세금 위치 최적화 — %s 계좌가 %s의 세금 효율이 가장 높아 집중 매수합니다 (목표 %.2f%%)",
+			accountTypeLabel(accountType), gname, floatOf(st.targetPct))
+	}
+	return fmt.Sprintf("목표 대비 부족분 보충 (%.2f%% -> 목표 %.2f%%)",
+		floatOf(projectedPct), floatOf(st.targetPct))
+}
+
+// accountTypeLabel maps an account type code to a Korean display label.
+func accountTypeLabel(t *string) string {
+	if t == nil {
+		return "미분류"
+	}
+	return accountTypeLabelStr(*t)
+}
+
+func accountTypeLabelStr(t string) string {
+	switch t {
+	case models.AccountTypeBrokerage:
+		return "위탁"
+	case models.AccountTypeIRP:
+		return "IRP"
+	case models.AccountTypePension:
+		return "연금저축"
+	case models.AccountTypeISA:
+		return "ISA"
+	default:
+		return "미분류"
+	}
+}
+
+// preferredAccountTypesLabel returns a "·"-joined label of the account type(s)
+// that hold `group` most tax-efficiently (highest _placementScore). The max is
+// taken over the account types the user actually has (availableTypes); an empty
+// set falls back to all types. This keeps the label honest — e.g. 국내배당
+// globally prefers IRP·연금, but for a user holding only {위탁, ISA} it must name
+// ISA, since that is where the engine actually concentrated the group.
+func preferredAccountTypesLabel(group string, availableTypes map[string]bool) string {
+	scores := _placementScore[group]
+	order := []string{
+		models.AccountTypeIRP, models.AccountTypePension,
+		models.AccountTypeISA, models.AccountTypeBrokerage,
+	}
+	consider := func(t string) bool {
+		return len(availableTypes) == 0 || availableTypes[t]
+	}
+	maxScore := 0
+	for _, t := range order {
+		if consider(t) && scores[t] > maxScore {
+			maxScore = scores[t]
+		}
+	}
+	var labels []string
+	for _, t := range order {
+		if consider(t) && scores[t] == maxScore {
+			labels = append(labels, accountTypeLabelStr(t))
+		}
+	}
+	return strings.Join(labels, "·")
 }
 
 func containsStr(ss []string, s string) bool {

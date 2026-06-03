@@ -1,6 +1,7 @@
 package container
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -67,5 +68,85 @@ func TestContainerWiresAccountSyncIntoRebalanceExecution(t *testing.T) {
 	field := reflect.ValueOf(c.RebalanceExecution).Elem().FieldByName("syncService")
 	if field.IsNil() {
 		t.Fatal("rebalance execution sync service is nil")
+	}
+}
+
+// --- kisAssetClassifier overseas exchange routing (P2-2) ---
+
+func TestOverseasPriceEXCD(t *testing.T) {
+	cases := []struct {
+		in    string
+		want  string
+		known bool
+	}{
+		{"NASD", "NAS", true},
+		{"NAS", "NAS", true},
+		{"NYSE", "NYS", true},
+		{"nys", "NYS", true},
+		{"AMEX", "AMS", true},
+		{" ams ", "AMS", true},
+		{"", "", false},
+		{"TSE", "", false},
+	}
+	for _, c := range cases {
+		got, ok := overseasPriceEXCD(c.in)
+		if got != c.want || ok != c.known {
+			t.Errorf("overseasPriceEXCD(%q) = (%q,%v), want (%q,%v)", c.in, got, ok, c.want, c.known)
+		}
+	}
+}
+
+type fakeOverseasInfo struct {
+	// byEXCD maps an exchange code to the asset class resolved there; a missing
+	// entry simulates a KIS "wrong market" business error.
+	byEXCD map[string]string
+	calls  []string
+}
+
+func (f *fakeOverseasInfo) ClassifyAssetClass(excd, ticker string) (string, error) {
+	f.calls = append(f.calls, excd)
+	if ac, ok := f.byEXCD[excd]; ok {
+		return ac, nil
+	}
+	return "", fmt.Errorf("not listed on %s", excd)
+}
+
+func TestKisAssetClassifierKnownExchangeNoFallback(t *testing.T) {
+	fake := &fakeOverseasInfo{byEXCD: map[string]string{"NYS": "etf"}}
+	k := &kisAssetClassifier{overseas: fake}
+
+	ac, err := k.ClassifyAssetClass("SCHD", "NYSE")
+	if err != nil || ac != "etf" {
+		t.Fatalf("ClassifyAssetClass = (%q,%v), want (etf,nil)", ac, err)
+	}
+	if len(fake.calls) != 1 || fake.calls[0] != "NYS" {
+		t.Errorf("calls = %v, want single [NYS] (no fallback for a known exchange)", fake.calls)
+	}
+}
+
+func TestKisAssetClassifierUnknownExchangeFallsBack(t *testing.T) {
+	// Resolvable only on AMS; an unknown exchange must try NAS, NYS, then AMS.
+	fake := &fakeOverseasInfo{byEXCD: map[string]string{"AMS": "stock"}}
+	k := &kisAssetClassifier{overseas: fake}
+
+	ac, err := k.ClassifyAssetClass("XYZ", "")
+	if err != nil || ac != "stock" {
+		t.Fatalf("ClassifyAssetClass = (%q,%v), want (stock,nil)", ac, err)
+	}
+	want := []string{"NAS", "NYS", "AMS"}
+	if !reflect.DeepEqual(fake.calls, want) {
+		t.Errorf("calls = %v, want %v", fake.calls, want)
+	}
+}
+
+func TestKisAssetClassifierUnknownExchangeAllFailReturnsLastErr(t *testing.T) {
+	fake := &fakeOverseasInfo{byEXCD: map[string]string{}}
+	k := &kisAssetClassifier{overseas: fake}
+
+	if _, err := k.ClassifyAssetClass("XYZ", "BOGUS"); err == nil {
+		t.Fatal("want error when no exchange resolves")
+	}
+	if len(fake.calls) != 3 {
+		t.Errorf("calls = %v, want all 3 exchanges tried", fake.calls)
 	}
 }

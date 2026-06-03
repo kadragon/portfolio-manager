@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // DomesticStockInfo holds basic info for a KOSPI/KOSDAQ stock.
@@ -12,6 +13,34 @@ type DomesticStockInfo struct {
 	PrdtTypeCd string
 	MarketID   string
 	Name       string
+	// SctyGrpIDCd is the security group ID code (증권그룹ID코드): "EF"=ETF,
+	// "ST"=주권, "EN"=ETN, etc. Primary signal for ETF classification.
+	SctyGrpIDCd string
+	// EtfDvsnCd is the ETF division code (ETF구분코드); set for ETFs.
+	EtfDvsnCd string
+}
+
+// AssetClass returns "etf" or "stock" derived from the info's classification codes.
+func (i DomesticStockInfo) AssetClass() string {
+	return ClassifyDomesticAssetClass(i.SctyGrpIDCd, i.EtfDvsnCd)
+}
+
+// ClassifyDomesticAssetClass maps KIS search-stock-info classification codes to
+// "etf" or "stock". A KOSPI/KOSDAQ-listed ETF reports scty_grp_id_cd "EF"; ETFs
+// also carry a non-empty etf_dvsn_cd. Anything else (주권 "ST", ETN, etc.) is
+// treated as a regular stock for eligibility.
+func ClassifyDomesticAssetClass(sctyGrpIDCd, etfDvsnCd string) string {
+	grp := strings.ToUpper(strings.TrimSpace(sctyGrpIDCd))
+	// "EF" is the documented ETF code. "FE" is an UNVERIFIED guess at a foreign-ETF
+	// variant — kept defensively; the etf_dvsn_cd check below is the reliable
+	// secondary signal. Remove "FE" if KIS docs/responses confirm it never occurs.
+	if grp == "EF" || grp == "FE" {
+		return "etf"
+	}
+	if d := strings.TrimSpace(etfDvsnCd); d != "" && d != "0" {
+		return "etf"
+	}
+	return "stock"
 }
 
 // DomesticInfoClient fetches stock name and product info via search-stock-info.
@@ -66,11 +95,23 @@ func (c *DomesticInfoClient) FetchBasicInfo(prdtTypeCd, pdno string) (DomesticSt
 	}
 
 	return DomesticStockInfo{
-		Pdno:       output["pdno"],
-		PrdtTypeCd: output["prdt_type_cd"],
-		MarketID:   output["mket_id_cd"],
-		Name:       name,
+		Pdno:        output["pdno"],
+		PrdtTypeCd:  output["prdt_type_cd"],
+		MarketID:    output["mket_id_cd"],
+		Name:        name,
+		SctyGrpIDCd: output["scty_grp_id_cd"],
+		EtfDvsnCd:   output["etf_dvsn_cd"],
 	}, nil
+}
+
+// ClassifyAssetClass looks up a domestic ticker and returns "etf" or "stock".
+// prdtTypeCd "300" covers 주식/ETF/ETN/ELW.
+func (c *DomesticInfoClient) ClassifyAssetClass(ticker string) (string, error) {
+	info, err := c.FetchBasicInfo("300", ticker)
+	if err != nil {
+		return "", err
+	}
+	return info.AssetClass(), nil
 }
 
 func extractOutputObject(raw map[string]json.RawMessage) (map[string]string, error) {

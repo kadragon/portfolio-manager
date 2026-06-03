@@ -53,6 +53,7 @@ type syncStockRepo interface {
 	ListAll(ctx context.Context) ([]models.Stock, error)
 	Create(ctx context.Context, ticker string, groupID uuidx.UUID) (models.Stock, error)
 	UpdateName(ctx context.Context, id uuidx.UUID, name string) (models.Stock, error)
+	UpdateAssetClass(ctx context.Context, id uuidx.UUID, assetClass string) (models.Stock, error)
 }
 
 type syncGroupRepo interface {
@@ -67,8 +68,16 @@ type KisAccountSyncService struct {
 	stocks           syncStockRepo
 	groups           syncGroupRepo
 	client           BalanceClient
+	classifier       AssetClassifier // nil = asset_class classification disabled
 	defaultGroupName string
 	logPath          string
+}
+
+// SetClassifier wires a KIS-backed asset classifier so that stocks encountered
+// during sync get their asset_class backfilled when currently unclassified.
+// nil disables classification.
+func (s *KisAccountSyncService) SetClassifier(c AssetClassifier) {
+	s.classifier = c
 }
 
 // NewKisAccountSyncService constructs the sync service. logPath="" disables JSONL logging.
@@ -179,6 +188,23 @@ func (s *KisAccountSyncService) SyncAccount(
 				return models.KisAccountSyncResult{}, err
 			}
 			stocksByTicker[st.Ticker] = st
+		}
+
+		// Backfill asset_class for newly-seen or still-unclassified stocks so the
+		// rebalance engine can honor tax-account eligibility (e.g. an IRP/연금 may
+		// buy a domestic-listed ETF but not an individual stock). Best-effort: a
+		// classification failure never blocks the sync.
+		if s.classifier != nil && st.AssetClass == nil {
+			if updated, changed, cerr := classifyStock(ctx, s.stocks, s.classifier, st); cerr != nil {
+				s.logEvent(baseEvent, map[string]any{
+					"event":  "sync_classify_error",
+					"ticker": st.Ticker,
+					"error":  cerr.Error(),
+				})
+			} else if changed {
+				st = updated
+				stocksByTicker[st.Ticker] = st
+			}
 		}
 
 		if _, seen := targetQty[st.ID]; !seen {

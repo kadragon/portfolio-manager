@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 var excdToPrdtTypeCd = map[string]string{
@@ -18,6 +19,36 @@ type OverseasStockInfo struct {
 	PrdtTypeCd string
 	Excd       string
 	Name       string
+	// PrdtClsfName is the product classification name (상품분류명); contains "ETF"
+	// for exchange-traded funds.
+	PrdtClsfName string
+	// EtfRiskCd is the overseas-ETF risk indicator code (해외주식ETF위험지표코드);
+	// non-empty only for ETFs.
+	EtfRiskCd string
+	// EtpTrackMul is the ETP tracking multiple (ETP추적수익율배수); non-zero only
+	// for ETPs (ETF/ETN).
+	EtpTrackMul string
+}
+
+// AssetClass returns "etf" or "stock" derived from the info's classification fields.
+func (i OverseasStockInfo) AssetClass() string {
+	return ClassifyOverseasAssetClass(i.PrdtClsfName, i.EtfRiskCd, i.EtpTrackMul)
+}
+
+// ClassifyOverseasAssetClass maps KIS overseas search-info fields to "etf" or
+// "stock". An ETF reports "ETF" in its product classification name, carries an
+// overseas-ETF risk indicator code, or has a non-zero ETP tracking multiple.
+func ClassifyOverseasAssetClass(prdtClsfName, etfRiskCd, etpTrackMul string) string {
+	if strings.Contains(strings.ToUpper(prdtClsfName), "ETF") {
+		return "etf"
+	}
+	if strings.TrimSpace(etfRiskCd) != "" {
+		return "etf"
+	}
+	if m := strings.TrimSpace(etpTrackMul); m != "" && m != "0" {
+		return "etf"
+	}
+	return "stock"
 }
 
 // OverseasInfoClient fetches stock name and product info via overseas search-info.
@@ -94,9 +125,22 @@ func (c *OverseasInfoClient) FetchBasicInfo(excd, ticker string) (OverseasStockI
 	}
 
 	return OverseasStockInfo{
-		Pdno:       pdno,
-		PrdtTypeCd: prdtTypeCd,
-		Excd:       excd,
-		Name:       name,
+		Pdno:         pdno,
+		PrdtTypeCd:   prdtTypeCd,
+		Excd:         excd,
+		Name:         name,
+		PrdtClsfName: output["prdt_clsf_name"],
+		EtfRiskCd:    output["ovrs_stck_etf_risk_drtp_cd"],
+		EtpTrackMul:  output["etp_chas_erng_rt_dbnb"],
 	}, nil
+}
+
+// ClassifyAssetClass looks up an overseas ticker and returns "etf" or "stock".
+// excd is the order-form exchange code (e.g. "NAS"/"NYS"/"AMS").
+func (c *OverseasInfoClient) ClassifyAssetClass(excd, ticker string) (string, error) {
+	info, err := c.FetchBasicInfo(excd, ticker)
+	if err != nil {
+		return "", err
+	}
+	return info.AssetClass(), nil
 }
