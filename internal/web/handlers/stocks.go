@@ -21,6 +21,11 @@ func NewStockHandler(c *container.Container) *StockHandler {
 	return &StockHandler{c: c}
 }
 
+// assetClassEquals reports whether the stored (nullable) asset class equals want.
+func assetClassEquals(current *string, want string) bool {
+	return current != nil && *current == want
+}
+
 // Register attaches the stock routes to the Echo instance.
 func (h *StockHandler) Register(e *echo.Echo) {
 	e.GET("/groups/:group_id/stocks", h.list)
@@ -182,6 +187,17 @@ func (h *StockHandler) update(c echo.Context) error {
 			return uerr
 		}
 		updated = upd
+	}
+	// asset_class: "etf" / "stock"; empty or unknown leaves it unchanged.
+	if form.Has("asset_class") {
+		assetClass := strings.TrimSpace(form.Get("asset_class"))
+		if (assetClass == "etf" || assetClass == "stock") && !assetClassEquals(updated.AssetClass, assetClass) {
+			upd, uerr := h.c.Stocks.UpdateAssetClass(ctx, s.ID, assetClass)
+			if uerr != nil {
+				return uerr
+			}
+			updated = upd
+		}
 	}
 	return render(c, templates.StockRow(updated, updated.GroupID))
 }

@@ -130,6 +130,7 @@ type tickerSnapshot struct {
 	sourceGroup     string
 	currency        string
 	stockName       string
+	isETF           bool
 	totalQty        decimal.Decimal
 	totalValueLocal decimal.Decimal
 	totalValueKRW   decimal.Decimal
@@ -143,6 +144,7 @@ type accountPosition struct {
 	sourceGroup    string
 	currency       string
 	stockName      string
+	isETF          bool
 	quantity       decimal.Decimal
 	valueLocal     decimal.Decimal
 	valueKRW       decimal.Decimal
@@ -248,6 +250,7 @@ func (s *RebalanceService) buildTickerSnapshots(summary models.PortfolioSummary)
 				sourceGroup:     pair.Group.Name,
 				currency:        h.Currency,
 				stockName:       name,
+				isETF:           assetIsETF(h.Stock.AssetClass),
 				totalQty:        h.Quantity.Decimal,
 				totalValueLocal: valueLocal,
 				totalValueKRW:   valueKRW,
@@ -342,6 +345,7 @@ func (s *RebalanceService) buildAccountPositions(
 				sourceGroup:    group.Name,
 				currency:       snap.currency,
 				stockName:      snap.stockName,
+				isETF:          assetIsETF(stock.AssetClass),
 				quantity:       h.Quantity.Decimal,
 				valueLocal:     snap.totalValueLocal.Mul(ratio),
 				valueKRW:       snap.totalValueKRW.Mul(ratio),
@@ -629,9 +633,9 @@ func (s *RebalanceService) buildBuyRecs(
 				continue
 			}
 
-			candidate := s.selectBuyCandidateAccountScoped(account.ID, gname, positions, restrictOverseas)
+			candidate := s.selectBuyCandidateAccountScoped(account.ID, gname, positions, restrictOverseas, account.AccountType)
 			if candidate == nil {
-				candidate = s.selectBuyCandidatePortfolioFallback(gname, snapshots, restrictOverseas)
+				candidate = s.selectBuyCandidatePortfolioFallback(gname, snapshots, restrictOverseas, account.AccountType)
 			}
 			if candidate == nil {
 				unmetGroups = append(unmetGroups, gname)
@@ -682,9 +686,9 @@ func (s *RebalanceService) buildBuyRecs(
 				continue
 			}
 			if accountNeed[gname].IsPositive() {
-				candidate := s.selectBuyCandidateAccountScoped(account.ID, gname, positions, restrictOverseas)
+				candidate := s.selectBuyCandidateAccountScoped(account.ID, gname, positions, restrictOverseas, account.AccountType)
 				if candidate == nil {
-					candidate = s.selectBuyCandidatePortfolioFallback(gname, snapshots, restrictOverseas)
+					candidate = s.selectBuyCandidatePortfolioFallback(gname, snapshots, restrictOverseas, account.AccountType)
 				}
 				if candidate == nil && !containsStr(unmetGroups, gname) {
 					unmetGroups = append(unmetGroups, gname)
@@ -733,12 +737,14 @@ func (s *RebalanceService) selectBuyCandidateAccountScoped(
 	group string,
 	positions []accountPosition,
 	restrictOverseas bool,
+	accountType *string,
 ) *buyCandidate {
 	acc := filterPositions(positions, func(p accountPosition) bool {
 		return p.accountID == accountID &&
 			p.rebalanceGroup == group &&
 			p.valueLocal.IsPositive() &&
-			(!restrictOverseas || isDomesticTicker(p.ticker))
+			(!restrictOverseas || isDomesticTicker(p.ticker)) &&
+			canHold(accountType, p.ticker, p.isETF)
 	})
 	if len(acc) == 0 {
 		return nil
@@ -770,12 +776,14 @@ func (s *RebalanceService) selectBuyCandidatePortfolioFallback(
 	group string,
 	snapshots map[string]*tickerSnapshot,
 	restrictOverseas bool,
+	accountType *string,
 ) *buyCandidate {
 	var snaps []*tickerSnapshot
 	for _, snap := range snapshots {
 		if snap.rebalanceGroup == group &&
 			snap.totalValueLocal.IsPositive() &&
-			(!restrictOverseas || isDomesticTicker(snap.ticker)) {
+			(!restrictOverseas || isDomesticTicker(snap.ticker)) &&
+			canHold(accountType, snap.ticker, snap.isETF) {
 			snaps = append(snaps, snap)
 		}
 	}
@@ -919,8 +927,37 @@ func containsStr(ss []string, s string) bool {
 }
 
 // isDomesticTicker mirrors kis.IsDomesticTicker without creating an import cycle.
-// A 6-digit numeric string is a KOSPI/KOSDAQ ticker.
+// A 6-digit numeric string is a KOSPI/KOSDAQ ticker (domestic-listed).
 func isDomesticTicker(ticker string) bool { return len(ticker) == 6 }
+
+// assetIsETF reports whether a stock's asset_class marks it as an ETF.
+// nil/unclassified → false (treated strictly: not an ETF).
+func assetIsETF(assetClass *string) bool {
+	return assetClass != nil && *assetClass == "etf"
+}
+
+// canHold reports whether an account of the given type may *buy* a security with
+// the given listing (ticker) and asset class. Korean tax-account eligibility:
+//   - brokerage (위탁): anything
+//   - IRP / 연금저축: domestic-listed ETFs/funds only (no individual stocks,
+//     no foreign-listed securities)
+//   - ISA (중개형): domestic-listed only (ETF or individual stock)
+//   - nil/unknown: blocked (strict — classify the account first)
+func canHold(accountType *string, ticker string, isETF bool) bool {
+	if accountType == nil {
+		return false
+	}
+	switch *accountType {
+	case models.AccountTypeBrokerage:
+		return true
+	case models.AccountTypeIRP, models.AccountTypePension:
+		return isETF && isDomesticTicker(ticker)
+	case models.AccountTypeISA:
+		return isDomesticTicker(ticker)
+	default:
+		return false
+	}
+}
 
 // ensure big is imported for potential future use (shopspring/decimal uses it internally)
 var _ = big.NewInt

@@ -16,6 +16,40 @@ func kisAccountNoVal(a models.Account) string {
 
 func itoa64(i int64) string { return fmt.Sprintf("%d", i) }
 
+// accountTypeOptions lists the selectable account types and their Korean labels.
+func accountTypeOptions() []struct{ Value, Label string } {
+	return []struct{ Value, Label string }{
+		{models.AccountTypeBrokerage, "위탁 (brokerage)"},
+		{models.AccountTypeIRP, "IRP"},
+		{models.AccountTypePension, "연금저축"},
+		{models.AccountTypeISA, "ISA"},
+	}
+}
+
+func accountTypeMatch(a models.Account, value string) bool {
+	return a.AccountType != nil && *a.AccountType == value
+}
+
+// accountTypeLabel returns a short Korean label for display (badge).
+func accountTypeLabel(a models.Account) string {
+	if a.AccountType == nil {
+		return "미분류"
+	}
+	for _, o := range accountTypeOptions() {
+		if o.Value == *a.AccountType {
+			return o.Label
+		}
+	}
+	return *a.AccountType
+}
+
+func accountTypeBadgeClass(a models.Account) string {
+	if a.AccountType == nil {
+		return "badge badge-warning badge-sm" // unclassified → buys blocked
+	}
+	return "badge badge-ghost badge-sm"
+}
+
 func kisApiKeyMatch(a models.Account, kid int64) bool {
 	if a.KisAPIKeyID != nil {
 		return *a.KisAPIKeyID == kid
@@ -25,7 +59,10 @@ func kisApiKeyMatch(a models.Account, kid int64) bool {
 
 templ AccountRow(account models.Account) {
 	<tr id={ "account-" + account.ID.String() }>
-		<td>{ account.Name }</td>
+		<td>
+			{ account.Name }
+			<span class={ accountTypeBadgeClass(account) } title="계좌 유형 (리밸런싱 적격성 결정)">{ accountTypeLabel(account) }</span>
+		</td>
 		<td class="text-right font-mono">{ accountformat.FormatKRW(account.CashBalance) }</td>
 		<td>
 			<div class="flex flex-wrap gap-1.5">
@@ -109,6 +146,25 @@ templ AccountForm(account models.Account, availableKisKeyIDs []int64, errorMessa
 				autocomplete="off"
 				class="input input-bordered input-sm mt-1"
 			/>
+			<label class="sr-only" for={ "account-type-" + account.ID.String() }>계좌 유형</label>
+			<select
+				form={ "edit-account-" + account.ID.String() }
+				id={ "account-type-" + account.ID.String() }
+				name="account_type"
+				class="select select-bordered select-sm mt-1"
+			>
+				<option value="" if account.AccountType == nil { selected }>미분류 (매수 차단)</option>
+				for _, o := range accountTypeOptions() {
+					<option
+						value={ o.Value }
+						if accountTypeMatch(account, o.Value) {
+							selected
+						}
+					>
+						{ o.Label }
+					</option>
+				}
+			</select>
 			if len(availableKisKeyIDs) > 1 {
 				<label class="sr-only" for={ "account-kis-api-" + account.ID.String() }>API 키 세트</label>
 				<select

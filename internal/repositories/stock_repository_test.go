@@ -18,6 +18,36 @@ func newStockRepos(t *testing.T) (*repositories.GroupRepository, *repositories.S
 	return repositories.NewGroupRepository(q), repositories.NewStockRepository(q)
 }
 
+func TestStockAssetClassRoundTrip(t *testing.T) {
+	groups, stocks := newStockRepos(t)
+	ctx := context.Background()
+
+	g, _ := groups.Create(ctx, "국내배당", 15.0)
+	s, err := stocks.Create(ctx, "0052D0", g.ID)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if s.AssetClass != nil {
+		t.Fatalf("fresh asset_class should be nil, got %v", *s.AssetClass)
+	}
+
+	updated, err := stocks.UpdateAssetClass(ctx, s.ID, "etf")
+	if err != nil {
+		t.Fatalf("update asset class: %v", err)
+	}
+	if updated.AssetClass == nil || *updated.AssetClass != "etf" {
+		t.Fatalf("asset_class = %v, want etf", updated.AssetClass)
+	}
+
+	got, err := stocks.GetByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.AssetClass == nil || *got.AssetClass != "etf" {
+		t.Fatalf("reloaded asset_class = %v, want etf", got.AssetClass)
+	}
+}
+
 func TestStockCreateAndList(t *testing.T) {
 	groups, stocks := newStockRepos(t)
 	ctx := context.Background()

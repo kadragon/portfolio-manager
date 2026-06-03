@@ -20,6 +20,37 @@ func newAccountRepo(t *testing.T) *repositories.AccountRepository {
 	return repositories.NewAccountRepository(q)
 }
 
+func TestAccountTypeRoundTrip(t *testing.T) {
+	repo := newAccountRepo(t)
+	ctx := context.Background()
+
+	a, err := repo.Create(ctx, "IRP", numeric.Zero)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if a.AccountType != nil {
+		t.Fatalf("fresh account_type should be nil, got %v", *a.AccountType)
+	}
+
+	updated, err := repo.Update(ctx, a.ID, a.Name, a.CashBalance,
+		sql.NullString{}, sql.NullInt64{},
+		sql.NullString{String: "irp", Valid: true})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.AccountType == nil || *updated.AccountType != "irp" {
+		t.Fatalf("account_type = %v, want irp", updated.AccountType)
+	}
+
+	got, err := repo.GetByID(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.AccountType == nil || *got.AccountType != "irp" {
+		t.Fatalf("reloaded account_type = %v, want irp", got.AccountType)
+	}
+}
+
 func TestAccountCreateAndList(t *testing.T) {
 	repo := newAccountRepo(t)
 	ctx := context.Background()
@@ -111,7 +142,7 @@ func TestAccountUpdateFull(t *testing.T) {
 	cash, _ := numeric.FromString("500000")
 	updated, err := repo.Update(ctx, a.ID, "B", cash,
 		sql.NullString{String: "12345678-01", Valid: true},
-		sql.NullInt64{Int64: 1, Valid: true},
+		sql.NullInt64{Int64: 1, Valid: true}, sql.NullString{},
 	)
 	if err != nil {
 		t.Fatalf("update: %v", err)
@@ -129,7 +160,7 @@ func TestAccountUpdateFull(t *testing.T) {
 	// Clear KIS by setting NULL
 	cleared, err := repo.Update(ctx, a.ID, "B", cash,
 		sql.NullString{Valid: false},
-		sql.NullInt64{Valid: false},
+		sql.NullInt64{Valid: false}, sql.NullString{},
 	)
 	if err != nil {
 		t.Fatalf("clear KIS: %v", err)
@@ -147,7 +178,7 @@ func TestAccountUpdateNameCashPreservesKIS(t *testing.T) {
 	cash, _ := numeric.FromString("1000")
 	_, err := repo.Update(ctx, a.ID, "A", cash,
 		sql.NullString{String: "12345678-01", Valid: true},
-		sql.NullInt64{Int64: 1, Valid: true},
+		sql.NullInt64{Int64: 1, Valid: true}, sql.NullString{},
 	)
 	if err != nil {
 		t.Fatalf("set KIS: %v", err)

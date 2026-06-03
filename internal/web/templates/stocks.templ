@@ -23,10 +23,32 @@ func displayExchange(s models.Stock) string {
 	return "-"
 }
 
+// assetClassLabel returns a short Korean label for the asset class.
+func assetClassLabel(s models.Stock) string {
+	if s.AssetClass == nil {
+		return "미분류"
+	}
+	switch *s.AssetClass {
+	case "etf":
+		return "ETF"
+	case "stock":
+		return "개별주식"
+	default:
+		return *s.AssetClass
+	}
+}
+
+func assetClassMatch(s models.Stock, value string) bool {
+	return s.AssetClass != nil && *s.AssetClass == value
+}
+
 // StockRow renders a single stock table row (groups/_stock_row.html).
 templ StockRow(stock models.Stock, groupID uuidx.UUID) {
 	<tr id={ "stock-" + stock.ID.String() }>
-		<td>{ displayName(stock) }</td>
+		<td>
+			{ displayName(stock) }
+			<span class="badge badge-ghost badge-sm" title="자산 유형 (IRP/연금 적격성 결정)">{ assetClassLabel(stock) }</span>
+		</td>
 		<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ stock.Ticker }</code></td>
 		<td>{ displayExchange(stock) }</td>
 		<td>
@@ -82,6 +104,12 @@ templ StockForm(stock models.Stock, groupID uuidx.UUID, groups []models.Group) {
 						<option value={ g.ID.String() }>{ g.Name }</option>
 					}
 				}
+			</select>
+			<label class="sr-only" for={ "stock-asset-" + stock.ID.String() }>자산 유형</label>
+			<select id={ "stock-asset-" + stock.ID.String() } name="asset_class" class="select select-bordered select-sm mt-1">
+				<option value="" if stock.AssetClass == nil { selected }>미분류</option>
+				<option value="etf" if assetClassMatch(stock, "etf") { selected }>ETF</option>
+				<option value="stock" if assetClassMatch(stock, "stock") { selected }>개별주식</option>
 			</select>
 		</td>
 		<td>

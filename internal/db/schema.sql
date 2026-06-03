@@ -6,6 +6,9 @@
 --     Peewee migrations (stocks.name, accounts.kis_account_no/kis_api_key_id)
 --     come LAST, matching ALTER TABLE ordering. sqlc scans `SELECT *` in schema
 --     order, so this order must equal the on-disk order.
+--   * Go-side migrate() (db.go) appends stocks.asset_class and
+--     accounts.account_type via idempotent ALTER TABLE ADD COLUMN on existing
+--     databases. They are declared LAST here so a fresh DB matches that order.
 --   * Index names match Peewee's generated names, so CREATE INDEX IF NOT EXISTS
 --     is a no-op on the production database (no duplicate indexes).
 --   * No SQL DEFAULT clauses: Peewee applies field defaults in Python, never in
@@ -29,6 +32,7 @@ CREATE TABLE IF NOT EXISTS "stocks" (
     "created_at" DATETIME NOT NULL,
     "updated_at" DATETIME NOT NULL,
     "name" TEXT NOT NULL,
+    "asset_class" TEXT,
     FOREIGN KEY ("group_id") REFERENCES "groups" ("id") ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS "stockmodel_group_id" ON "stocks" ("group_id");
@@ -41,7 +45,8 @@ CREATE TABLE IF NOT EXISTS "accounts" (
     "created_at" DATETIME NOT NULL,
     "updated_at" DATETIME NOT NULL,
     "kis_account_no" TEXT,
-    "kis_api_key_id" INTEGER
+    "kis_api_key_id" INTEGER,
+    "account_type" TEXT
 );
 
 CREATE TABLE IF NOT EXISTS "holdings" (

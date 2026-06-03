@@ -78,13 +78,14 @@ func (r *AccountRepository) UpdateNameCash(ctx context.Context, id uuidx.UUID, n
 	return toAccount(row), nil
 }
 
-// Update sets all editable fields including KIS.
-func (r *AccountRepository) Update(ctx context.Context, id uuidx.UUID, name string, cashBalance numeric.Decimal, kisAccountNo sql.NullString, kisAPIKeyID sql.NullInt64) (models.Account, error) {
+// Update sets all editable fields including KIS and account type.
+func (r *AccountRepository) Update(ctx context.Context, id uuidx.UUID, name string, cashBalance numeric.Decimal, kisAccountNo sql.NullString, kisAPIKeyID sql.NullInt64, accountType sql.NullString) (models.Account, error) {
 	row, err := r.q.UpdateAccount(ctx, sqlc.UpdateAccountParams{
 		Name:         name,
 		CashBalance:  cashBalance,
 		KisAccountNo: kisAccountNo,
 		KisApiKeyID:  kisAPIKeyID,
+		AccountType:  accountType,
 		UpdatedAt:    ktime.Now(),
 		ID:           id,
 	})
@@ -111,6 +112,10 @@ func toAccount(row sqlc.Account) models.Account {
 	if row.KisApiKeyID.Valid {
 		kisAPIKeyID = &row.KisApiKeyID.Int64
 	}
+	var accountType *string
+	if row.AccountType.Valid {
+		accountType = &row.AccountType.String
+	}
 	return models.Account{
 		ID:           row.ID,
 		Name:         row.Name,
@@ -119,5 +124,6 @@ func toAccount(row sqlc.Account) models.Account {
 		UpdatedAt:    row.UpdatedAt.Time,
 		KisAccountNo: kisAccountNo,
 		KisAPIKeyID:  kisAPIKeyID,
+		AccountType:  accountType,
 	}
 }

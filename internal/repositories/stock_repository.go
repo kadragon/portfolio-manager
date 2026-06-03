@@ -130,6 +130,19 @@ func (r *StockRepository) UpdateExchange(ctx context.Context, id uuidx.UUID, exc
 	return toStock(row), nil
 }
 
+// UpdateAssetClass sets the stock's asset class ("etf" or "stock").
+func (r *StockRepository) UpdateAssetClass(ctx context.Context, id uuidx.UUID, assetClass string) (models.Stock, error) {
+	row, err := r.q.UpdateStockAssetClass(ctx, sqlc.UpdateStockAssetClassParams{
+		AssetClass: sql.NullString{String: assetClass, Valid: true},
+		UpdatedAt:  ktime.Now(),
+		ID:         id,
+	})
+	if err != nil {
+		return models.Stock{}, err
+	}
+	return toStock(row), nil
+}
+
 // UpdateName sets the stock's display name.
 func (r *StockRepository) UpdateName(ctx context.Context, id uuidx.UUID, name string) (models.Stock, error) {
 	row, err := r.q.UpdateStockName(ctx, sqlc.UpdateStockNameParams{
@@ -153,13 +166,18 @@ func toStock(row sqlc.Stock) models.Stock {
 	if row.Exchange.Valid {
 		exchange = &row.Exchange.String
 	}
+	var assetClass *string
+	if row.AssetClass.Valid {
+		assetClass = &row.AssetClass.String
+	}
 	return models.Stock{
-		ID:        row.ID,
-		Ticker:    row.Ticker,
-		GroupID:   row.GroupID,
-		Exchange:  exchange,
-		Name:      row.Name,
-		CreatedAt: row.CreatedAt.Time,
-		UpdatedAt: row.UpdatedAt.Time,
+		ID:         row.ID,
+		Ticker:     row.Ticker,
+		GroupID:    row.GroupID,
+		Exchange:   exchange,
+		Name:       row.Name,
+		AssetClass: assetClass,
+		CreatedAt:  row.CreatedAt.Time,
+		UpdatedAt:  row.UpdatedAt.Time,
 	}
 }
