@@ -39,6 +39,24 @@ func (r *StockPriceRepository) GetByTickerAndDate(ctx context.Context, ticker st
 	return &sp, nil
 }
 
+// GetOnOrBeforeDate returns the most recent stored price at or before priceDate
+// for a ticker, or nil if none exists. Use for historical change-rate lookups so
+// a non-business target date falls back to the nearest prior trading day.
+func (r *StockPriceRepository) GetOnOrBeforeDate(ctx context.Context, ticker string, priceDate datex.Date) (*models.StockPrice, error) {
+	row, err := r.q.GetStockPriceOnOrBeforeDate(ctx, sqlc.GetStockPriceOnOrBeforeDateParams{
+		Ticker:    ticker,
+		PriceDate: priceDate,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	sp := toStockPrice(row)
+	return &sp, nil
+}
+
 // GetLatestByTicker returns the most recently stored price for a ticker, or nil if absent.
 func (r *StockPriceRepository) GetLatestByTicker(ctx context.Context, ticker string) (*models.StockPrice, error) {
 	row, err := r.q.GetLatestStockPriceByTicker(ctx, ticker)

@@ -47,6 +47,7 @@ type PortfolioSummary struct {
 	ReturnRate           *numeric.Decimal
 	FirstDepositDate     *datex.Date
 	AnnualizedReturnRate *numeric.Decimal
+	USDKRWRate           *numeric.Decimal // nil when no exchange rate available
 }
 
 // GroupHoldingPair mirrors Python's list[tuple[Group, StockHoldingWithPrice]].

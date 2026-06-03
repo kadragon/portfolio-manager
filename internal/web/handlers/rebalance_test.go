@@ -124,6 +124,46 @@ func TestRebalanceViewWithPriceService(t *testing.T) {
 	}
 }
 
+// TestRebalanceViewWithHoldings exercises buildPlan's account/holdings loop and
+// the view's group-summary render path: with a price service plus real holdings,
+// buildPlan returns a non-nil summary that view reuses for ComputeGroupSummary.
+func TestRebalanceViewWithHoldings(t *testing.T) {
+	sqlDB, q, err := db.OpenMemory()
+	if err != nil {
+		t.Fatalf("open memory: %v", err)
+	}
+	t.Cleanup(func() { sqlDB.Close() })
+	c := container.NewWithQueries(sqlDB, q)
+	e := echo.New()
+	handlers.NewRebalanceHandler(c).Register(e)
+
+	ctx := context.Background()
+	group, err := c.Groups.Create(ctx, "성장주", 50.0)
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	stock, err := c.Stocks.Create(ctx, "005930", group.ID)
+	if err != nil {
+		t.Fatalf("create stock: %v", err)
+	}
+	acc, err := c.Accounts.Create(ctx, "내 계좌", numeric.Zero)
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	qty, _ := numeric.FromString("10")
+	if _, err := c.Holdings.Create(ctx, acc.ID, stock.ID, qty); err != nil {
+		t.Fatalf("create holding: %v", err)
+	}
+
+	rec := do(e, http.MethodGet, "/rebalance", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "가격 서비스가 설정되지 않았습니다") {
+		t.Error("should not show no-price-service when PriceService is configured")
+	}
+}
+
 // TestRebalanceExecuteWithPriceService exercises buildPlan via POST /rebalance/execute.
 func TestRebalanceExecuteWithPriceService(t *testing.T) {
 	sqlDB, q, err := db.OpenMemory()

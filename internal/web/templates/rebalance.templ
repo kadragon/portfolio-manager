@@ -10,6 +10,7 @@ import (
 // RebalancePage renders GET /rebalance.
 templ RebalancePage(
 	summary *models.PortfolioSummary,
+	groupSummary []models.GroupSummaryRow,
 	plan *models.RebalancePlan,
 	restrictOverseas bool,
 	errorMsg string,
@@ -39,6 +40,9 @@ templ RebalancePage(
 		}
 		if errorMsg != "" {
 			<div class="alert alert-error text-sm py-2" role="alert" aria-live="polite">{ errorMsg }</div>
+		}
+		if len(groupSummary) > 0 {
+			@rebalanceGroupSummary(groupSummary)
 		}
 		if plan != nil {
 			@rebalanceDiagnostics(plan)
@@ -82,6 +86,35 @@ templ RebalancePage(
 			>추천 다시 조회</a>
 		</p>
 	}
+}
+
+templ rebalanceGroupSummary(groupSummary []models.GroupSummaryRow) {
+	<section class="card bg-base-100">
+		<div class="card-body p-4 sm:p-6">
+			<h3 class="text-sm font-semibold text-base-content mb-2">그룹별 비율</h3>
+			<div class="overflow-x-auto" tabindex="0" aria-label="그룹 비중 요약 표 가로 스크롤 영역">
+				<table class="table table-sm">
+					<caption class="sr-only">그룹별 평가액, 현재 비중, 목표 대비 차이와 권장 동작</caption>
+					<thead>
+						<tr class="text-xs uppercase tracking-wider">
+							<th>그룹</th>
+							<th class="text-right">평가액</th>
+							<th class="text-right">현재 비중</th>
+							<th class="text-right">목표 비중</th>
+							<th class="text-right">차이</th>
+							<th>권장 동작</th>
+							<th class="text-right">조정 금액</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, row := range groupSummary {
+							@groupSummaryRow(row)
+						}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</section>
 }
 
 templ rebalanceDiagnostics(plan *models.RebalancePlan) {

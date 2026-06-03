@@ -494,6 +494,32 @@ func (q *Queries) GetStockPriceByTickerAndDate(ctx context.Context, arg GetStock
 	return i, err
 }
 
+const getStockPriceOnOrBeforeDate = `-- name: GetStockPriceOnOrBeforeDate :one
+SELECT id, ticker, price, currency, name, exchange, price_date, created_at, updated_at FROM stock_prices WHERE ticker = ? AND price_date <= ? ORDER BY price_date DESC LIMIT 1
+`
+
+type GetStockPriceOnOrBeforeDateParams struct {
+	Ticker    string
+	PriceDate datex.Date
+}
+
+func (q *Queries) GetStockPriceOnOrBeforeDate(ctx context.Context, arg GetStockPriceOnOrBeforeDateParams) (StockPrice, error) {
+	row := q.db.QueryRowContext(ctx, getStockPriceOnOrBeforeDate, arg.Ticker, arg.PriceDate)
+	var i StockPrice
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.Price,
+		&i.Currency,
+		&i.Name,
+		&i.Exchange,
+		&i.PriceDate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listAccounts = `-- name: ListAccounts :many
 SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id FROM accounts
 `

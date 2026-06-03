@@ -17,3 +17,7 @@ Schema / lifecycle:
 ### PR #111 — [FIX] remove KIS key ID value from fallback log (2026-06-02)
 
 - [ ] [constraint] `resolveSyncService` has no unit tests — add table-driven test covering: nil keyID, found key, key=1 not found (no log), key≠1 not found (warning log path) (source: pr-review-toolkit:review-pr) — `internal/container/container.go:225`
+
+### PR #112 — [FEAT] resolve historical prices to nearest prior trading day (2026-06-03)
+
+- [ ] [perf] `GetPortfolioSummary` fetches `GetUSDKRW()` eagerly to populate the display rate, adding one cold EXIM lookup for KRW-only portfolios — bounded to 1 fetch/day by `cachedRates`, but consider decoupling the display-rate fetch from valuation if it shows up in latency (source: codex) — `internal/services/portfolio_service.go:133`

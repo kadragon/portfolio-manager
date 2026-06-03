@@ -84,13 +84,15 @@ func (s *PriceService) loadCached(ctx context.Context, ticker string, date datex
 	return nil
 }
 
-// getExact returns the stored price for exactly the given date, or nil.
-// Does not fall back to the latest price — use for historical change-rate lookups.
-func (s *PriceService) getExact(ctx context.Context, ticker string, date datex.Date) *models.StockPrice {
+// getOnOrBefore returns the most recent stored price at or before the given date,
+// or nil. Unlike loadCached it never jumps forward to the latest price, so a
+// non-business target date resolves to the nearest prior trading day rather than
+// today's value — correct for historical change-rate lookups.
+func (s *PriceService) getOnOrBefore(ctx context.Context, ticker string, date datex.Date) *models.StockPrice {
 	if s.stockPrices == nil {
 		return nil
 	}
-	sp, _ := s.stockPrices.GetByTickerAndDate(ctx, ticker, date)
+	sp, _ := s.stockPrices.GetOnOrBeforeDate(ctx, ticker, date)
 	if sp != nil && sp.Price.IsPositive() {
 		return sp
 	}
@@ -130,7 +132,7 @@ func (s *PriceService) GetStockChangeRates(ctx context.Context, ticker, preferre
 		targetDate := datex.FromTime(target)
 
 		var pastClose numeric.Decimal
-		if cached := s.getExact(ctx, ticker, targetDate); cached != nil && cached.Price.IsPositive() {
+		if cached := s.getOnOrBefore(ctx, ticker, targetDate); cached != nil && cached.Price.IsPositive() {
 			pastClose = cached.Price
 		}
 

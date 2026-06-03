@@ -130,6 +130,11 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChang
 	}
 
 	var usdKRW *numeric.Decimal
+	if s.exchangeRate != nil {
+		if r := s.exchangeRate.GetUSDKRW(); r.IsPositive() {
+			usdKRW = &r
+		}
+	}
 	pairs := make([]models.GroupHoldingPair, 0)
 	totalStockValue := numeric.Zero
 
@@ -151,14 +156,10 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChang
 
 			var valueKRW *numeric.Decimal
 			if currency == "USD" {
-				if s.exchangeRate == nil {
+				if usdKRW == nil {
 					v := numeric.Zero
 					valueKRW = &v
 				} else {
-					if usdKRW == nil {
-						r := s.exchangeRate.GetUSDKRW()
-						usdKRW = &r
-					}
 					v := numeric.Wrap(holdingValue.Mul(usdKRW.Decimal))
 					valueKRW = &v
 				}
@@ -256,6 +257,7 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChang
 		ReturnRate:           returnRate,
 		FirstDepositDate:     firstDate,
 		AnnualizedReturnRate: annualizedReturn,
+		USDKRWRate:           usdKRW,
 	}, nil
 }
 

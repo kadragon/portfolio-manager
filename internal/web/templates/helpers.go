@@ -3,6 +3,7 @@ package templates
 
 import (
 	"html"
+	"strings"
 
 	"github.com/kadragon/portfolio-manager/internal/accountformat"
 	"github.com/kadragon/portfolio-manager/internal/models"
@@ -10,6 +11,42 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/stockformat"
 	"github.com/kadragon/portfolio-manager/internal/web/format"
 )
+
+// formatQty formats a holding quantity by market, keyed off ticker length:
+// domestic tickers are exactly 6-character KRX codes (cf. kis.IsDomesticTicker)
+// and show an integer with thousands separators; everything else is an overseas
+// ticker (e.g. "AAPL", "GOOGL") and shows one decimal place to preserve
+// fractional shares.
+func formatQty(ticker string, qty numeric.Decimal) string {
+	if len(ticker) != 6 {
+		return qty.StringFixed(1)
+	}
+	s := qty.Round(0).StringFixed(0)
+	neg := strings.HasPrefix(s, "-")
+	if neg {
+		s = s[1:]
+	}
+	var b strings.Builder
+	n := len(s)
+	for i, c := range s {
+		if i > 0 && (n-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(c)
+	}
+	if neg {
+		return "-" + b.String()
+	}
+	return b.String()
+}
+
+// formatRate formats the USD/KRW exchange rate for display, or "-" when absent.
+func formatRate(rate *numeric.Decimal) string {
+	if rate == nil || !rate.IsPositive() {
+		return "-"
+	}
+	return accountformat.FormatKRW(*rate)
+}
 
 // rateColorClassForMap returns a CSS class for a change-rate value. Returns "" if period absent.
 func rateColorClassForMap(rates map[string]numeric.Decimal, period string) string {

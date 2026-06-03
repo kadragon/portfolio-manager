@@ -216,3 +216,33 @@ func TestGetStockChangeRatesZeroForMissingHistory(t *testing.T) {
 		t.Errorf("want zero 1y rate for missing history, got %v", result["1y"])
 	}
 }
+
+// TestGetStockChangeRatesNearestPastDate verifies the rate is computed against
+// the most recent price at or before the target date when no exact-date row
+// exists (target lands on a non-business day with no cached price).
+func TestGetStockChangeRatesNearestPastDate(t *testing.T) {
+	r := newPriceRepo(t)
+	ctx := context.Background()
+
+	fixedToday := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	todayDate, _ := datex.ParseDate("2026-06-01")
+	currentP, _ := numeric.FromString("100")
+	_, _ = r.Save(ctx, "005930", todayDate, currentP, "KRW", "삼성전자", sql.NullString{})
+
+	// 1y target = prevBizDay(2025-06-01 Sun) = 2025-05-30. No row exists there;
+	// the nearest prior available price is 2025-05-28.
+	pastDate, _ := datex.ParseDate("2025-05-28")
+	pastP, _ := numeric.FromString("80")
+	_, _ = r.Save(ctx, "005930", pastDate, pastP, "KRW", "삼성전자", sql.NullString{})
+
+	svc := services.NewPriceService(r).WithTodayProvider(func() time.Time { return fixedToday })
+	result := svc.GetStockChangeRates(ctx, "005930", "", []string{"1y"})
+	if result == nil {
+		t.Fatal("want non-nil result, got nil")
+	}
+	// rate = (100 - 80) / 80 * 100 = 25%; non-zero proves nearest-prior lookup.
+	if result["1y"].IsZero() {
+		t.Error("want non-zero 1y rate from nearest prior date, got zero")
+	}
+}

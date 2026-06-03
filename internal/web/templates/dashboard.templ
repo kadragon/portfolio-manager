@@ -1,8 +1,6 @@
 package templates
 
 import (
-	"fmt"
-
 	"github.com/kadragon/portfolio-manager/internal/accountformat"
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
@@ -10,10 +8,9 @@ import (
 
 // DashboardPage renders the dashboard (/).
 // summary: full price summary (nil when price service unavailable)
-// groupSummary: group allocation rows (non-nil only when summary != nil)
 // groupHoldings: fallback quantity-only data (non-nil when no price service)
 // errorMsg: optional error string
-templ DashboardPage(summary *models.PortfolioSummary, groupSummary []models.GroupSummaryRow, groupHoldings []models.GroupHoldings, errorMsg string) {
+templ DashboardPage(summary *models.PortfolioSummary, groupHoldings []models.GroupHoldings, errorMsg string) {
 	@Base("대시보드 — 포트폴리오 매니저", "dashboard") {
 		<h1 class="text-lg font-semibold text-base-content mb-3">대시보드</h1>
 		<p id="dashboard-rate-periods" class="sr-only">1Y는 1년, 6M은 6개월, 1M은 1개월 수익률을 의미합니다.</p>
@@ -23,7 +20,7 @@ templ DashboardPage(summary *models.PortfolioSummary, groupSummary []models.Grou
 			</div>
 		}
 		if summary != nil {
-			@dashboardSummary(summary, groupSummary)
+			@dashboardSummary(summary)
 		} else if len(groupHoldings) > 0 {
 			@dashboardFallback(groupHoldings)
 		} else {
@@ -32,7 +29,7 @@ templ DashboardPage(summary *models.PortfolioSummary, groupSummary []models.Grou
 	}
 }
 
-templ dashboardSummary(summary *models.PortfolioSummary, groupSummary []models.GroupSummaryRow) {
+templ dashboardSummary(summary *models.PortfolioSummary) {
 	<section class="hero-dark px-6 py-7 sm:px-8 sm:py-8 mb-4" role="region" aria-label="투자 요약">
 		<dl class="flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
 			<div>
@@ -76,6 +73,10 @@ templ dashboardSummary(summary *models.PortfolioSummary, groupSummary []models.G
 			<div class="stat-title text-xs">투자원금</div>
 			<div class="stat-value text-base font-mono">{ accountformat.FormatKRW(summary.TotalInvested) }</div>
 		</div>
+		<div class="stat py-3 px-4">
+			<div class="stat-title text-xs">환율 (USD)</div>
+			<div class="stat-value text-base font-mono">{ formatRate(summary.USDKRWRate) }</div>
+		</div>
 	</div>
 	<div class="card bg-base-100">
 		<div class="card-body p-4 sm:p-6">
@@ -85,7 +86,7 @@ templ dashboardSummary(summary *models.PortfolioSummary, groupSummary []models.G
 					<thead>
 						<tr class="text-xs uppercase tracking-wider">
 							<th>그룹</th>
-							<th>티커</th>
+							<th class="text-center">티커</th>
 							<th>종목명</th>
 							<th class="text-right">수량</th>
 							<th class="text-right">현재가</th>
@@ -106,30 +107,6 @@ templ dashboardSummary(summary *models.PortfolioSummary, groupSummary []models.G
 					</tbody>
 				</table>
 			</div>
-			if len(groupSummary) > 0 {
-				<div class="divider my-2"></div>
-				<div class="overflow-x-auto" tabindex="0" aria-label="그룹 비중 요약 표 가로 스크롤 영역">
-					<table class="table table-sm">
-						<caption class="sr-only">그룹별 평가액, 현재 비중, 목표 대비 차이와 권장 동작</caption>
-						<thead>
-							<tr class="text-xs uppercase tracking-wider">
-								<th>그룹</th>
-								<th class="text-right">평가액</th>
-								<th class="text-right">현재 비중</th>
-								<th class="text-right">목표 비중</th>
-								<th class="text-right">차이</th>
-								<th>권장 동작</th>
-								<th class="text-right">조정 금액</th>
-							</tr>
-						</thead>
-						<tbody>
-							for _, row := range groupSummary {
-								@groupSummaryRow(row)
-							}
-						</tbody>
-					</table>
-				</div>
-			}
 		</div>
 	</div>
 }
@@ -137,9 +114,9 @@ templ dashboardSummary(summary *models.PortfolioSummary, groupSummary []models.G
 templ holdingRow(pair models.GroupHoldingPair) {
 	<tr>
 		<th scope="row" class="font-semibold">{ pair.Group.Name }</th>
-		<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ pair.Holding.Stock.Ticker }</code></td>
+		<td class="text-center"><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded inline-block w-16 text-center">{ pair.Holding.Stock.Ticker }</code></td>
 		<td>{ stockName(pair.Holding.Name, pair.Holding.Stock.Ticker) }</td>
-		<td class="text-right font-mono">{ holdingQty(pair.Holding) }</td>
+		<td class="text-right font-mono">{ formatQty(pair.Holding.Stock.Ticker, pair.Holding.Quantity) }</td>
 		<td class="text-right font-mono">{ holdingPrice(pair.Holding) }</td>
 		<td class="text-right font-mono">
 			if pair.Holding.ValueKRW != nil {
@@ -158,13 +135,6 @@ templ holdingRow(pair models.GroupHoldingPair) {
 			@templ.Raw(signedRateHTML(pair.Holding.ChangeRates, "1m"))
 		</td>
 	</tr>
-}
-
-func holdingQty(sh models.StockHoldingWithPrice) string {
-	if sh.Currency == "KRW" {
-		return sh.Quantity.String()
-	}
-	return fmt.Sprintf("%d", sh.Quantity.IntPart())
 }
 
 func holdingPrice(sh models.StockHoldingWithPrice) string {
@@ -205,7 +175,7 @@ templ dashboardFallback(groupHoldings []models.GroupHoldings) {
 				<table class="table table-sm">
 					<caption class="sr-only">가격 정보를 불러오지 못한 경우의 그룹별 보유 종목 요약</caption>
 					<thead>
-						<tr class="text-xs uppercase tracking-wider"><th>그룹</th><th>종목명</th><th>티커</th><th class="text-right">수량</th></tr>
+						<tr class="text-xs uppercase tracking-wider"><th>그룹</th><th>종목명</th><th class="text-center">티커</th><th class="text-right">수량</th></tr>
 					</thead>
 					<tbody>
 						for _, gh := range groupHoldings {
@@ -214,8 +184,8 @@ templ dashboardFallback(groupHoldings []models.GroupHoldings) {
 									<tr>
 										<th scope="row" class="font-semibold">{ gh.Group.Name }</th>
 										<td>{ stockName(sh.Stock.Name, sh.Stock.Ticker) }</td>
-										<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ sh.Stock.Ticker }</code></td>
-										<td class="text-right font-mono">{ sh.Quantity.String() }</td>
+										<td class="text-center"><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded inline-block w-16 text-center">{ sh.Stock.Ticker }</code></td>
+										<td class="text-right font-mono">{ formatQty(sh.Stock.Ticker, sh.Quantity) }</td>
 									</tr>
 								}
 							} else {
