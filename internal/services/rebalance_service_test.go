@@ -675,6 +675,43 @@ func TestBuildPlanAccountSummariesPopulated(t *testing.T) {
 
 // --- test helpers ---
 
+// TestBuildPlanNilAccountNotLiquidated guards the Phase 2 safety net: an
+// unclassified (nil account_type) account holding a balanced, on-target mix must
+// NOT be told to sell everything. The planner routes nil accounts to the uniform
+// global target, so a balanced portfolio stays put.
+func TestBuildPlanNilAccountNotLiquidated(t *testing.T) {
+	groups := makeStandardGroups()
+	stocks := makeStandardStocks(groups)
+	// On-target sleeve values (35/15/25/10/15).
+	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
+		"국내성장": mustN("350"),
+		"국내배당": mustN("150"),
+		"해외성장": mustN("250"),
+		"해외안정": mustN("100"),
+		"해외배당": mustN("150"),
+	})
+	// Account with NO account_type set (nil).
+	acc := models.Account{ID: uuidx.New(), Name: "미분류", CashBalance: numeric.Zero, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	holdings := makeHoldingsByAccount([]models.Account{acc}, stocks, map[string]map[string]string{
+		"미분류": {"국내성장": "350", "국내배당": "150", "해외성장": "250", "해외안정": "100", "해외배당": "150"},
+	})
+
+	svc := services.NewRebalanceService()
+	plan, err := svc.BuildPlan(services.BuildPlanParams{
+		Summary:           summary,
+		Accounts:          []models.Account{acc},
+		HoldingsByAccount: holdings,
+		Groups:            groups,
+		Stocks:            stockSlice(stocks),
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	if len(plan.SellRecs) != 0 {
+		t.Fatalf("nil-type balanced account must not be liquidated; got %d sell recs: %+v", len(plan.SellRecs), plan.SellRecs)
+	}
+}
+
 func makeStockAC(ticker string, groupID uuidx.UUID, assetClass string) models.Stock {
 	s := makeStock(ticker, groupID)
 	ac := assetClass

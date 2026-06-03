@@ -26,4 +26,4 @@ What does this make easier or harder?
 
 ## Index
 
-*(No ADRs yet — add when a significant architectural decision is made.)*
+- [0001: Account-type-aware, tax-optimal rebalancing](0001-account-type-aware-tax-optimal-rebalancing.md) — Accepted
