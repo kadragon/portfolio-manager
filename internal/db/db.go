@@ -30,6 +30,7 @@ func Schema() string { return schemaSQL }
 var addedColumns = []struct{ table, column string }{
 	{"stocks", "asset_class"},
 	{"accounts", "account_type"},
+	{"stocks", "security_group"},
 }
 
 // migrate applies idempotent ALTER TABLE ADD COLUMN for every entry in

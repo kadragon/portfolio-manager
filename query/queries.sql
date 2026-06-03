@@ -23,41 +23,45 @@ DELETE FROM groups WHERE id = ?;
 -- Stock queries (Phase 2).
 
 -- name: CreateStock :one
-INSERT INTO stocks (id, ticker, group_id, exchange, created_at, updated_at, name, asset_class)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class;
+INSERT INTO stocks (id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group;
 
 -- name: ListStocksByGroup :many
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks WHERE group_id = ?;
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group FROM stocks WHERE group_id = ?;
 
 -- name: ListAllStocks :many
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks;
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group FROM stocks;
 
 -- name: GetStockByID :one
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks WHERE id = ?;
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group FROM stocks WHERE id = ?;
 
 -- name: GetStockByTicker :one
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks WHERE ticker = ?;
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group FROM stocks WHERE ticker = ?;
 
 -- name: UpdateStockTicker :one
 UPDATE stocks SET ticker = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class;
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group;
 
 -- name: UpdateStockGroup :one
 UPDATE stocks SET group_id = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class;
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group;
 
 -- name: UpdateStockExchange :one
 UPDATE stocks SET exchange = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class;
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group;
 
 -- name: UpdateStockName :one
 UPDATE stocks SET name = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class;
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group;
 
 -- name: UpdateStockAssetClass :one
 UPDATE stocks SET asset_class = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class;
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group;
+
+-- name: UpdateStockSecurityGroup :one
+UPDATE stocks SET security_group = ?, updated_at = ? WHERE id = ?
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group;
 
 -- name: DeleteStock :exec
 DELETE FROM stocks WHERE id = ?;

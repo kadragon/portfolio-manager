@@ -409,11 +409,11 @@ type stubAssetClassifier struct {
 	byTicker map[string]string
 }
 
-func (s stubAssetClassifier) ClassifyAssetClass(ticker, _ string) (string, error) {
+func (s stubAssetClassifier) Classify(ticker, _ string) (string, string, error) {
 	if ac, ok := s.byTicker[ticker]; ok {
-		return ac, nil
+		return ac, "", nil
 	}
-	return "", errors.New("classify failed")
+	return "", "", errors.New("classify failed")
 }
 
 func seedNilAssetStock(t *testing.T, c *container.Container, ticker string) {

@@ -216,20 +216,21 @@ func (q *Queries) CreateOrderExecution(ctx context.Context, arg CreateOrderExecu
 
 const createStock = `-- name: CreateStock :one
 
-INSERT INTO stocks (id, ticker, group_id, exchange, created_at, updated_at, name, asset_class)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
+INSERT INTO stocks (id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group
 `
 
 type CreateStockParams struct {
-	ID         uuidx.UUID
-	Ticker     string
-	GroupID    uuidx.UUID
-	Exchange   sql.NullString
-	CreatedAt  ktime.Time
-	UpdatedAt  ktime.Time
-	Name       string
-	AssetClass sql.NullString
+	ID            uuidx.UUID
+	Ticker        string
+	GroupID       uuidx.UUID
+	Exchange      sql.NullString
+	CreatedAt     ktime.Time
+	UpdatedAt     ktime.Time
+	Name          string
+	AssetClass    sql.NullString
+	SecurityGroup sql.NullString
 }
 
 // Stock queries (Phase 2).
@@ -243,6 +244,7 @@ func (q *Queries) CreateStock(ctx context.Context, arg CreateStockParams) (Stock
 		arg.UpdatedAt,
 		arg.Name,
 		arg.AssetClass,
+		arg.SecurityGroup,
 	)
 	var i Stock
 	err := row.Scan(
@@ -254,6 +256,7 @@ func (q *Queries) CreateStock(ctx context.Context, arg CreateStockParams) (Stock
 		&i.UpdatedAt,
 		&i.Name,
 		&i.AssetClass,
+		&i.SecurityGroup,
 	)
 	return i, err
 }
@@ -436,7 +439,7 @@ func (q *Queries) GetLatestStockPriceByTicker(ctx context.Context, ticker string
 }
 
 const getStockByID = `-- name: GetStockByID :one
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks WHERE id = ?
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group FROM stocks WHERE id = ?
 `
 
 func (q *Queries) GetStockByID(ctx context.Context, id uuidx.UUID) (Stock, error) {
@@ -451,12 +454,13 @@ func (q *Queries) GetStockByID(ctx context.Context, id uuidx.UUID) (Stock, error
 		&i.UpdatedAt,
 		&i.Name,
 		&i.AssetClass,
+		&i.SecurityGroup,
 	)
 	return i, err
 }
 
 const getStockByTicker = `-- name: GetStockByTicker :one
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks WHERE ticker = ?
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group FROM stocks WHERE ticker = ?
 `
 
 func (q *Queries) GetStockByTicker(ctx context.Context, ticker string) (Stock, error) {
@@ -471,6 +475,7 @@ func (q *Queries) GetStockByTicker(ctx context.Context, ticker string) (Stock, e
 		&i.UpdatedAt,
 		&i.Name,
 		&i.AssetClass,
+		&i.SecurityGroup,
 	)
 	return i, err
 }
@@ -600,7 +605,7 @@ func (q *Queries) ListAllHoldings(ctx context.Context) ([]Holding, error) {
 }
 
 const listAllStocks = `-- name: ListAllStocks :many
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group FROM stocks
 `
 
 func (q *Queries) ListAllStocks(ctx context.Context) ([]Stock, error) {
@@ -621,6 +626,7 @@ func (q *Queries) ListAllStocks(ctx context.Context) ([]Stock, error) {
 			&i.UpdatedAt,
 			&i.Name,
 			&i.AssetClass,
+			&i.SecurityGroup,
 		); err != nil {
 			return nil, err
 		}
@@ -775,7 +781,7 @@ func (q *Queries) ListRecentOrderExecutions(ctx context.Context, limit int64) ([
 }
 
 const listStocksByGroup = `-- name: ListStocksByGroup :many
-SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class FROM stocks WHERE group_id = ?
+SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group FROM stocks WHERE group_id = ?
 `
 
 func (q *Queries) ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]Stock, error) {
@@ -796,6 +802,7 @@ func (q *Queries) ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]
 			&i.UpdatedAt,
 			&i.Name,
 			&i.AssetClass,
+			&i.SecurityGroup,
 		); err != nil {
 			return nil, err
 		}
@@ -1007,7 +1014,7 @@ func (q *Queries) UpdateHolding(ctx context.Context, arg UpdateHoldingParams) (H
 
 const updateStockAssetClass = `-- name: UpdateStockAssetClass :one
 UPDATE stocks SET asset_class = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group
 `
 
 type UpdateStockAssetClassParams struct {
@@ -1028,13 +1035,14 @@ func (q *Queries) UpdateStockAssetClass(ctx context.Context, arg UpdateStockAsse
 		&i.UpdatedAt,
 		&i.Name,
 		&i.AssetClass,
+		&i.SecurityGroup,
 	)
 	return i, err
 }
 
 const updateStockExchange = `-- name: UpdateStockExchange :one
 UPDATE stocks SET exchange = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group
 `
 
 type UpdateStockExchangeParams struct {
@@ -1055,13 +1063,14 @@ func (q *Queries) UpdateStockExchange(ctx context.Context, arg UpdateStockExchan
 		&i.UpdatedAt,
 		&i.Name,
 		&i.AssetClass,
+		&i.SecurityGroup,
 	)
 	return i, err
 }
 
 const updateStockGroup = `-- name: UpdateStockGroup :one
 UPDATE stocks SET group_id = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group
 `
 
 type UpdateStockGroupParams struct {
@@ -1082,13 +1091,14 @@ func (q *Queries) UpdateStockGroup(ctx context.Context, arg UpdateStockGroupPara
 		&i.UpdatedAt,
 		&i.Name,
 		&i.AssetClass,
+		&i.SecurityGroup,
 	)
 	return i, err
 }
 
 const updateStockName = `-- name: UpdateStockName :one
 UPDATE stocks SET name = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group
 `
 
 type UpdateStockNameParams struct {
@@ -1109,13 +1119,42 @@ func (q *Queries) UpdateStockName(ctx context.Context, arg UpdateStockNameParams
 		&i.UpdatedAt,
 		&i.Name,
 		&i.AssetClass,
+		&i.SecurityGroup,
+	)
+	return i, err
+}
+
+const updateStockSecurityGroup = `-- name: UpdateStockSecurityGroup :one
+UPDATE stocks SET security_group = ?, updated_at = ? WHERE id = ?
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group
+`
+
+type UpdateStockSecurityGroupParams struct {
+	SecurityGroup sql.NullString
+	UpdatedAt     ktime.Time
+	ID            uuidx.UUID
+}
+
+func (q *Queries) UpdateStockSecurityGroup(ctx context.Context, arg UpdateStockSecurityGroupParams) (Stock, error) {
+	row := q.db.QueryRowContext(ctx, updateStockSecurityGroup, arg.SecurityGroup, arg.UpdatedAt, arg.ID)
+	var i Stock
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.GroupID,
+		&i.Exchange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+		&i.AssetClass,
+		&i.SecurityGroup,
 	)
 	return i, err
 }
 
 const updateStockTicker = `-- name: UpdateStockTicker :one
 UPDATE stocks SET ticker = ?, updated_at = ? WHERE id = ?
-RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class
+RETURNING id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group
 `
 
 type UpdateStockTickerParams struct {
@@ -1136,6 +1175,7 @@ func (q *Queries) UpdateStockTicker(ctx context.Context, arg UpdateStockTickerPa
 		&i.UpdatedAt,
 		&i.Name,
 		&i.AssetClass,
+		&i.SecurityGroup,
 	)
 	return i, err
 }

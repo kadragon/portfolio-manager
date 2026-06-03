@@ -16,6 +16,11 @@ type Stock struct {
 	// AssetClass is "etf" or "stock". nil = unclassified. Drives account
 	// eligibility (IRP/연금 hold only ETFs/funds, never individual stocks).
 	AssetClass *string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// SecurityGroup is the KIS security-group classification (scty_grp_id_cd),
+	// normalized uppercase: "ST"=주식, "EF"=국내ETF, "RT"=리츠, "EN"=ETN,
+	// "EW"=ELW, "MF"=펀드, "FE"=해외ETF, "FS"=해외주식, etc. nil = unclassified.
+	// Recorded for audit/display; finer-grained than AssetClass.
+	SecurityGroup *string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }

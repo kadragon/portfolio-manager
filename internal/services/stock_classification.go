@@ -7,48 +7,60 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
-// AssetClassifier classifies a security as "etf" or "stock" given its ticker and
-// (for overseas-listed securities) its exchange code. It returns "" when the
-// classification is unknown. Implemented by a KIS-backed adapter in the container.
+// AssetClassifier resolves a security's asset class ("etf"/"stock") and its
+// normalized KIS security-group code given its ticker and (for overseas-listed
+// securities) its exchange code. Either return value is "" when unknown.
+// Implemented by a KIS-backed adapter in the container.
 type AssetClassifier interface {
-	ClassifyAssetClass(ticker, exchange string) (string, error)
+	Classify(ticker, exchange string) (assetClass, securityGroup string, err error)
 }
 
-// assetClassUpdater persists an asset_class onto a stock.
+// assetClassUpdater persists an asset_class and/or security_group onto a stock.
 type assetClassUpdater interface {
 	UpdateAssetClass(ctx context.Context, id uuidx.UUID, assetClass string) (models.Stock, error)
+	UpdateSecurityGroup(ctx context.Context, id uuidx.UUID, securityGroup string) (models.Stock, error)
 }
 
-// classifyStock sets asset_class on a stock when it is currently unclassified and
-// the classifier yields a recognized value ("etf"/"stock"). It returns the
-// possibly-updated stock and whether it changed. A nil classifier or an
-// already-classified stock is a no-op. Classification is best-effort: callers
-// treat a returned error as non-fatal (the stock keeps its nil asset_class).
+// classifyStock backfills asset_class and/or security_group on a stock that is
+// missing either, using a single classifier lookup. It returns the
+// possibly-updated stock and whether anything changed. A nil classifier or a
+// fully-classified stock (both fields set) is a no-op. Classification is
+// best-effort: callers treat a returned error as non-fatal.
 func classifyStock(
 	ctx context.Context,
 	updater assetClassUpdater,
 	classifier AssetClassifier,
 	st models.Stock,
 ) (models.Stock, bool, error) {
-	if classifier == nil || st.AssetClass != nil {
+	if classifier == nil || (st.AssetClass != nil && st.SecurityGroup != nil) {
 		return st, false, nil
 	}
 	exchange := ""
 	if st.Exchange != nil {
 		exchange = *st.Exchange
 	}
-	ac, err := classifier.ClassifyAssetClass(st.Ticker, exchange)
+	ac, sg, err := classifier.Classify(st.Ticker, exchange)
 	if err != nil {
 		return st, false, err
 	}
-	if ac != "etf" && ac != "stock" {
-		return st, false, nil
+	changed := false
+	if st.AssetClass == nil && (ac == "etf" || ac == "stock") {
+		updated, uerr := updater.UpdateAssetClass(ctx, st.ID, ac)
+		if uerr != nil {
+			return st, false, uerr
+		}
+		st = updated
+		changed = true
 	}
-	updated, err := updater.UpdateAssetClass(ctx, st.ID, ac)
-	if err != nil {
-		return st, false, err
+	if st.SecurityGroup == nil && sg != "" {
+		updated, uerr := updater.UpdateSecurityGroup(ctx, st.ID, sg)
+		if uerr != nil {
+			return st, changed, uerr
+		}
+		st = updated
+		changed = true
 	}
-	return updated, true, nil
+	return st, changed, nil
 }
 
 // StockClassificationResult summarizes a ClassifyAll run.
@@ -62,6 +74,7 @@ type StockClassificationResult struct {
 type classifyStockRepo interface {
 	ListAll(ctx context.Context) ([]models.Stock, error)
 	UpdateAssetClass(ctx context.Context, id uuidx.UUID, assetClass string) (models.Stock, error)
+	UpdateSecurityGroup(ctx context.Context, id uuidx.UUID, securityGroup string) (models.Stock, error)
 }
 
 // StockClassificationService backfills stocks.asset_class via a KIS-backed
@@ -82,8 +95,9 @@ func (s *StockClassificationService) Enabled() bool {
 	return s != nil && s.classifier != nil
 }
 
-// ClassifyAll classifies every stock that currently has a nil asset_class.
-// Per-stock failures are counted and skipped; the run continues to the end.
+// ClassifyAll classifies every stock that is missing an asset_class or a
+// security_group. Per-stock failures are counted and skipped; the run continues
+// to the end.
 func (s *StockClassificationService) ClassifyAll(ctx context.Context) (StockClassificationResult, error) {
 	var res StockClassificationResult
 	stocks, err := s.stocks.ListAll(ctx)
@@ -92,7 +106,7 @@ func (s *StockClassificationService) ClassifyAll(ctx context.Context) (StockClas
 	}
 	res.Total = len(stocks)
 	for _, st := range stocks {
-		if st.AssetClass != nil {
+		if st.AssetClass != nil && st.SecurityGroup != nil {
 			res.Skipped++
 			continue
 		}

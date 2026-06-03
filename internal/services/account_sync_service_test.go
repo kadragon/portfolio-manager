@@ -77,6 +77,7 @@ type mockSyncStockRepo struct {
 	created    []models.Stock
 	named      []mockStockNameUpdate
 	classified []mockStockAssetClassUpdate
+	secGrouped []mockStockSecurityGroupUpdate
 }
 type mockStockNameUpdate struct {
 	id   uuidx.UUID
@@ -85,6 +86,10 @@ type mockStockNameUpdate struct {
 type mockStockAssetClassUpdate struct {
 	id         uuidx.UUID
 	assetClass string
+}
+type mockStockSecurityGroupUpdate struct {
+	id            uuidx.UUID
+	securityGroup string
 }
 
 func (r *mockSyncStockRepo) ListAll(_ context.Context) ([]models.Stock, error) {
@@ -121,20 +126,38 @@ func (r *mockSyncStockRepo) UpdateAssetClass(_ context.Context, id uuidx.UUID, a
 	}
 	return models.Stock{}, errors.New("stock not found")
 }
-
-// fakeAssetClassifier is a deterministic AssetClassifier for tests.
-type fakeAssetClassifier struct {
-	byTicker map[string]string
-	err      error
-	calls    int
+func (r *mockSyncStockRepo) UpdateSecurityGroup(_ context.Context, id uuidx.UUID, securityGroup string) (models.Stock, error) {
+	r.secGrouped = append(r.secGrouped, mockStockSecurityGroupUpdate{id, securityGroup})
+	for i, st := range r.all {
+		if st.ID == id {
+			if securityGroup == "" {
+				r.all[i].SecurityGroup = nil
+			} else {
+				sg := securityGroup
+				r.all[i].SecurityGroup = &sg
+			}
+			return r.all[i], nil
+		}
+	}
+	return models.Stock{}, errors.New("stock not found")
 }
 
-func (f *fakeAssetClassifier) ClassifyAssetClass(ticker, _ string) (string, error) {
+// fakeAssetClassifier is a deterministic AssetClassifier for tests. byTicker
+// maps a ticker to its asset class; bySecGroup (optional) to its KIS
+// security-group code.
+type fakeAssetClassifier struct {
+	byTicker   map[string]string
+	bySecGroup map[string]string
+	err        error
+	calls      int
+}
+
+func (f *fakeAssetClassifier) Classify(ticker, _ string) (string, string, error) {
 	f.calls++
 	if f.err != nil {
-		return "", f.err
+		return "", "", f.err
 	}
-	return f.byTicker[ticker], nil
+	return f.byTicker[ticker], f.bySecGroup[ticker], nil
 }
 
 type mockSyncGroupRepo struct {
@@ -240,8 +263,10 @@ func TestSyncAccount_SkipsAlreadyClassifiedStock(t *testing.T) {
 		},
 	}}
 	etf := "etf"
+	efGroup := "EF"
 	stockID := newTestUUID()
-	stocks := &mockSyncStockRepo{all: []models.Stock{{ID: stockID, Ticker: "0052D0", AssetClass: &etf}}} // already classified
+	// Fully classified: both asset_class and security_group set.
+	stocks := &mockSyncStockRepo{all: []models.Stock{{ID: stockID, Ticker: "0052D0", AssetClass: &etf, SecurityGroup: &efGroup}}}
 	svc := makeSyncSvc(bc, &mockSyncAccountRepo{}, &mockSyncHoldingRepo{}, stocks, &mockSyncGroupRepo{})
 	classifier := &fakeAssetClassifier{byTicker: map[string]string{"0052D0": "etf"}}
 	svc.SetClassifier(classifier)

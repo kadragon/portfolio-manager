@@ -37,6 +37,36 @@ func TestStockClassificationServiceClassifyAll(t *testing.T) {
 	}
 }
 
+func TestStockClassificationServiceBackfillsSecurityGroup(t *testing.T) {
+	etf := "etf"
+	s1 := newTestUUID() // unclassified: gets both asset_class + security_group
+	s2 := newTestUUID() // asset_class set, security_group nil: gets only security_group
+	repo := &mockSyncStockRepo{all: []models.Stock{
+		{ID: s1, Ticker: "0052D0"},
+		{ID: s2, Ticker: "069500", AssetClass: &etf},
+	}}
+	classifier := &fakeAssetClassifier{
+		byTicker:   map[string]string{"0052D0": "etf", "069500": "etf"},
+		bySecGroup: map[string]string{"0052D0": "EF", "069500": "EF"},
+	}
+	svc := services.NewStockClassificationService(repo, classifier)
+
+	res, err := svc.ClassifyAll(context.Background())
+	if err != nil {
+		t.Fatalf("ClassifyAll: %v", err)
+	}
+	if res.Total != 2 || res.Classified != 2 || res.Failed != 0 {
+		t.Errorf("result = %+v, want {Total:2 Classified:2 Failed:0}", res)
+	}
+	if len(repo.secGrouped) != 2 {
+		t.Errorf("security_group updates = %d, want 2", len(repo.secGrouped))
+	}
+	// s2 already had asset_class; only security_group should be written for it.
+	if len(repo.classified) != 1 {
+		t.Errorf("asset_class updates = %d, want 1 (s2 was already classified)", len(repo.classified))
+	}
+}
+
 func TestStockClassificationServiceDisabled(t *testing.T) {
 	svc := services.NewStockClassificationService(&mockSyncStockRepo{}, nil)
 	if svc.Enabled() {
