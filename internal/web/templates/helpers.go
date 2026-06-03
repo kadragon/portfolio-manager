@@ -13,10 +13,12 @@ import (
 )
 
 // formatQty formats a holding quantity by market, keyed off ticker length:
-// overseas tickers (len < 5) show one decimal place; domestic tickers (len >= 5,
-// e.g. 6-digit KRX codes) show an integer with thousands separators.
+// domestic tickers are exactly 6-character KRX codes (cf. kis.IsDomesticTicker)
+// and show an integer with thousands separators; everything else is an overseas
+// ticker (e.g. "AAPL", "GOOGL") and shows one decimal place to preserve
+// fractional shares.
 func formatQty(ticker string, qty numeric.Decimal) string {
-	if len(ticker) < 5 {
+	if len(ticker) != 6 {
 		return qty.StringFixed(1)
 	}
 	s := qty.Round(0).StringFixed(0)

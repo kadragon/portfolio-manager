@@ -44,7 +44,10 @@ func (h *RebalanceHandler) view(c echo.Context) error {
 	}
 
 	summary, _ := h.c.Portfolio.GetPortfolioSummary(ctx, false)
-	groupSummary := services.ComputeGroupSummary(summary)
+	var groupSummary []models.GroupSummaryRow
+	if summary != nil {
+		groupSummary = services.ComputeGroupSummary(summary)
+	}
 	return templates.RebalancePage(summary, groupSummary, plan, restrictOverseas, "", h.c.OrderClient != nil).Render(ctx, c.Response().Writer)
 }
 

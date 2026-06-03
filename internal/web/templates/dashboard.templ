@@ -8,7 +8,6 @@ import (
 
 // DashboardPage renders the dashboard (/).
 // summary: full price summary (nil when price service unavailable)
-// groupSummary: group allocation rows (non-nil only when summary != nil)
 // groupHoldings: fallback quantity-only data (non-nil when no price service)
 // errorMsg: optional error string
 templ DashboardPage(summary *models.PortfolioSummary, groupHoldings []models.GroupHoldings, errorMsg string) {
