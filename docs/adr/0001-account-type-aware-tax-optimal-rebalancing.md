@@ -186,7 +186,7 @@ group, the residual cash is still correctly reported as 이월 (legitimate, not 
 bug).
 
 Change: `computeGroupNetActions` in `internal/services/rebalance_service.go` —
-`switch case a.isLowerBreached` → `if !a.isUpperBreached && below target`.
+`case a.isLowerBreached` replaced by fall-through after `if a.isUpperBreached { ... continue }`.
 Tests: `TestBuildPlanReinvestsSellProceedsIntoBelowTargetGroups`,
 `TestBuildPlanDeploysPreexistingIdleCash` (new, were RED before fix).
 

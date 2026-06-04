@@ -1085,13 +1085,15 @@ func TestBuildPlanDeploysPreexistingIdleCash(t *testing.T) {
 		t.Errorf("want 0 sells (all groups in band), got %d", len(plan.SellRecs))
 	}
 
-	// Idle cash should be deployed as buys.
+	// Idle cash should be fully deployed as buys.
+	// Total buyNeed = 7+15+8+27 = 57 (국내배당/해외성장/해외안정/해외배당 each below target);
+	// account has 50 cash → buy 50, leaving 7 국내배당 unmet due to cash exhaustion.
 	totalBuy := numeric.Zero
 	for _, r := range plan.BuyRecs {
 		totalBuy = numeric.Wrap(totalBuy.Add(r.AmountKRW.Decimal))
 	}
-	if totalBuy.IsZero() {
-		t.Error("pre-existing idle cash must be deployed as buys, got 0 total buy")
+	if !numericEq(totalBuy, "50") {
+		t.Errorf("total buy = %v, want 50 (full idle cash deployed)", totalBuy)
 	}
 
 	sum := findAccountSummary(plan, account.ID)

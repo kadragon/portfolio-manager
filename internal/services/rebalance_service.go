@@ -1015,9 +1015,15 @@ func sellReason(agg groupAgg, gname string, accountType *string, availableTypes 
 }
 
 func buyReason(agg groupAgg, gname string, accountType *string, availableTypes map[string]bool) string {
+	if agg.isLowerBreached {
+		return fmt.Sprintf(
+			"합산 비중 부족 — %s 현재 %.2f%% < 목표 %.2f%%(±%.0f%%). 세금 효율이 높은 이 계좌(%s)에 우선 매수 (세금 선호: %s)",
+			gname, floatOf(agg.currentPct), floatOf(agg.targetPct), floatOf(agg.bandPct),
+			accountTypeLabel(accountType), preferredAccountTypesLabel(gname, availableTypes))
+	}
 	return fmt.Sprintf(
-		"합산 비중 부족 — %s 현재 %.2f%% < 목표 %.2f%%(±%.0f%%). 세금 효율이 높은 이 계좌(%s)에 우선 매수 (세금 선호: %s)",
-		gname, floatOf(agg.currentPct), floatOf(agg.targetPct), floatOf(agg.bandPct),
+		"목표 비중 미달 (현금 재배치) — %s 현재 %.2f%% < 목표 %.2f%%. 매도 대금·유휴 현금을 이 계좌(%s)에 우선 배치 (세금 선호: %s)",
+		gname, floatOf(agg.currentPct), floatOf(agg.targetPct),
 		accountTypeLabel(accountType), preferredAccountTypesLabel(gname, availableTypes))
 }
 
