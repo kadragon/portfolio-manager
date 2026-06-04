@@ -13,10 +13,13 @@
 [data-theme="portfolio"] {
   color-scheme: light;
 
-  /* Surfaces — white canvas + soft-gray elevation bands */
-  --color-base-100: #ffffff; /* canvas — page floor */
-  --color-base-200: #f7f7f7; /* surface-soft — cards, alternating bands */
-  --color-base-300: #eef0f3; /* surface-strong — chips, secondary fills, hairlines */
+  /* Surfaces — white cards lifted over soft-gray canvas.
+     base-100 (white) = cards / stats strips / inline surfaces.
+     base-200 (cool gray) = page canvas (body background).
+     base-300 (darker gray) = chips, hairlines — stays distinct from canvas. */
+  --color-base-100: #ffffff; /* card / elevated surface */
+  --color-base-200: #eef1f5; /* canvas — page floor (was #f7f7f7, too faint) */
+  --color-base-300: #e2e6ec; /* chips, hairlines, borders (was #eef0f3) */
   --color-base-content: #0a0b0d; /* ink — body + headings */
 
   /* Primary — Coinbase Blue, reserved for CTAs/links only */
@@ -85,11 +88,12 @@
   border-radius: 9999px;
 }
 
-/* Cards: flat with one soft shadow tier + hairline (DESIGN: single shadow tier, hairline borders). */
+/* Cards: flat with one soft shadow tier + hairline (DESIGN: single shadow tier, hairline borders).
+   Shadow alpha raised slightly (0.04→0.06) for legibility on the new gray canvas. */
 .card {
   box-shadow:
     0 1px 2px rgba(10, 11, 13, 0.04),
-    0 4px 12px rgba(10, 11, 13, 0.04);
+    0 4px 12px rgba(10, 11, 13, 0.06);
   border: 1px solid var(--color-base-300);
   border-radius: var(--radius-box);
 }
