@@ -6,7 +6,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN_DIR="$PROJECT_ROOT/bin"
-TAILWIND_DIR="$PROJECT_ROOT/src/portfolio_manager/web/tailwind"
+TAILWIND_DIR="$PROJECT_ROOT/internal/web/tailwind"
 
 mkdir -p "$BIN_DIR" "$TAILWIND_DIR"
 
@@ -69,7 +69,7 @@ fi
 
 # --- Initial build ---
 INPUT_CSS="$TAILWIND_DIR/input.css"
-OUTPUT_CSS="$PROJECT_ROOT/src/portfolio_manager/web/static/css/app.css"
+OUTPUT_CSS="$PROJECT_ROOT/internal/web/static/css/app.css"
 
 if [ -f "$INPUT_CSS" ]; then
   echo "Building CSS..."

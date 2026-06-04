@@ -21,8 +21,9 @@ htmlcov/
 
 # Tailwind standalone CLI binary
 bin/
-# DaisyUI CSS bundle (downloaded)
+# DaisyUI CSS bundle (downloaded) — both canonical and legacy script path
 internal/web/tailwind/daisyui.css
+src/portfolio_manager/web/tailwind/daisyui.css
 
 # Go
 /portfolio-web

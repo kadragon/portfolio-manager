@@ -44,3 +44,9 @@ Schema / lifecycle:
 - [ ] [debt] `security_group` update handler accepts any free-text (uppercased/trimmed) while `asset_class` enforces an allowlist; an allowlist here must match every code KIS sync legitimately writes (ST/EF/EN/EW/MF/RT/FE/FS + any unseen) or it breaks sync — needs canonical code-set decision before guarding (source: pr-review-toolkit:review-pr) — internal/web/handlers/stocks.go:209
 - [ ] [perf] `calcQuantity`/`krwToLocal` (pre-existing) divide before multiply; decimal.Div truncates, so reorder Mul-before-Div to cut precision loss — behavior-changing on pinned test expectations, needs careful test (source: agy) — internal/services/rebalance_service.go calcQuantity/krwToLocal
 - [ ] [test] no KIS_LIVE-guarded integration test that a real overseas KIS response round-trips through `OverseasSecurityGroup` (FE/FS); unit-tested only (source: pr-review-toolkit:review-pr) — internal/kis/overseas_info.go
+
+### PR #119 — refactor(ui): separate page canvas from card surface (2026-06-04)
+
+- [ ] [harness] `internal/web/static/css/app.css` is tracked in git; compiled output creates noisy diffs and build-env divergence risk — add to `.gitignore` and generate in CI/Docker instead (source: pr-review-toolkit:review-pr) — `internal/web/static/css/app.css`
+- [ ] [debt] DaisyUI base-100/200 role inversion from convention (100=card, 200=canvas) is intentional but confusing; document design decision in `docs/` or DESIGN.md comment block (source: review) — `internal/web/tailwind/input.css:15-19`
+- [ ] [doc] Commit message format: project uses `[TYPE]` prefix (AGENTS.md), not Conventional Commits `type(scope):` — align or update `docs/conventions.md` to accept both (source: pr-review-toolkit:review-pr)
