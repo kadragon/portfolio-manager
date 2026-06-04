@@ -12,6 +12,8 @@ func TestFormatName(t *testing.T) {
 		{"삼성전자", "삼성전자"},
 		{"", ""},
 		{"증권상장지수투자신탁(주식)", ""},
+		{"미래에셋 TIGER MSCI Korea Total Return증권상장지수투자신탁(", "미래에셋 TIGER MSCI Korea Total Return"},
+		{"TIGER MSCI Korea증권상장지수투자신탁(주식-파생형)", "TIGER MSCI Korea"},
 	}
 	for _, c := range cases {
 		got := stockformat.FormatName(c.in)

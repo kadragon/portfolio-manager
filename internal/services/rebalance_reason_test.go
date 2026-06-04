@@ -61,6 +61,26 @@ func TestBuyReasonAggregate(t *testing.T) {
 	}
 }
 
+// TestBuyReasonCashRedeploy: when a group is below target but NOT below its lower
+// band, the buy reason describes cash redeployment, not a band breach.
+func TestBuyReasonCashRedeploy(t *testing.T) {
+	pen := models.AccountTypePension
+	// in-band but below target: currentPct=14%, targetPct=15%, band=3 → not lower-breached
+	inBandAgg := groupAgg{
+		currentPct:      decimal.NewFromFloat(14.0),
+		targetPct:       decimal.NewFromFloat(15.0),
+		bandPct:         decimal.NewFromInt(3),
+		isLowerBreached: false,
+	}
+	got := buyReason(inBandAgg, "국내배당", &pen, nil)
+	if !strings.Contains(got, "목표 비중 미달") {
+		t.Errorf("buy reason = %q, want 목표 비중 미달 (현금 재배치) framing for in-band buy", got)
+	}
+	if strings.Contains(got, "합산 비중 부족") {
+		t.Errorf("buy reason = %q, must not say 합산 비중 부족 when not lower-breached", got)
+	}
+}
+
 func TestPreferredAccountTypesLabel(t *testing.T) {
 	got := preferredAccountTypesLabel("국내배당", nil) // IRP & 연금 share top score 10
 	if !strings.Contains(got, "IRP") || !strings.Contains(got, "연금저축") {

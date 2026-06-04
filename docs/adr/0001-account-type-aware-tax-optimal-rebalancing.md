@@ -163,6 +163,33 @@ Implemented in `internal/services/rebalance_service.go`:
 `calcSellAmounts` removed. The 해외배당 placement row was also corrected
 (ISA > 연금·IRP > 위탁; the 2025 선환급 폐지 does not make taxable 위탁 preferable).
 
+## Revision (2026-06-04) — buy trigger widened to below-target
+
+The 2026-06-04 revision (above) gated buys on **lower-band** breach. This
+created an asymmetric trigger: a lone over-band group triggered a sell (proceeds
+→ target), but if no other group was below its band, `computeGroupNetActions`
+produced zero `buyNeed` — the forced sell proceeds stranded as "잔여 현금(이월)"
+with no reinvestment path. User policy has no cash-holding rule; the carry-forward
+was an engine artifact, not an intent.
+
+**New rule:** sells remain gated on upper-band breach (unchanged). Buys are now
+gated on **below-target** (not below-band). Every group that is not
+upper-breached and is below its target absorbs available cash (sell proceeds +
+pre-existing idle cash) up to target. Conservation guarantees forced sell
+proceeds fit: the sold group reaches target (buyNeed = 0) so it is never
+immediately re-bought; the remaining below-target groups absorb the freed cash.
+
+A portfolio exactly at target with zero idle cash still produces zero trades.
+Cash isolation, `canHold` eligibility, and unmet/unused reporting are all
+preserved — if an account cannot hold any eligible instrument for an under-target
+group, the residual cash is still correctly reported as 이월 (legitimate, not a
+bug).
+
+Change: `computeGroupNetActions` in `internal/services/rebalance_service.go` —
+`case a.isLowerBreached` replaced by fall-through after `if a.isUpperBreached { ... continue }`.
+Tests: `TestBuildPlanReinvestsSellProceedsIntoBelowTargetGroups`,
+`TestBuildPlanDeploysPreexistingIdleCash` (new, were RED before fix).
+
 ## References
 - Phase 1 + 2 implementation: `internal/db/db.go`, `internal/db/schema.sql`,
   `internal/services/rebalance_service.go` (`canHold`, `_placementScore`;
