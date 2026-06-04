@@ -103,12 +103,14 @@ func (s *RebalanceService) BuildPlan(p BuildPlanParams) (models.RebalancePlan, e
 		}
 	}
 
-	// Trade only what the AGGREGATE (all-accounts) band requires: sell groups above
-	// their upper band down to target, buy groups below their lower band up to
-	// target. In-band groups are never touched, so a portfolio already within band
-	// produces no trades. _placementScore only DIRECTS which account sells/buys —
-	// tax-location is reached gradually, riding the trades a breach already forces,
-	// never a proactive relocation that would realize capital-gains tax.
+	// Sells: only groups above their upper band are trimmed (down to target).
+	// Buys: ALL below-target groups absorb available cash (sell proceeds + idle)
+	// up to their target, regardless of band position. This ensures forced sell
+	// proceeds are always redeployed rather than stranded as idle cash.
+	// A portfolio exactly at target with no idle cash → zero trades.
+	// _placementScore only DIRECTS which account sells/buys — tax-location is
+	// reached gradually, riding the trades a breach already forces, never via a
+	// proactive relocation that would realize capital-gains tax.
 	aggByGroup := buildGroupAggregates(currentByGroup, targetByGroup, total)
 	sellNeedByGroup, buyNeedByGroup := computeGroupNetActions(aggByGroup)
 
@@ -417,22 +419,25 @@ func buildGroupAggregates(currentByGroup, targetByGroup map[string]decimal.Decim
 }
 
 // computeGroupNetActions turns aggregate band breaches into portfolio-level net
-// trade amounts (KRW): an over-band group is sold down to TARGET, an under-band
-// group is bought up to TARGET. In-band groups produce nothing.
+// trade amounts (KRW): an over-band group is sold down to TARGET; every other
+// group that is below its target absorbs available cash (sell proceeds + idle)
+// up to TARGET. Sells are still gated on upper-band breach; buys are gated on
+// below-target, not below-band — so forced sell proceeds are always redeployed
+// rather than stranded as idle cash.
 func computeGroupNetActions(agg map[string]groupAgg) (sellNeed, buyNeed map[string]decimal.Decimal) {
 	sellNeed = map[string]decimal.Decimal{}
 	buyNeed = map[string]decimal.Decimal{}
 	for _, g := range _groupOrder {
 		a := agg[g]
-		switch {
-		case a.isUpperBreached:
+		if a.isUpperBreached {
 			if d := a.currentValueKRW.Sub(a.targetValueKRW); d.IsPositive() {
 				sellNeed[g] = d
 			}
-		case a.isLowerBreached:
-			if d := a.targetValueKRW.Sub(a.currentValueKRW); d.IsPositive() {
-				buyNeed[g] = d
-			}
+			continue
+		}
+		// Not upper-breached: absorb available cash toward target.
+		if d := a.targetValueKRW.Sub(a.currentValueKRW); d.IsPositive() {
+			buyNeed[g] = d
 		}
 	}
 	return sellNeed, buyNeed
@@ -660,13 +665,14 @@ func (s *RebalanceService) buildSellRecs(
 }
 
 // buildBuyRecs deploys each account's cash (starting cash + sell proceeds) toward
-// the groups that are UNDER their aggregate band, never beyond the portfolio-level
-// buyNeed. Buys are tax-DIRECTED: (account, under-group) cells are filled in
-// descending _placementScore order, so each under-band group is bought first in
-// the account type that holds it most tax-efficiently — cash isolation intact
-// (an account never buys more than it holds in cash). Eligibility (canHold) gates
-// every buy; a group with remaining need but no eligible candidate in an account
-// surfaces as that account's unmet group (existing reporting preserved).
+// all groups that are below their target (buyNeed from computeGroupNetActions),
+// never beyond the portfolio-level buyNeed per group. Buys are tax-DIRECTED:
+// (account, under-target-group) cells are filled in descending _placementScore
+// order, so each under-target group is bought first in the account type that
+// holds it most tax-efficiently — cash isolation intact (an account never buys
+// more than it holds in cash). Eligibility (canHold) gates every buy; a group
+// with remaining need but no eligible candidate in an account surfaces as that
+// account's unmet group (existing reporting preserved).
 func (s *RebalanceService) buildBuyRecs(
 	accounts []models.Account,
 	positions []accountPosition,

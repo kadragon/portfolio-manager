@@ -977,6 +977,129 @@ func findAccountSummary(plan models.RebalancePlan, id uuidx.UUID) models.Account
 	panic("account summary not found: " + id.String())
 }
 
+// TestBuildPlanReinvestsSellProceedsIntoBelowTargetGroups: one group breaches the
+// upper band and is sold down to target; the proceeds must be reinvested into
+// groups that are below their target (even if those groups are within band).
+// Before the fix, buyNeed was gated on lower-BAND breach, so the proceeds
+// stranded as unused cash. After the fix, buyNeed is gated on below-TARGET, so
+// proceeds are fully redeployed.
+//
+// Setup: total 1000, 국내성장 420 (42% > 40 upper → sell 70 to 35% = 350).
+// Remaining groups are within band but below target (140/15% < 15%; 230/23% <
+// 25%; 90/9% < 10%; 120/12% < 15%). No starting cash. Assert: all 70 reinvested
+// as buys, UnusedCashKRW == 0.
+func TestBuildPlanReinvestsSellProceedsIntoBelowTargetGroups(t *testing.T) {
+	groups := makeStandardGroups()
+	stocks := makeStandardStocks(groups)
+	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
+		"국내성장": mustN("420"),
+		"국내배당": mustN("140"),
+		"해외성장": mustN("230"),
+		"해외안정": mustN("90"),
+		"해외배당": mustN("120"),
+	})
+	account := makeAccount("A", "0")
+	holdingsByAccount := makeHoldingsByAccount([]models.Account{account}, stocks, map[string]map[string]string{
+		"A": {"국내성장": "420", "국내배당": "140", "해외성장": "230", "해외안정": "90", "해외배당": "120"},
+	})
+
+	svc := services.NewRebalanceService()
+	plan, err := svc.BuildPlan(services.BuildPlanParams{
+		Summary:           summary,
+		Accounts:          []models.Account{account},
+		HoldingsByAccount: holdingsByAccount,
+		Groups:            groups,
+		Stocks:            stockSlice(stocks),
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan error: %v", err)
+	}
+
+	totalSell := numeric.Zero
+	for _, r := range plan.SellRecs {
+		totalSell = numeric.Wrap(totalSell.Add(r.AmountKRW.Decimal))
+	}
+	if !numericEq(totalSell, "70") {
+		t.Errorf("total sell = %v, want 70", totalSell)
+	}
+
+	totalBuy := numeric.Zero
+	for _, r := range plan.BuyRecs {
+		totalBuy = numeric.Wrap(totalBuy.Add(r.AmountKRW.Decimal))
+	}
+	if !numericEq(totalBuy, "70") {
+		t.Errorf("total buy = %v, want 70 (sell proceeds fully reinvested)", totalBuy)
+	}
+
+	sum := findAccountSummary(plan, account.ID)
+	if !sum.UnusedCashKRW.IsZero() {
+		t.Errorf("UnusedCashKRW = %v, want 0 (no idle cash after reinvestment)", sum.UnusedCashKRW)
+	}
+}
+
+// TestBuildPlanDeploysPreexistingIdleCash: account has pre-existing idle cash
+// and holds groups that are below their target (within band). No sell needed.
+// The idle cash must be deployed into under-target groups.
+//
+// Setup: total 1000 (including 50 cash held in account), portfolio in-band but
+// not all groups at target. Account has 50 cash and holds 350/140/230/90/120.
+// With the fix, buyNeed fires for all below-target groups; up to 50 cash can
+// be deployed.
+func TestBuildPlanDeploysPreexistingIdleCash(t *testing.T) {
+	groups := makeStandardGroups()
+	stocks := makeStandardStocks(groups)
+	// Holdings total 930; account also carries 50 cash → total assets 980.
+	// Targets at 980: 국내성장 343, 국내배당 147, 해외성장 245, 해외안정 98, 해외배당 147.
+	// Current: 350 > 343 for 국내성장 but still within ±5% band (upper = 343+49 = 392).
+	// All other groups below target by small amounts.
+	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
+		"국내성장": mustN("350"),
+		"국내배당": mustN("140"),
+		"해외성장": mustN("230"),
+		"해외안정": mustN("90"),
+		"해외배당": mustN("120"),
+	})
+	// Patch total to include idle cash: TotalAssets = 980.
+	total := mustN("980")
+	summary.TotalAssets = total
+
+	account := makeAccount("A", "50")
+	holdingsByAccount := makeHoldingsByAccount([]models.Account{account}, stocks, map[string]map[string]string{
+		"A": {"국내성장": "350", "국내배당": "140", "해외성장": "230", "해외안정": "90", "해외배당": "120"},
+	})
+
+	svc := services.NewRebalanceService()
+	plan, err := svc.BuildPlan(services.BuildPlanParams{
+		Summary:           summary,
+		Accounts:          []models.Account{account},
+		HoldingsByAccount: holdingsByAccount,
+		Groups:            groups,
+		Stocks:            stockSlice(stocks),
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan error: %v", err)
+	}
+
+	// No sells needed: no group is above its upper band.
+	if len(plan.SellRecs) != 0 {
+		t.Errorf("want 0 sells (all groups in band), got %d", len(plan.SellRecs))
+	}
+
+	// Idle cash should be deployed as buys.
+	totalBuy := numeric.Zero
+	for _, r := range plan.BuyRecs {
+		totalBuy = numeric.Wrap(totalBuy.Add(r.AmountKRW.Decimal))
+	}
+	if totalBuy.IsZero() {
+		t.Error("pre-existing idle cash must be deployed as buys, got 0 total buy")
+	}
+
+	sum := findAccountSummary(plan, account.ID)
+	if !sum.UnusedCashKRW.IsZero() {
+		t.Errorf("UnusedCashKRW = %v, want 0 (idle cash fully deployed)", sum.UnusedCashKRW)
+	}
+}
+
 // TestBuildPlanEmptyPortfolio verifies emptyPlan() is returned when total assets == 0.
 func TestBuildPlanEmptyPortfolio(t *testing.T) {
 	svc := services.NewRebalanceService()
