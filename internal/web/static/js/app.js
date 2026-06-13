@@ -43,6 +43,10 @@
   // Title for the next drawer open, captured from the triggering element on click
   // (htmx:afterSwap detail.elt is not reliably the trigger).
   var pendingDrawerTitle = "수정";
+  // Pending close-completion timer (adds .invisible + clears the body). Tracked so
+  // a reopen within the 200ms transition can cancel it — otherwise the stale timer
+  // would blank and hide a freshly reopened drawer.
+  var drawerCloseTimer = null;
 
   function drawerEl() {
     return document.getElementById("drawer");
@@ -51,6 +55,7 @@
   function openDrawer(title) {
     var d = drawerEl();
     if (!d) return;
+    clearTimeout(drawerCloseTimer);
     var panel = d.querySelector("aside");
     var heading = document.getElementById("drawer-title");
     if (heading && title) {
@@ -79,7 +84,8 @@
     d.classList.add("opacity-0");
     d.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
-    setTimeout(function () {
+    clearTimeout(drawerCloseTimer);
+    drawerCloseTimer = setTimeout(function () {
       d.classList.add("invisible");
       var body = document.getElementById("drawer-body");
       if (body) body.innerHTML = "";
