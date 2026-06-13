@@ -40,6 +40,57 @@
     }, 3000);
   }
 
+  // Title for the next drawer open, captured from the triggering element on click
+  // (htmx:afterSwap detail.elt is not reliably the trigger).
+  var pendingDrawerTitle = "수정";
+
+  function drawerEl() {
+    return document.getElementById("drawer");
+  }
+
+  function openDrawer(title) {
+    var d = drawerEl();
+    if (!d) return;
+    var panel = d.querySelector("aside");
+    var heading = document.getElementById("drawer-title");
+    if (heading && title) {
+      heading.textContent = title;
+    }
+    d.classList.remove("invisible", "opacity-0");
+    d.classList.add("opacity-100");
+    d.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    // next frame so the transform transition runs from the off-screen state
+    requestAnimationFrame(function () {
+      if (panel) panel.classList.remove("translate-x-full");
+    });
+    if (panel) {
+      var field = panel.querySelector("input, select, textarea");
+      if (field) field.focus();
+    }
+  }
+
+  function closeDrawer() {
+    var d = drawerEl();
+    if (!d) return;
+    var panel = d.querySelector("aside");
+    if (panel) panel.classList.add("translate-x-full");
+    d.classList.remove("opacity-100");
+    d.classList.add("opacity-0");
+    d.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    setTimeout(function () {
+      d.classList.add("invisible");
+      var body = document.getElementById("drawer-body");
+      if (body) body.innerHTML = "";
+    }, 200);
+  }
+
+  function drawerIsOpen() {
+    var d = drawerEl();
+    return d && d.getAttribute("aria-hidden") === "false";
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     document.body.addEventListener("htmx:beforeRequest", function (event) {
       var message =
@@ -49,10 +100,40 @@
       setStatus(message);
     });
 
+    // A form loaded into the drawer slides the panel open once swapped in.
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      if (event.detail.target && event.detail.target.id === "drawer-body") {
+        openDrawer(pendingDrawerTitle);
+      }
+    });
+
     document.body.addEventListener("htmx:afterRequest", function (event) {
       setStatus("");
       if (event.detail.successful) {
         showToast("요청이 완료되었습니다.", "success");
+        // A successful submit from inside the drawer (save) closes the panel.
+        // The edit GET that *opens* the drawer is triggered from outside it.
+        var elt = event.detail.elt;
+        if (elt && elt.closest && elt.closest("#drawer")) {
+          closeDrawer();
+        }
+      }
+    });
+
+    // Close affordances: overlay, ✕ / 취소 buttons, and Escape.
+    document.body.addEventListener("click", function (event) {
+      if (event.target.closest("[data-drawer-close]")) {
+        closeDrawer();
+        return;
+      }
+      var opener = event.target.closest("[data-drawer-title]");
+      if (opener) {
+        pendingDrawerTitle = opener.getAttribute("data-drawer-title") || "수정";
+      }
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && drawerIsOpen()) {
+        closeDrawer();
       }
     });
 

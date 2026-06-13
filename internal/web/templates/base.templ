@@ -46,6 +46,28 @@ templ Base(title string, activePage string) {
 				<p id="app-request-status" class="text-xs text-base-content/40 min-h-4 mb-1" aria-live="polite"></p>
 				{ children... }
 			</main>
+			@drawer()
 		</body>
 	</html>
+}
+
+// drawer is the global right slide-over panel. Edit buttons hx-get their form
+// into #drawer-body (hx-target), which app.js slides open on htmx:afterSwap; a
+// successful save inside the panel closes it. Hidden and inert until opened.
+templ drawer() {
+	<div id="drawer" class="fixed inset-0 z-40 invisible opacity-0 transition-opacity duration-200" aria-hidden="true">
+		<div id="drawer-overlay" class="absolute inset-0 bg-base-content/30" data-drawer-close></div>
+		<aside
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="drawer-title"
+			class="absolute right-0 top-0 h-full w-full max-w-md bg-base-100 shadow-2xl translate-x-full transition-transform duration-200 ease-out flex flex-col"
+		>
+			<header class="flex items-center justify-between gap-4 px-5 py-4 border-b border-base-300 shrink-0">
+				<h2 id="drawer-title" class="text-base font-semibold text-base-content">수정</h2>
+				<button type="button" data-drawer-close aria-label="닫기" class="btn btn-ghost btn-sm btn-circle text-base-content/60">✕</button>
+			</header>
+			<div id="drawer-body" class="flex-1 overflow-y-auto px-5 py-5"></div>
+		</aside>
+	</div>
 }
