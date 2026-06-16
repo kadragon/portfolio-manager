@@ -70,9 +70,8 @@ templ AccountRow(account models.Account) {
 					type="button"
 					class="btn btn-ghost btn-xs"
 					hx-get={ "/accounts/" + account.ID.String() + "/edit" }
-					hx-target="#drawer-body"
-					hx-swap="innerHTML"
-					data-drawer-title="계좌 수정"
+					hx-target="closest tr"
+					hx-swap="outerHTML"
 					data-request-message="계좌 수정 폼을 여는 중…"
 				>
 					수정
@@ -107,41 +106,53 @@ templ AccountRow(account models.Account) {
 	<tr id={ "sync-result-" + account.ID.String() }></tr>
 }
 
-// AccountForm renders the account edit form shown inside the slide-over drawer.
-// On save it swaps the matching table row (#account-<id>) and app.js closes the
-// drawer; 취소 closes it without a request.
 templ AccountForm(account models.Account, availableKisKeyIDs []int64, errorMessage string) {
-	<form
-		id={ "edit-account-" + account.ID.String() }
-		hx-put={ "/accounts/" + account.ID.String() }
-		hx-target={ "#account-" + account.ID.String() }
-		hx-swap="outerHTML"
-		class="space-y-5"
-		data-request-message="계좌 정보를 저장하는 중…"
-	>
-		<div class="form-control">
-			<label class="label pb-1" for={ "account-name-" + account.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">이름 <span class="text-error" aria-hidden="true">*</span></span>
-			</label>
-			<input id={ "account-name-" + account.ID.String() } type="text" name="name" value={ account.Name } required autocomplete="off" class="input input-bordered w-full"/>
-		</div>
-		<div class="form-control">
-			<label class="label pb-1" for={ "account-cash-" + account.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">예수금 (KRW) <span class="text-error" aria-hidden="true">*</span></span>
-			</label>
-			<input id={ "account-cash-" + account.ID.String() } type="number" name="cash_balance" value={ account.CashBalance.StringFixed(0) } min="0" step="1" required autocomplete="off" class="input input-bordered w-full"/>
-		</div>
-		<div class="form-control">
-			<label class="label pb-1" for={ "account-kis-" + account.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">KIS 계좌번호</span>
-			</label>
-			<input id={ "account-kis-" + account.ID.String() } type="text" name="kis_account_no" value={ kisAccountNoVal(account) } placeholder="예: 12345678-01" autocomplete="off" class="input input-bordered w-full"/>
-		</div>
-		<div class="form-control">
-			<label class="label pb-1" for={ "account-type-" + account.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">계좌 유형</span>
-			</label>
-			<select id={ "account-type-" + account.ID.String() } name="account_type" class="select select-bordered w-full">
+	<tr id={ "account-" + account.ID.String() }>
+		<td>
+			<label class="sr-only" for={ "account-name-" + account.ID.String() }>계좌 이름</label>
+			<input
+				form={ "edit-account-" + account.ID.String() }
+				id={ "account-name-" + account.ID.String() }
+				type="text"
+				name="name"
+				value={ account.Name }
+				required
+				autocomplete="off"
+				class="input input-bordered input-sm"
+			/>
+		</td>
+		<td>
+			<label class="sr-only" for={ "account-cash-" + account.ID.String() }>예수금</label>
+			<input
+				form={ "edit-account-" + account.ID.String() }
+				id={ "account-cash-" + account.ID.String() }
+				type="number"
+				name="cash_balance"
+				value={ account.CashBalance.StringFixed(0) }
+				min="0"
+				step="1"
+				required
+				autocomplete="off"
+				class="input input-bordered input-sm"
+			/>
+			<label class="sr-only" for={ "account-kis-" + account.ID.String() }>KIS 계좌번호</label>
+			<input
+				form={ "edit-account-" + account.ID.String() }
+				id={ "account-kis-" + account.ID.String() }
+				type="text"
+				name="kis_account_no"
+				value={ kisAccountNoVal(account) }
+				placeholder="KIS 계좌번호 (예: 12345678-01)"
+				autocomplete="off"
+				class="input input-bordered input-sm mt-1"
+			/>
+			<label class="sr-only" for={ "account-type-" + account.ID.String() }>계좌 유형</label>
+			<select
+				form={ "edit-account-" + account.ID.String() }
+				id={ "account-type-" + account.ID.String() }
+				name="account_type"
+				class="select select-bordered select-sm mt-1"
+			>
 				<option value="" if account.AccountType == nil { selected }>미분류 (매수 차단)</option>
 				for _, o := range accountTypeOptions() {
 					<option
@@ -154,13 +165,14 @@ templ AccountForm(account models.Account, availableKisKeyIDs []int64, errorMessa
 					</option>
 				}
 			</select>
-		</div>
-		if len(availableKisKeyIDs) > 1 {
-			<div class="form-control">
-				<label class="label pb-1" for={ "account-kis-api-" + account.ID.String() }>
-					<span class="label-text text-xs font-semibold text-base-content/60">API 키 세트</span>
-				</label>
-				<select id={ "account-kis-api-" + account.ID.String() } name="kis_api_key_id" class="select select-bordered w-full">
+			if len(availableKisKeyIDs) > 1 {
+				<label class="sr-only" for={ "account-kis-api-" + account.ID.String() }>API 키 세트</label>
+				<select
+					form={ "edit-account-" + account.ID.String() }
+					id={ "account-kis-api-" + account.ID.String() }
+					name="kis_api_key_id"
+					class="select select-bordered select-sm mt-1"
+				>
 					for _, kid := range availableKisKeyIDs {
 						<option
 							value={ itoa64(kid) }
@@ -172,16 +184,36 @@ templ AccountForm(account models.Account, availableKisKeyIDs []int64, errorMessa
 						</option>
 					}
 				</select>
+			}
+			if errorMessage != "" {
+				<p class="mt-1 text-error text-xs">{ errorMessage }</p>
+			}
+		</td>
+		<td>
+			<div class="flex flex-wrap gap-1.5">
+				<form
+					id={ "edit-account-" + account.ID.String() }
+					hx-put={ "/accounts/" + account.ID.String() }
+					hx-target={ "#account-" + account.ID.String() }
+					hx-swap="outerHTML"
+					data-request-message="계좌 정보를 저장하는 중…"
+				>
+					<button type="submit" class="btn btn-primary btn-sm">저장</button>
+				</form>
+				<button
+					type="button"
+					class="btn btn-ghost btn-xs"
+					hx-get={ "/accounts/" + account.ID.String() }
+					hx-target={ "#account-" + account.ID.String() }
+					hx-swap="outerHTML"
+					data-request-message="수정 취소 중…"
+				>
+					취소
+				</button>
 			</div>
-		}
-		if errorMessage != "" {
-			<p class="text-error text-xs" role="alert">{ errorMessage }</p>
-		}
-		<div class="flex gap-2 pt-2">
-			<button type="submit" class="btn btn-primary flex-1">저장</button>
-			<button type="button" class="btn btn-ghost" data-drawer-close>취소</button>
-		</div>
-	</form>
+		</td>
+	</tr>
+	<tr id={ "sync-result-" + account.ID.String() }></tr>
 }
 
 // ClassifyResultPartial renders the asset-class backfill result (hx-swap innerHTML into #classify-result).

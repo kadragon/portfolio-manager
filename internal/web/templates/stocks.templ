@@ -95,9 +95,8 @@ templ StockRow(stock models.Stock, groupID uuidx.UUID) {
 					type="button"
 					class="btn btn-ghost btn-xs"
 					hx-get={ "/groups/" + groupID.String() + "/stocks/" + stock.ID.String() + "/edit" }
-					hx-target="#drawer-body"
-					hx-swap="innerHTML"
-					data-drawer-title="종목 수정"
+					hx-target="closest tr"
+					hx-swap="outerHTML"
 					data-request-message="종목 수정 폼을 여는 중…"
 				>
 					수정
@@ -118,29 +117,24 @@ templ StockRow(stock models.Stock, groupID uuidx.UUID) {
 	</tr>
 }
 
-// StockForm renders the stock edit form shown inside the slide-over drawer.
-// On save it swaps the matching table row (#stock-<id>) and app.js closes the
-// drawer; 취소 closes it without a request.
+// StockForm renders the inline edit form for a stock (groups/_stock_form.html).
 templ StockForm(stock models.Stock, groupID uuidx.UUID, groups []models.Group) {
-	<form
-		id={ "edit-stock-" + stock.ID.String() }
-		hx-put={ "/groups/" + groupID.String() + "/stocks/" + stock.ID.String() }
-		hx-target={ "#stock-" + stock.ID.String() }
-		hx-swap="outerHTML"
-		class="space-y-5"
-		data-request-message="종목 정보를 저장하는 중…"
-	>
-		<div class="form-control">
-			<label class="label pb-1" for={ "stock-ticker-" + stock.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">티커 <span class="text-error" aria-hidden="true">*</span></span>
-			</label>
-			<input id={ "stock-ticker-" + stock.ID.String() } type="text" name="ticker" value={ stock.Ticker } required autocomplete="off" class="input input-bordered w-full uppercase"/>
-		</div>
-		<div class="form-control">
-			<label class="label pb-1" for={ "stock-group-" + stock.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">그룹 이동</span>
-			</label>
-			<select id={ "stock-group-" + stock.ID.String() } name="target_group_id" class="select select-bordered w-full">
+	<tr id={ "stock-" + stock.ID.String() }>
+		<td>
+			<label class="sr-only" for={ "stock-ticker-" + stock.ID.String() }>티커</label>
+			<input
+				id={ "stock-ticker-" + stock.ID.String() }
+				type="text"
+				name="ticker"
+				value={ stock.Ticker }
+				required
+				autocomplete="off"
+				class="input input-bordered input-sm uppercase"
+			/>
+		</td>
+		<td>
+			<label class="sr-only" for={ "stock-group-" + stock.ID.String() }>그룹 이동</label>
+			<select id={ "stock-group-" + stock.ID.String() } name="target_group_id" class="select select-bordered select-sm">
 				for _, g := range groups {
 					if g.ID == stock.GroupID {
 						<option value={ g.ID.String() } selected>{ g.Name }</option>
@@ -149,28 +143,49 @@ templ StockForm(stock models.Stock, groupID uuidx.UUID, groups []models.Group) {
 					}
 				}
 			</select>
-		</div>
-		<div class="form-control">
-			<label class="label pb-1" for={ "stock-asset-" + stock.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">자산 유형</span>
-			</label>
-			<select id={ "stock-asset-" + stock.ID.String() } name="asset_class" class="select select-bordered w-full">
+			<label class="sr-only" for={ "stock-asset-" + stock.ID.String() }>자산 유형</label>
+			<select id={ "stock-asset-" + stock.ID.String() } name="asset_class" class="select select-bordered select-sm mt-1">
 				<option value="" if stock.AssetClass == nil { selected }>미분류</option>
 				<option value="etf" if assetClassMatch(stock, "etf") { selected }>ETF</option>
 				<option value="stock" if assetClassMatch(stock, "stock") { selected }>개별주식</option>
 			</select>
-		</div>
-		<div class="form-control">
-			<label class="label pb-1" for={ "stock-secgrp-" + stock.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">증권그룹 (KIS)</span>
-			</label>
-			<input id={ "stock-secgrp-" + stock.ID.String() } type="text" name="security_group" value={ securityGroupValue(stock) } placeholder="예: EF" autocomplete="off" class="input input-bordered w-full uppercase"/>
-		</div>
-		<div class="flex gap-2 pt-2">
-			<button type="submit" class="btn btn-primary flex-1">저장</button>
-			<button type="button" class="btn btn-ghost" data-drawer-close>취소</button>
-		</div>
-	</form>
+			<label class="sr-only" for={ "stock-secgrp-" + stock.ID.String() }>증권그룹 (KIS)</label>
+			<input
+				id={ "stock-secgrp-" + stock.ID.String() }
+				type="text"
+				name="security_group"
+				value={ securityGroupValue(stock) }
+				placeholder="증권그룹 (예: EF)"
+				autocomplete="off"
+				class="input input-bordered input-sm uppercase mt-1"
+			/>
+		</td>
+		<td>
+			<div class="flex flex-wrap gap-1.5">
+				<button
+					type="button"
+					class="btn btn-primary btn-sm"
+					hx-put={ "/groups/" + groupID.String() + "/stocks/" + stock.ID.String() }
+					hx-include="closest tr"
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					data-request-message="종목 정보를 저장하는 중…"
+				>
+					저장
+				</button>
+				<button
+					type="button"
+					class="btn btn-ghost btn-xs"
+					hx-get={ "/groups/" + groupID.String() + "/stocks/" + stock.ID.String() }
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					data-request-message="수정 취소 중…"
+				>
+					취소
+				</button>
+			</div>
+		</td>
+	</tr>
 }
 
 // StocksPage renders the stocks management page for a group (groups/stocks.html).

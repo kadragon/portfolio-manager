@@ -25,9 +25,8 @@ templ DepositRow(d models.Deposit) {
 					type="button"
 					class="btn btn-ghost btn-xs"
 					hx-get={ "/deposits/" + d.ID.String() + "/edit" }
-					hx-target="#drawer-body"
-					hx-swap="innerHTML"
-					data-drawer-title="입금 수정"
+					hx-target="closest tr"
+					hx-swap="outerHTML"
 					data-request-message="입금 수정 폼을 여는 중…"
 				>
 					수정
@@ -48,42 +47,10 @@ templ DepositRow(d models.Deposit) {
 	</tr>
 }
 
-// DepositForm renders the deposit edit form shown inside the slide-over drawer.
-// On save it swaps the matching table row (#deposit-<id>) and app.js closes the
-// drawer; 취소 closes it without a request.
+// DepositForm renders the inline deposit edit form (deposits/_form.html), emitted
+// as raw HTML because the form spans multiple <td> cells.
 templ DepositForm(d models.Deposit) {
-	<form
-		id={ "edit-deposit-" + d.ID.String() }
-		hx-put={ "/deposits/" + d.ID.String() }
-		hx-target={ "#deposit-" + d.ID.String() }
-		hx-swap="outerHTML"
-		class="space-y-5"
-		data-request-message="입금 내역을 저장하는 중…"
-	>
-		<div class="form-control">
-			<label class="label pb-1" for={ "deposit-date-" + d.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">입금 날짜 <span class="text-error" aria-hidden="true">*</span></span>
-			</label>
-			<input id={ "deposit-date-" + d.ID.String() } type="date" name="deposit_date" value={ d.DepositDate.ISO() } required autocomplete="off" class="input input-bordered w-full"/>
-		</div>
-		<div class="form-control">
-			<label class="label pb-1" for={ "deposit-amount-" + d.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">입금 금액 <span class="text-error" aria-hidden="true">*</span></span>
-			</label>
-			<input id={ "deposit-amount-" + d.ID.String() } type="number" name="amount" value={ d.Amount.String() } min="0" step="1" required autocomplete="off" class="input input-bordered w-full"/>
-		</div>
-		<div class="form-control">
-			<label class="label pb-1" for={ "deposit-note-" + d.ID.String() }>
-				<span class="label-text text-xs font-semibold text-base-content/60">메모</span>
-			</label>
-			<input id={ "deposit-note-" + d.ID.String() } type="text" name="note" value={ noteValue(d) } placeholder="예: 메모 입력…" autocomplete="off" class="input input-bordered w-full"/>
-			<p class="text-xs text-base-content/50 mt-1.5">빈 값은 기존 메모 유지, <code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">/clear</code> 입력 시 메모 삭제</p>
-		</div>
-		<div class="flex gap-2 pt-2">
-			<button type="submit" class="btn btn-primary flex-1">저장</button>
-			<button type="button" class="btn btn-ghost" data-drawer-close>취소</button>
-		</div>
-	</form>
+	@templ.Raw(depositFormHTML(d))
 }
 
 // DepositsPage renders the full deposits management page (deposits/list.html).

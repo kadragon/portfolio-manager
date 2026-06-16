@@ -8,16 +8,6 @@ Schema / lifecycle:
 
 ## Review Backlog
 
-### PR #120 — [FEAT] dashboard redesign + slide-over drawer (2026-06-13)
-
-- [ ] [test] `viz_test.go` TestDonutSVG asserts circle count + colors but not the computed `stroke-dasharray`/`stroke-dashoffset` values — a sign/offset bug in donut math would pass. Add exact-substring assertions for a known input (source: pr-review-toolkit:review-pr) — `internal/web/templates/viz_test.go:39`
-- [ ] [test] donut normalization branch (`p = pctFloat / total * 100`) untested — all test rows sum to 100, so it's an identity no-op. Add a sub-case summing to 50 and assert normalized dasharray (source: pr-review-toolkit:review-pr) — `internal/web/templates/viz_test.go:34`
-- [ ] [test] `TestDonutSVG` circle-count assertion assumes every row emits a circle, but donutSVG skips `p <= 0` rows. Add a zero-pct-row sub-case asserting `len(rows)-1` slice circles (source: pr-review-toolkit:review-pr) — `internal/web/templates/viz_test.go:44`
-- [ ] [test] `TestAllocationBarsHTML` checks actual-fill `width:42.0%` but not target-marker `left:40.0%` — a marker copy-paste (ActualPct vs TargetPct) wouldn't be caught (source: pr-review-toolkit:review-pr) — `internal/web/templates/viz_test.go:66`
-- [ ] [test] `allocationBarsHTML` pctWidth clamp (0 and >100) untested through this function. Add ActualPct="0" (width:0.0%) and "150" (width:100.0%) cases (source: pr-review-toolkit:review-pr) — `internal/web/templates/viz_test.go:54`
-- [ ] [test] donutSVG empty-return guard only tested with nil; all-zero-ActualPct slice hits a different path (loop runs, total=0). Add a case asserting "" (source: pr-review-toolkit:review-pr) — `internal/web/templates/viz_test.go:30`
-- [ ] [constraint] `pnlValue` / `returnRateValue` deref `*PortfolioSummary` with no own nil guard — safe today only via template outer guard. Add defensive `if s == nil` early-returns to encode the contract (low-confidence, P2) (source: pr-review-toolkit:review-pr) — `internal/web/templates/viz.go:146`, `internal/web/templates/dashboard.templ` returnRateValue
-
 ### PR #100 — [HARNESS] Upgrade harness to Level 2 (2026-05-27)
 
 - [ ] [doc] `docs/delegation.md` Model Selection table — pin model versions or add note to resolve from `~/.claude/settings.json`; bare tier names (sonnet/opus) may drift on model upgrade (source: pr-review-toolkit:review-pr) — `docs/delegation.md:52`
