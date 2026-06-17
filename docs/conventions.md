@@ -2,7 +2,7 @@
 
 ## 커밋 메시지
 
-`[TYPE] description` 형식:
+`[TYPE] description` 형식 (Conventional Commits `type(scope):` 사용 안 함):
 
 - `[FEAT]` 기능 추가
 - `[FIX]` 버그 수정 (재현 테스트 동반)

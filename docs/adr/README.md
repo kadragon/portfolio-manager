@@ -17,6 +17,9 @@ docs/adr/NNNN-short-title.md
 ## Context
 What problem or constraint drove this decision?
 
+## Options Considered
+What alternatives were evaluated and why were they rejected?
+
 ## Decision
 What was decided?
 

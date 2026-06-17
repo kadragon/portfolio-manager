@@ -55,6 +55,8 @@ Is the task separable with clear I/O?
 | Architecture | opus | Design decisions, trade-off analysis |
 | Structural grading | haiku | Lint, format checks |
 
+> Tier names (sonnet/opus/haiku) are aliases resolved by the runtime — pin exact model IDs in `~/.claude/settings.json` if version stability matters.
+
 ## Anti-Patterns
 
 - **Delegating ambiguous tasks** — write the spawn contract first; if you can't complete it, the task isn't ready to delegate.
