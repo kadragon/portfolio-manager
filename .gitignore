@@ -32,3 +32,9 @@ coverage.txt
 *_templ.go
 # The user's global gitignore excludes *.templ; re-include the source templates.
 !*.templ
+
+# Playwright MCP captures and manual verification screenshots
+.playwright-mcp/
+.agents/
+after-*.png
+rebalance-*.png
