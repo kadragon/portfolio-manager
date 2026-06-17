@@ -146,13 +146,16 @@ func raiseBizError(data map[string]any) error {
 	return fmt.Errorf("KIS API error %s: %s", code, msg)
 }
 
-// parseCashBalance checks keys in order: prvs_rcdl_excc_amt (D+2 settled) →
+// parseCashBalance checks keys in order: prvs_rcdl_excc_amt (가수도정산금액, D+2 settled) →
 // dnca_tot_amt → ord_psbl_cash → tot_dnca_amt.
-// A present key with value "0" returns 0 (key-existence, not truthiness).
+// "0" terminates the chain and returns 0 (real zero balance).
+// Nil or empty string skips the key and falls through to the next candidate.
 func parseCashBalance(row map[string]any) numeric.Decimal {
 	for _, key := range []string{"prvs_rcdl_excc_amt", "dnca_tot_amt", "ord_psbl_cash", "tot_dnca_amt"} {
-		if v, ok := row[key]; ok {
-			return numeric.Wrap(parseDecimal(fmt.Sprintf("%v", v)))
+		if v, ok := row[key]; ok && v != nil {
+			if s := strings.TrimSpace(fmt.Sprintf("%v", v)); s != "" {
+				return numeric.Wrap(parseDecimal(s))
+			}
 		}
 	}
 	return numeric.Zero

@@ -700,11 +700,25 @@ func TestParseCashBalance(t *testing.T) {
 		t.Errorf("prvs_rcdl_excc_amt key: got %v, want 400000", got0)
 	}
 
-	// prvs_rcdl_excc_amt = "0" → returns 0 (key-existence wins)
+	// prvs_rcdl_excc_amt = "0" → returns 0 (real zero balance, terminates chain)
 	row0b := map[string]any{"prvs_rcdl_excc_amt": "0", "dnca_tot_amt": "500000"}
 	got0b := parseCashBalance(row0b)
 	if got0b.String() != "0" {
 		t.Errorf("prvs_rcdl_excc_amt=0 key: got %v, want 0", got0b)
+	}
+
+	// prvs_rcdl_excc_amt = "" → skips, falls through to dnca_tot_amt
+	rowEmptyStr := map[string]any{"prvs_rcdl_excc_amt": "", "dnca_tot_amt": "500000"}
+	gotEmptyStr := parseCashBalance(rowEmptyStr)
+	if gotEmptyStr.String() != "500000" {
+		t.Errorf("prvs_rcdl_excc_amt empty string: got %v, want 500000", gotEmptyStr)
+	}
+
+	// prvs_rcdl_excc_amt = nil → skips, falls through to dnca_tot_amt
+	rowNil := map[string]any{"prvs_rcdl_excc_amt": nil, "dnca_tot_amt": "500000"}
+	gotNil := parseCashBalance(rowNil)
+	if gotNil.String() != "500000" {
+		t.Errorf("prvs_rcdl_excc_amt nil: got %v, want 500000", gotNil)
 	}
 
 	// prvs_rcdl_excc_amt absent → falls back to dnca_tot_amt
