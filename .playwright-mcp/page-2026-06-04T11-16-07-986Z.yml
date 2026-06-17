@@ -1,0 +1,70 @@
+- generic [active] [ref=e1]:
+  - link "본문으로 건너뛰기" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - banner [ref=e3]:
+    - link "Portfolio Manager" [ref=e5] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e7]: Portfolio Manager
+    - navigation "주요 메뉴" [ref=e8]:
+      - list [ref=e9]:
+        - listitem [ref=e10]:
+          - link "대시보드" [ref=e11] [cursor=pointer]:
+            - /url: /
+        - listitem [ref=e12]:
+          - link "그룹" [ref=e13] [cursor=pointer]:
+            - /url: /groups
+        - listitem [ref=e14]:
+          - link "계좌" [ref=e15] [cursor=pointer]:
+            - /url: /accounts
+        - listitem [ref=e16]:
+          - link "입금" [ref=e17] [cursor=pointer]:
+            - /url: /deposits
+        - listitem [ref=e18]:
+          - link "리밸런싱" [ref=e19] [cursor=pointer]:
+            - /url: /rebalance
+  - main [ref=e20]:
+    - paragraph [ref=e22]
+    - heading "대시보드" [level=1] [ref=e23]
+    - paragraph [ref=e24]: 1Y는 1년, 6M은 6개월, 1M은 1개월 수익률을 의미합니다.
+    - region "투자 요약" [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - term [ref=e28]: 총자산
+          - definition [ref=e29]: ₩0
+        - generic [ref=e30]:
+          - generic [ref=e31]:
+            - term [ref=e32]: 수익률
+            - definition [ref=e33]: "-"
+          - generic [ref=e34]:
+            - term [ref=e35]: 연환산
+            - definition [ref=e36]: "-"
+    - region "자산 구성" [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e39]: 주식
+        - generic [ref=e40]: ₩0
+      - generic [ref=e41]:
+        - generic [ref=e42]: 예수금
+        - generic [ref=e43]: ₩0
+      - generic [ref=e44]:
+        - generic [ref=e45]: 투자원금
+        - generic [ref=e46]: ₩0
+      - generic [ref=e47]:
+        - generic [ref=e48]: 환율 (USD)
+        - generic [ref=e49]: "-"
+    - generic "보유 종목 표 가로 스크롤 영역" [ref=e52]:
+      - table "그룹별 보유 종목, 현재가, 평가액과 기간 수익률" [ref=e53]:
+        - caption [ref=e54]: 그룹별 보유 종목, 현재가, 평가액과 기간 수익률
+        - rowgroup [ref=e55]:
+          - row "그룹 티커 종목명 수량 현재가 평가액 (KRW) 1Y 6M 1M" [ref=e56]:
+            - columnheader "그룹" [ref=e57]
+            - columnheader "티커" [ref=e58]
+            - columnheader "종목명" [ref=e59]
+            - columnheader "수량" [ref=e60]
+            - columnheader "현재가" [ref=e61]
+            - columnheader "평가액 (KRW)" [ref=e62]
+            - columnheader "1Y" [ref=e63]
+            - columnheader "6M" [ref=e64]
+            - columnheader "1M" [ref=e65]
+        - rowgroup [ref=e66]:
+          - row "보유 종목이 없습니다." [ref=e67]:
+            - cell "보유 종목이 없습니다." [ref=e68]
