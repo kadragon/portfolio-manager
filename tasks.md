@@ -16,7 +16,7 @@ Schema / lifecycle:
 
 ### PR #111 — [FIX] remove KIS key ID value from fallback log (2026-06-02)
 
-- [ ] [constraint] `resolveSyncService` has no unit tests — add table-driven test covering: nil keyID, found key, key=1 not found (no log), key≠1 not found (warning log path) (source: pr-review-toolkit:review-pr) — `internal/container/container.go:225`
+- [x] [constraint] `resolveSyncService` has no unit tests — add table-driven test covering: nil keyID, found key, key=1 not found (no log), key≠1 not found (warning log path) (source: pr-review-toolkit:review-pr) — `internal/container/container.go:225` — **resolved: `TestResolveSyncService` in `container_test.go` covers all 4 cases + log-capture assertions.**
 
 ### PR #112 — [FEAT] resolve historical prices to nearest prior trading day (2026-06-03)
 

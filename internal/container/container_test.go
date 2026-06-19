@@ -1,13 +1,69 @@
 package container
 
 import (
+	"bytes"
 	"fmt"
+	"log"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/kadragon/portfolio-manager/internal/db"
 	"github.com/kadragon/portfolio-manager/internal/kis"
+	"github.com/kadragon/portfolio-manager/internal/services"
 )
+
+func ptrInt64(v int64) *int64 { return &v }
+
+func TestResolveSyncService(t *testing.T) {
+	defaultSync := &services.KisAccountSyncService{}
+	key2 := &services.KisAccountSyncService{}
+	byKeyID := map[int64]*services.KisAccountSyncService{2: key2}
+
+	cases := []struct {
+		name    string
+		keyID   *int64
+		want    *services.KisAccountSyncService
+		wantLog bool
+	}{
+		{"nil keyID falls back to default", nil, defaultSync, false},
+		{"keyID found returns mapped service", ptrInt64(2), key2, false},
+		{"keyID 1 not found falls back silently", ptrInt64(1), defaultSync, false},
+		{"keyID not 1 and not found warns", ptrInt64(3), defaultSync, true},
+	}
+
+	// No t.Parallel() — subtests redirect the global log.Writer; concurrent
+	// execution would race on the shared buffer and restoration.
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			origOut, origFlags := log.Writer(), log.Flags()
+			log.SetOutput(&buf)
+			log.SetFlags(0)
+			t.Cleanup(func() {
+				log.SetOutput(origOut)
+				log.SetFlags(origFlags)
+			})
+
+			got := resolveSyncService(defaultSync, byKeyID, tc.keyID)
+			if got != tc.want {
+				t.Errorf("resolveSyncService = %p, want %p", got, tc.want)
+			}
+
+			logged := strings.Contains(buf.String(), "no sync service for requested KIS key")
+			if logged != tc.wantLog {
+				t.Errorf("warning logged = %v (%q), want %v", logged, buf.String(), tc.wantLog)
+			}
+
+			// PR #111: the fallback warning must never leak the requested key ID value.
+			if tc.wantLog && tc.keyID != nil {
+				if keyStr := fmt.Sprintf("%d", *tc.keyID); strings.Contains(buf.String(), keyStr) {
+					t.Errorf("warning log leaked key ID %q: %q", keyStr, buf.String())
+				}
+			}
+		})
+	}
+}
 
 func setKISEnv(t *testing.T) {
 	t.Helper()
