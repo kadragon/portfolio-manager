@@ -10,9 +10,9 @@ Schema / lifecycle:
 
 ### PR #100 — [HARNESS] Upgrade harness to Level 2 (2026-05-27)
 
-- [ ] [doc] `docs/delegation.md` Model Selection table — pin model versions or add note to resolve from `~/.claude/settings.json`; bare tier names (sonnet/opus) may drift on model upgrade (source: pr-review-toolkit:review-pr) — `docs/delegation.md:52`
+- [x] [doc] `docs/delegation.md` Model Selection table — pin model versions or add note to resolve from `~/.claude/settings.json`; bare tier names (sonnet/opus) may drift on model upgrade (source: pr-review-toolkit:review-pr) — `docs/delegation.md:52` — **resolved: note already present at `docs/delegation.md:58`.**
 - [ ] [doc] `docs/adr/README.md` ADR template missing `## Options Considered` section — AGENTS.md says ADRs document "options considered" but template has only Context/Decision/Consequences (source: pr-review-toolkit:review-pr) — `docs/adr/README.md`
-- [ ] [doc] `docs/eval-criteria.md` Correctness criterion "How to test: Run the feature manually" — replace with specific `go test` command or scenario list for CI-reproducibility (note: original item said "pytest command"; repo is now Go) (source: review) — `docs/eval-criteria.md:37`
+- [x] [doc] `docs/eval-criteria.md` Correctness criterion "How to test: Run the feature manually" — replace with specific `go test` command or scenario list for CI-reproducibility (note: original item said "pytest command"; repo is now Go) (source: review) — `docs/eval-criteria.md:37` — **resolved: `docs/eval-criteria.md:37` already reads `go test ./...` green + manual verify.**
 
 ### PR #111 — [FIX] remove KIS key ID value from fallback log (2026-06-02)
 
@@ -49,8 +49,8 @@ Schema / lifecycle:
 
 - [ ] [harness] `internal/web/static/css/app.css` is tracked in git; compiled output creates noisy diffs and build-env divergence risk — add to `.gitignore` and generate in CI/Docker instead (source: pr-review-toolkit:review-pr) — `internal/web/static/css/app.css`
 - [ ] [debt] DaisyUI base-100/200 role inversion from convention (100=card, 200=canvas) is intentional but confusing; document design decision in `docs/` or DESIGN.md comment block (source: review) — `internal/web/tailwind/input.css:15-19`
-- [ ] [doc] Commit message format: project uses `[TYPE]` prefix (AGENTS.md), not Conventional Commits `type(scope):` — align or update `docs/conventions.md` to accept both (source: pr-review-toolkit:review-pr)
+- [x] [doc] Commit message format: project uses `[TYPE]` prefix (AGENTS.md), not Conventional Commits `type(scope):` — align or update `docs/conventions.md` to accept both (source: pr-review-toolkit:review-pr) — **resolved: `docs/conventions.md:5` already documents `[TYPE]` format, explicitly "Conventional Commits 사용 안 함".**
 
 ### PR #122 — [DOCS] fix review-backlog doc findings (2026-06-19)
 
-- [ ] [doc] `docs/conventions.md:34` + `docs/architecture.md:23` claim `//go:build integration` build tag for (KIS) integration tests, but no `.go` file uses it — real gate is `t.Skip`+`KIS_LIVE=1` (AGENTS.md GP-2). Reconcile both untouched docs to the actual mechanism (source: review) — `docs/conventions.md:34`, `docs/architecture.md:23`
+- [x] [doc] `docs/conventions.md:34` + `docs/architecture.md:23` claim `//go:build integration` build tag for (KIS) integration tests, but no `.go` file uses it — real gate is `t.Skip`+`KIS_LIVE=1` (AGENTS.md GP-2). Reconcile both untouched docs to the actual mechanism (source: review) — `docs/conventions.md:34`, `docs/architecture.md:23` — **resolved: both docs now describe `KIS_LIVE=1` + `t.Skip` gate (GP-2); confirmed zero `.go` files use `//go:build integration`.**

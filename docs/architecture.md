@@ -20,7 +20,7 @@ internal/db/sqlc/         생성된 쿼리 (modernc.org/sqlite, pure Go)
 
 1. **Repository 레이어가 모든 DB 액세스 소유** (GP-1) — `internal/arch/arch_test.go`가 강제
 2. **레이어 의존성 역전 금지** (GP-3) — `internal/arch/arch_test.go`가 강제
-3. **KIS live 테스트는 `//go:build integration` 태그** (GP-2)
+3. **KIS live 테스트는 `KIS_LIVE=1` 가드** (GP-2) — 미설정 시 `t.Skip`
 4. **시크릿은 `.env`로만** (GP-4) — golangci-lint(gosec)가 검사
 
 ## 주요 패키지
