@@ -196,7 +196,7 @@ func (s *KisAccountSyncService) SyncAccount(
 		// IRP/연금 may buy a domestic-listed ETF but not an individual stock) and the
 		// UI can show the KIS security-group classification. Best-effort: a
 		// classification failure never blocks the sync.
-		if s.classifier != nil && (st.AssetClass == nil || st.SecurityGroup == nil) {
+		if s.classifier != nil && !isUnknown(st.AssetClass) && (st.AssetClass == nil || st.SecurityGroup == nil) {
 			if updated, changed, cerr := classifyStock(ctx, s.stocks, s.classifier, st); cerr != nil {
 				s.logEvent(baseEvent, map[string]any{
 					"event":  "sync_classify_error",

@@ -192,8 +192,10 @@ func (h *StockHandler) update(c echo.Context) error {
 		}
 		updated = upd
 	}
-	// asset_class: "etf" / "stock", or empty to clear ("미분류"); unknown values
-	// leave it unchanged.
+	// asset_class: "etf" / "stock", or empty to clear ("미분류", which re-enables
+	// classification on the next sync). The "unknown" sentinel is set only by the
+	// classifier — not accepted here, so a client POST cannot force it; other
+	// values leave it unchanged.
 	if form.Has("asset_class") {
 		assetClass := strings.TrimSpace(form.Get("asset_class"))
 		if (assetClass == "" || assetClass == "etf" || assetClass == "stock") && !assetClassEquals(updated.AssetClass, assetClass) {

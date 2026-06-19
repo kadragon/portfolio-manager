@@ -2,10 +2,32 @@ package services
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
+
+// AssetClassUnknown is the sentinel persisted onto a stock's asset_class when it
+// could not be resolved (classifier error or no signal). It is itself terminal
+// for the "already classified" skip-gates, so the ticker is not re-queried
+// against KIS on every sync/ClassifyAll. It is stamped ONLY on asset_class —
+// never on security_group, which keeps its KIS scty_grp_id_cd value space.
+// Downstream consumers (e.g. assetIsETF) treat any non-"etf" value as non-ETF,
+// so the sentinel is safe. A user can reset asset_class to "미분류" (empty) via
+// the edit form to force a re-classification on the next sync.
+const AssetClassUnknown = "unknown"
+
+// errClassifyNoSignal marks the case where the classifier returned no usable
+// signal (no error, but no asset class) and the stock was sentinel-tagged. It
+// lets ClassifyAll count the stock as Failed rather than Classified.
+var errClassifyNoSignal = errors.New("no classification signal")
+
+// isUnknown reports whether a nullable column holds the sentinel value.
+func isUnknown(s *string) bool {
+	return s != nil && *s == AssetClassUnknown
+}
 
 // AssetClassifier resolves a security's asset class ("etf"/"stock") and its
 // normalized KIS security-group code given its ticker and (for overseas-listed
@@ -32,7 +54,7 @@ func classifyStock(
 	classifier AssetClassifier,
 	st models.Stock,
 ) (models.Stock, bool, error) {
-	if classifier == nil || (st.AssetClass != nil && st.SecurityGroup != nil) {
+	if classifier == nil || isUnknown(st.AssetClass) || (st.AssetClass != nil && st.SecurityGroup != nil) {
 		return st, false, nil
 	}
 	exchange := ""
@@ -40,7 +62,24 @@ func classifyStock(
 		exchange = *st.Exchange
 	}
 	ac, sg, err := classifier.Classify(st.Ticker, exchange)
-	if err != nil {
+	if err != nil || (ac != "etf" && ac != "stock") {
+		if st.AssetClass == nil {
+			// Asset class unresolved — stamp the sentinel on asset_class ALONE so
+			// the ticker stops being re-queried. security_group keeps its KIS
+			// value space (never the sentinel); the asset_class sentinel is
+			// itself terminal for the skip-gates. Surface a non-nil error so the
+			// run counts this as a failure, not a real classification.
+			updated, uerr := updater.UpdateAssetClass(ctx, st.ID, AssetClassUnknown)
+			if uerr != nil {
+				return st, false, uerr
+			}
+			if err == nil {
+				err = errClassifyNoSignal
+			}
+			return updated, true, err
+		}
+		// Asset class already set; classify yielded no new signal. Leave the
+		// (cosmetic) missing security_group untouched.
 		return st, false, err
 	}
 	changed := false
@@ -66,9 +105,9 @@ func classifyStock(
 // StockClassificationResult summarizes a ClassifyAll run.
 type StockClassificationResult struct {
 	Total      int // stocks inspected
-	Classified int // newly assigned an asset_class
-	Skipped    int // already classified, or classifier returned no signal
-	Failed     int // classifier or persistence errored (non-fatal)
+	Classified int // newly assigned a real asset_class ("etf"/"stock")
+	Skipped    int // already classified or already sentinel-tagged
+	Failed     int // classifier errored or returned no signal; stock sentinel-tagged (non-fatal)
 }
 
 type classifyStockRepo interface {
@@ -82,12 +121,24 @@ type classifyStockRepo interface {
 type StockClassificationService struct {
 	stocks     classifyStockRepo
 	classifier AssetClassifier
+	// callDelay paces per-stock KIS calls in ClassifyAll to avoid rate-limit /
+	// handler timeout. Zero (the constructor default) disables pacing; the
+	// container injects a non-zero throttle via SetCallDelay for the live path.
+	callDelay time.Duration
 }
 
 // NewStockClassificationService constructs the service. A nil classifier yields a
 // disabled service (Enabled() == false).
 func NewStockClassificationService(stocks classifyStockRepo, classifier AssetClassifier) *StockClassificationService {
 	return &StockClassificationService{stocks: stocks, classifier: classifier}
+}
+
+// SetCallDelay sets the inter-call pacing for ClassifyAll. Used by the container
+// to throttle live KIS traffic; left zero in unit tests for speed.
+func (s *StockClassificationService) SetCallDelay(d time.Duration) {
+	if s != nil {
+		s.callDelay = d
+	}
 }
 
 // Enabled reports whether a classifier is configured (i.e. KIS is available).
@@ -105,11 +156,28 @@ func (s *StockClassificationService) ClassifyAll(ctx context.Context) (StockClas
 		return res, err
 	}
 	res.Total = len(stocks)
+	kisCalled := false
 	for _, st := range stocks {
-		if st.AssetClass != nil && st.SecurityGroup != nil {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
+		if isUnknown(st.AssetClass) || (st.AssetClass != nil && st.SecurityGroup != nil) {
 			res.Skipped++
 			continue
 		}
+		// Pace KIS calls — delay BETWEEN attempts only (never before the first,
+		// never after the last). time.NewTimer is stopped on cancellation to
+		// avoid leaking the timer goroutine.
+		if kisCalled && s.callDelay > 0 {
+			t := time.NewTimer(s.callDelay)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return res, ctx.Err()
+			case <-t.C:
+			}
+		}
+		kisCalled = true
 		_, changed, cerr := classifyStock(ctx, s.stocks, s.classifier, st)
 		switch {
 		case cerr != nil:

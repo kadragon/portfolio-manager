@@ -4,7 +4,35 @@ Schema / lifecycle:
   Dormant        — no active sprint; file starts with "# (dormant)" and retains only open [debt/blocked] items.
 -->
 
-# (dormant) Tasks — Deferred from PR reviews
+# Tasks — Deferred from PR reviews
+
+## Sprint Contract — stock classification sentinel + throttle
+
+status: done
+
+**Scope:** PR #114 review-backlog debt — (1) persist an "unknown" sentinel for
+unclassifiable stocks so failed/overseas tickers stop being re-queried via KIS on every
+sync/`ClassifyAll`; (2) throttle the synchronous `ClassifyAll` KIS loop. Files:
+`internal/services/stock_classification.go`, `internal/container/container.go`,
+`internal/web/handlers/stocks.go`, `internal/web/templates/stocks.templ` (+ regen `_templ.go`),
+`internal/services/stock_classification_test.go`.
+
+**Acceptance criteria:**
+- [x] Classifier failure/empty-signal on a nil-asset_class stock persists `AssetClassUnknown`
+      on asset_class ONLY (security_group keeps its KIS value space); `isUnknown(asset_class)`
+      is terminal for all three skip-gates (ClassifyAll, classifyStock, account-sync) so the
+      ticker stops being re-queried even with a nil security_group. No-signal counts as Failed.
+- [x] Partially-classified stock (asset_class set, security_group nil) is NOT sentinel-stamped
+      (existing `TestStockClassificationServiceClassifyAll` stays green).
+- [x] `ClassifyAll` honors ctx cancellation (loop-top guard + ctx-aware inter-call delay);
+      delay injected by container (`SetCallDelay(200ms)`), 0 in tests.
+- [x] Edit form round-trips "unknown" (allowlist + templ label "분류 실패"); "" still clears → re-query.
+- [x] `go test ./...`, arch test, golangci-lint, `templ generate --check` all green.
+
+**Out of scope:** background-job + HTMX-polling for ClassifyAll (deferred follow-up);
+`models.ValidAssetClass` centralization (separate backlog item).
+
+**Lint/test:** `go test ./... && golangci-lint run && templ generate --check`
 
 ## Review Backlog
 
@@ -35,8 +63,8 @@ Schema / lifecycle:
 ### PR #114 — KIS ETF classification + tax-location rebalance reasoning (2026-06-03)
 
 - [ ] [debt] ETN (scty_grp_id_cd "EN") classified as "stock" blocks IRP/연금 buys; verify KR ETN eligibility for 연금/IRP and model if eligible (source: pr-review-toolkit:review-pr) — internal/kis/domestic_info.go:34, internal/services/rebalance_service.go canHold
-- [ ] [debt] Unclassifiable/failed tickers keep asset_class=nil and are re-queried on every sync/ClassifyAll; persist an "unknown" sentinel (needs schema + edit-form value decision) to stop redundant KIS calls (source: agy) — internal/services/stock_classification.go:27
-- [ ] [debt] ClassifyAll loops KIS calls synchronously with no throttle inside the web handler; large unclassified sets risk KIS rate-limit and HTTP timeout — add inter-call delay or background job + HTMX polling (source: agy) — internal/services/stock_classification.go:88
+- [x] [debt] Unclassifiable/failed tickers keep asset_class=nil and are re-queried on every sync/ClassifyAll; persist an "unknown" sentinel (needs schema + edit-form value decision) to stop redundant KIS calls (source: agy) — internal/services/stock_classification.go:27 — **resolved: `AssetClassUnknown` sentinel stamped on asset_class ONLY (security_group keeps KIS code space); `isUnknown(asset_class)` terminal for all skip-gates (no schema change — TEXT col); edit form "" resets to re-query; sentinel set by classifier only, not client POST.**
+- [x] [debt] ClassifyAll loops KIS calls synchronously with no throttle inside the web handler; large unclassified sets risk KIS rate-limit and HTTP timeout — add inter-call delay or background job + HTMX polling (source: agy) — internal/services/stock_classification.go:88 — **resolved: ctx-aware inter-call delay (`SetCallDelay`, container injects 200ms) + loop-top ctx.Err() guard; background-job+HTMX-polling deferred (see Out of scope).**
 - [ ] [doc] Drop redundant html.EscapeString in classifyStocks/syncAccount handlers (templ auto-escapes `{ message }`, output is double-escaped) — cosmetic, currently consistent with sibling handler (source: security-review) — internal/web/handlers/accounts.go:272
 
 ### PR #117 — dead-code cleanup + review backlog (2026-06-04)
