@@ -102,3 +102,7 @@ fetch); user confirmed hiding the rate is preferred over keeping the cold lookup
 ### PR #122 — [DOCS] fix review-backlog doc findings (2026-06-19)
 
 - [x] [doc] `docs/conventions.md:34` + `docs/architecture.md:23` claim `//go:build integration` build tag for (KIS) integration tests, but no `.go` file uses it — real gate is `t.Skip`+`KIS_LIVE=1` (AGENTS.md GP-2). Reconcile both untouched docs to the actual mechanism (source: review) — `docs/conventions.md:34`, `docs/architecture.md:23` — **resolved: both docs now describe `KIS_LIVE=1` + `t.Skip` gate (GP-2); confirmed zero `.go` files use `//go:build integration`.**
+
+### PR #129 — [REFACTOR] centralize asset-class vocabulary via models.ValidAssetClass (2026-06-19)
+
+- [ ] [refactor] `AssetClassUnknown = "unknown"` sentinel lives in `services` while the new valid-class consts (`AssetClassETF`/`AssetClassStock`) live in `models`; co-locating the sentinel in `models/stock.go` would unify the asset_class value space, but ripples to external `services.AssetClassUnknown` references in test files (out of PR #129 scope) (source: review) — `internal/services/stock_classification.go:20`
