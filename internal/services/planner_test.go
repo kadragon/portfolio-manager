@@ -50,6 +50,19 @@ func TestComputeGroupNetActions(t *testing.T) {
 	}
 }
 
+// TestPlacementScoreCoversAllGroups guards the invariant that every rebalance
+// group has a _placementScore row. A missing row makes _placementScore[g][*at]
+// return the zero-value 0 silently, which would mis-rank sell/buy account
+// selection in allocateSells without any error. This test fails loudly if a
+// group is added to _groupOrder without a matching score map entry.
+func TestPlacementScoreCoversAllGroups(t *testing.T) {
+	for _, g := range _groupOrder {
+		if _, ok := _placementScore[g]; !ok {
+			t.Errorf("group %q in _groupOrder has no _placementScore entry — allocateSells would silently score it 0", g)
+		}
+	}
+}
+
 // TestAllocateSellsPrefersTaxAdvantaged: when an over-band group is held in both a
 // taxable (위탁) and a tax-advantaged (연금) account, the sell is taken from the
 // tax-advantaged account first to avoid realizing capital-gains tax.
