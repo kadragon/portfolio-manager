@@ -129,11 +129,20 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChang
 		stocksByGroup[stock.GroupID] = append(stocksByGroup[stock.GroupID], stock)
 	}
 
+	// usdKRW is fetched lazily on the first USD holding so KRW-only portfolios
+	// avoid a cold EXIM lookup. Result (incl. nil) is memoized across the loop.
 	var usdKRW *numeric.Decimal
-	if s.exchangeRate != nil {
-		if r := s.exchangeRate.GetUSDKRW(); r.IsPositive() {
-			usdKRW = &r
+	usdKRWFetched := false
+	resolveUSDKRW := func() *numeric.Decimal {
+		if !usdKRWFetched {
+			usdKRWFetched = true
+			if s.exchangeRate != nil {
+				if r := s.exchangeRate.GetUSDKRW(); r.IsPositive() {
+					usdKRW = &r
+				}
+			}
 		}
+		return usdKRW
 	}
 	pairs := make([]models.GroupHoldingPair, 0)
 	totalStockValue := numeric.Zero
@@ -156,11 +165,12 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChang
 
 			var valueKRW *numeric.Decimal
 			if currency == "USD" {
-				if usdKRW == nil {
+				rate := resolveUSDKRW()
+				if rate == nil {
 					v := numeric.Zero
 					valueKRW = &v
 				} else {
-					v := numeric.Wrap(holdingValue.Mul(usdKRW.Decimal))
+					v := numeric.Wrap(holdingValue.Mul(rate.Decimal))
 					valueKRW = &v
 				}
 			} else {

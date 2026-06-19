@@ -160,6 +160,74 @@ func TestGetPortfolioSummaryUSDStock(t *testing.T) {
 	}
 }
 
+type countingEximClient struct {
+	calls int
+	rate  float64
+}
+
+func (c *countingEximClient) FetchUSDRate(searchDate string) (float64, error) {
+	c.calls++
+	return c.rate, nil
+}
+
+func TestGetPortfolioSummaryKRWOnlyNoRateFetch(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	g, _ := c.Groups.Create(ctx, "국내주", 100.0)
+	s, _ := c.Stocks.Create(ctx, "005930", g.ID)
+	acc, _ := c.Accounts.Create(ctx, "내 계좌", numeric.Zero)
+	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(10))
+
+	today, _ := datex.ParseDate("2026-06-01")
+	p, _ := numeric.FromString("74000")
+	_, _ = c.StockPrices.Save(ctx, "005930", today, p, "KRW", "삼성전자", sql.NullString{})
+
+	exim := &countingEximClient{rate: 1300}
+	exchangeRate := services.NewEximExchangeRateService(exim)
+	priceService := services.NewPriceService(c.StockPrices)
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, exchangeRate)
+
+	if _, err := ps.GetPortfolioSummary(ctx, false); err != nil {
+		t.Fatalf("GetPortfolioSummary KRW-only: %v", err)
+	}
+	if exim.calls != 0 {
+		t.Errorf("KRW-only portfolio fetched USD rate %d time(s), want 0", exim.calls)
+	}
+}
+
+func TestGetPortfolioSummaryUSDFetchesRate(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	g, _ := c.Groups.Create(ctx, "해외주", 100.0)
+	exchange := "NASD"
+	s, _ := c.Stocks.Create(ctx, "AAPL", g.ID)
+	_, _ = c.Stocks.UpdateExchange(ctx, s.ID, exchange)
+	acc, _ := c.Accounts.Create(ctx, "해외계좌", numeric.Zero)
+	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(5))
+
+	today, _ := datex.ParseDate("2026-06-01")
+	p, _ := numeric.FromString("195.89")
+	_, _ = c.StockPrices.Save(ctx, "AAPL", today, p, "USD", "Apple Inc.", sql.NullString{String: "NASD", Valid: true})
+
+	exim := &countingEximClient{rate: 1300}
+	exchangeRate := services.NewEximExchangeRateService(exim)
+	priceService := services.NewPriceService(c.StockPrices)
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, exchangeRate)
+
+	summary, err := ps.GetPortfolioSummary(ctx, false)
+	if err != nil {
+		t.Fatalf("GetPortfolioSummary USD: %v", err)
+	}
+	if exim.calls == 0 {
+		t.Error("USD portfolio did not fetch USD rate, want >=1")
+	}
+	if summary.USDKRWRate == nil {
+		t.Error("USDKRWRate is nil for USD portfolio, want populated")
+	}
+}
+
 func TestResolveAndPersistNameWithPriceService(t *testing.T) {
 	c := newPortfolioContainer(t)
 	ctx := context.Background()
