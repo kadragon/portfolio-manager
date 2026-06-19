@@ -2,10 +2,19 @@ package services
 
 import (
 	"context"
+	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
+
+// AssetClassUnknown is the sentinel persisted onto a stock whose asset class
+// could not be resolved (classifier error or no signal). It satisfies the
+// "already classified" skip-gates so the ticker is not re-queried against KIS
+// on every sync/ClassifyAll. Downstream consumers (e.g. assetIsETF) treat any
+// non-"etf" value as non-ETF, so the sentinel is safe. A user can reset it to
+// "미분류" via the edit form to force a re-classification.
+const AssetClassUnknown = "unknown"
 
 // AssetClassifier resolves a security's asset class ("etf"/"stock") and its
 // normalized KIS security-group code given its ticker and (for overseas-listed
@@ -40,7 +49,20 @@ func classifyStock(
 		exchange = *st.Exchange
 	}
 	ac, sg, err := classifier.Classify(st.Ticker, exchange)
-	if err != nil {
+	if err != nil || (ac != "etf" && ac != "stock") {
+		if st.AssetClass == nil {
+			// Asset class genuinely unresolved — tag the still-nil columns with
+			// the sentinel so this ticker stops being re-queried. Surface the
+			// original error (if any) so callers still log/count the failure.
+			st, changed, serr := tagUnknown(ctx, updater, st)
+			if serr != nil {
+				return st, changed, serr
+			}
+			return st, changed, err
+		}
+		// Asset class already set; classify yielded no new signal. Leave the
+		// (cosmetic) missing security_group untouched — don't sentinel a
+		// partially-classified stock.
 		return st, false, err
 	}
 	changed := false
@@ -54,6 +76,29 @@ func classifyStock(
 	}
 	if st.SecurityGroup == nil && sg != "" {
 		updated, uerr := updater.UpdateSecurityGroup(ctx, st.ID, sg)
+		if uerr != nil {
+			return st, changed, uerr
+		}
+		st = updated
+		changed = true
+	}
+	return st, changed, nil
+}
+
+// tagUnknown persists AssetClassUnknown onto any still-nil asset_class /
+// security_group column, returning whether anything changed.
+func tagUnknown(ctx context.Context, updater assetClassUpdater, st models.Stock) (models.Stock, bool, error) {
+	changed := false
+	if st.AssetClass == nil {
+		updated, uerr := updater.UpdateAssetClass(ctx, st.ID, AssetClassUnknown)
+		if uerr != nil {
+			return st, changed, uerr
+		}
+		st = updated
+		changed = true
+	}
+	if st.SecurityGroup == nil {
+		updated, uerr := updater.UpdateSecurityGroup(ctx, st.ID, AssetClassUnknown)
 		if uerr != nil {
 			return st, changed, uerr
 		}
@@ -82,12 +127,24 @@ type classifyStockRepo interface {
 type StockClassificationService struct {
 	stocks     classifyStockRepo
 	classifier AssetClassifier
+	// callDelay paces per-stock KIS calls in ClassifyAll to avoid rate-limit /
+	// handler timeout. Zero (the constructor default) disables pacing; the
+	// container injects a non-zero throttle via SetCallDelay for the live path.
+	callDelay time.Duration
 }
 
 // NewStockClassificationService constructs the service. A nil classifier yields a
 // disabled service (Enabled() == false).
 func NewStockClassificationService(stocks classifyStockRepo, classifier AssetClassifier) *StockClassificationService {
 	return &StockClassificationService{stocks: stocks, classifier: classifier}
+}
+
+// SetCallDelay sets the inter-call pacing for ClassifyAll. Used by the container
+// to throttle live KIS traffic; left zero in unit tests for speed.
+func (s *StockClassificationService) SetCallDelay(d time.Duration) {
+	if s != nil {
+		s.callDelay = d
+	}
 }
 
 // Enabled reports whether a classifier is configured (i.e. KIS is available).
@@ -106,6 +163,9 @@ func (s *StockClassificationService) ClassifyAll(ctx context.Context) (StockClas
 	}
 	res.Total = len(stocks)
 	for _, st := range stocks {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
 		if st.AssetClass != nil && st.SecurityGroup != nil {
 			res.Skipped++
 			continue
@@ -118,6 +178,14 @@ func (s *StockClassificationService) ClassifyAll(ctx context.Context) (StockClas
 			res.Classified++
 		default:
 			res.Skipped++
+		}
+		// Pace KIS calls to avoid rate-limit / handler timeout.
+		if s.callDelay > 0 {
+			select {
+			case <-ctx.Done():
+				return res, ctx.Err()
+			case <-time.After(s.callDelay):
+			}
 		}
 	}
 	return res, nil

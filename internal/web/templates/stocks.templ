@@ -33,6 +33,8 @@ func assetClassLabel(s models.Stock) string {
 		return "ETF"
 	case "stock":
 		return "개별주식"
+	case "unknown":
+		return "분류 실패"
 	default:
 		return *s.AssetClass
 	}
@@ -148,6 +150,9 @@ templ StockForm(stock models.Stock, groupID uuidx.UUID, groups []models.Group) {
 				<option value="" if stock.AssetClass == nil { selected }>미분류</option>
 				<option value="etf" if assetClassMatch(stock, "etf") { selected }>ETF</option>
 				<option value="stock" if assetClassMatch(stock, "stock") { selected }>개별주식</option>
+				if assetClassMatch(stock, "unknown") {
+					<option value="unknown" selected>분류 실패</option>
+				}
 			</select>
 			<label class="sr-only" for={ "stock-secgrp-" + stock.ID.String() }>증권그룹 (KIS)</label>
 			<input

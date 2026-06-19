@@ -87,3 +87,78 @@ func TestStockClassificationServiceCountsFailure(t *testing.T) {
 		t.Errorf("result = %+v, want Failed:1 Classified:0", res)
 	}
 }
+
+// On classifier failure the stock is sentinel-tagged ("unknown") on BOTH
+// asset_class and security_group so the skip-gates stop re-querying it.
+func TestClassifyAllPersistsSentinelOnFailure(t *testing.T) {
+	id := newTestUUID()
+	repo := &mockSyncStockRepo{all: []models.Stock{{ID: id, Ticker: "BADTICK"}}}
+	classifier := &fakeAssetClassifier{err: errors.New("kis down")}
+	svc := services.NewStockClassificationService(repo, classifier)
+
+	if _, err := svc.ClassifyAll(context.Background()); err != nil {
+		t.Fatalf("ClassifyAll: %v", err)
+	}
+	if len(repo.classified) != 1 || repo.classified[0].assetClass != services.AssetClassUnknown {
+		t.Errorf("asset_class updates = %+v, want one %q", repo.classified, services.AssetClassUnknown)
+	}
+	if len(repo.secGrouped) != 1 || repo.secGrouped[0].securityGroup != services.AssetClassUnknown {
+		t.Errorf("security_group updates = %+v, want one %q", repo.secGrouped, services.AssetClassUnknown)
+	}
+}
+
+// A classifier that returns no signal (empty strings, no error) also yields the
+// sentinel — there is nothing to retry on.
+func TestClassifyAllPersistsSentinelOnEmpty(t *testing.T) {
+	id := newTestUUID()
+	repo := &mockSyncStockRepo{all: []models.Stock{{ID: id, Ticker: "UNKWN"}}}
+	classifier := &fakeAssetClassifier{byTicker: map[string]string{}} // returns "", "", nil
+	svc := services.NewStockClassificationService(repo, classifier)
+
+	if _, err := svc.ClassifyAll(context.Background()); err != nil {
+		t.Fatalf("ClassifyAll: %v", err)
+	}
+	if len(repo.classified) != 1 || repo.classified[0].assetClass != services.AssetClassUnknown {
+		t.Errorf("asset_class updates = %+v, want one %q", repo.classified, services.AssetClassUnknown)
+	}
+}
+
+// A stock already carrying the sentinel on both columns is skipped — the
+// classifier is never called again.
+func TestClassifyAllSkipsSentinelStock(t *testing.T) {
+	unknown := services.AssetClassUnknown
+	repo := &mockSyncStockRepo{all: []models.Stock{
+		{ID: newTestUUID(), Ticker: "BADTICK", AssetClass: &unknown, SecurityGroup: &unknown},
+	}}
+	classifier := &fakeAssetClassifier{}
+	svc := services.NewStockClassificationService(repo, classifier)
+
+	res, err := svc.ClassifyAll(context.Background())
+	if err != nil {
+		t.Fatalf("ClassifyAll: %v", err)
+	}
+	if classifier.calls != 0 {
+		t.Errorf("classifier called %d times, want 0 (sentinel skipped)", classifier.calls)
+	}
+	if res.Skipped != 1 {
+		t.Errorf("Skipped = %d, want 1", res.Skipped)
+	}
+}
+
+// ClassifyAll honors context cancellation — a cancelled context stops the loop
+// before issuing KIS calls.
+func TestClassifyAllHonorsContextCancellation(t *testing.T) {
+	repo := &mockSyncStockRepo{all: []models.Stock{{ID: newTestUUID(), Ticker: "0052D0"}}}
+	classifier := &fakeAssetClassifier{byTicker: map[string]string{"0052D0": "etf"}}
+	svc := services.NewStockClassificationService(repo, classifier)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := svc.ClassifyAll(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if classifier.calls != 0 {
+		t.Errorf("classifier called %d times after cancel, want 0", classifier.calls)
+	}
+}

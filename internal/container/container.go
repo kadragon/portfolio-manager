@@ -130,6 +130,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	execRepo := &execRepoAdapter{r: orderExecutions}
 	rebalanceExecution := services.NewRebalanceExecutionService(orderClient, execRepo, rebalanceSync)
 	stockClassification := services.NewStockClassificationService(stocks, assetClassifier)
+	stockClassification.SetCallDelay(200 * time.Millisecond)
 
 	return &Container{
 		DB:                  sqlDB,
