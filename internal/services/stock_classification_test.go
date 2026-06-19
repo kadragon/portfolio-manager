@@ -88,8 +88,8 @@ func TestStockClassificationServiceCountsFailure(t *testing.T) {
 	}
 }
 
-// On classifier failure the stock is sentinel-tagged ("unknown") on BOTH
-// asset_class and security_group so the skip-gates stop re-querying it.
+// On classifier failure the stock is sentinel-tagged on asset_class ONLY;
+// security_group keeps its KIS value space and is left untouched.
 func TestClassifyAllPersistsSentinelOnFailure(t *testing.T) {
 	id := newTestUUID()
 	repo := &mockSyncStockRepo{all: []models.Stock{{ID: id, Ticker: "BADTICK"}}}
@@ -102,33 +102,41 @@ func TestClassifyAllPersistsSentinelOnFailure(t *testing.T) {
 	if len(repo.classified) != 1 || repo.classified[0].assetClass != services.AssetClassUnknown {
 		t.Errorf("asset_class updates = %+v, want one %q", repo.classified, services.AssetClassUnknown)
 	}
-	if len(repo.secGrouped) != 1 || repo.secGrouped[0].securityGroup != services.AssetClassUnknown {
-		t.Errorf("security_group updates = %+v, want one %q", repo.secGrouped, services.AssetClassUnknown)
+	if len(repo.secGrouped) != 0 {
+		t.Errorf("security_group updates = %+v, want none (sentinel is asset_class-only)", repo.secGrouped)
 	}
 }
 
 // A classifier that returns no signal (empty strings, no error) also yields the
-// sentinel — there is nothing to retry on.
+// asset_class sentinel — there is nothing to retry on — and counts as Failed,
+// not Classified.
 func TestClassifyAllPersistsSentinelOnEmpty(t *testing.T) {
 	id := newTestUUID()
 	repo := &mockSyncStockRepo{all: []models.Stock{{ID: id, Ticker: "UNKWN"}}}
 	classifier := &fakeAssetClassifier{byTicker: map[string]string{}} // returns "", "", nil
 	svc := services.NewStockClassificationService(repo, classifier)
 
-	if _, err := svc.ClassifyAll(context.Background()); err != nil {
+	res, err := svc.ClassifyAll(context.Background())
+	if err != nil {
 		t.Fatalf("ClassifyAll: %v", err)
 	}
 	if len(repo.classified) != 1 || repo.classified[0].assetClass != services.AssetClassUnknown {
 		t.Errorf("asset_class updates = %+v, want one %q", repo.classified, services.AssetClassUnknown)
 	}
+	if len(repo.secGrouped) != 0 {
+		t.Errorf("security_group updates = %+v, want none", repo.secGrouped)
+	}
+	if res.Failed != 1 || res.Classified != 0 {
+		t.Errorf("result = %+v, want Failed:1 Classified:0 (no-signal sentinel is a failure)", res)
+	}
 }
 
-// A stock already carrying the sentinel on both columns is skipped — the
-// classifier is never called again.
+// A stock whose asset_class is the sentinel is terminal even with a nil
+// security_group — the classifier is never called again.
 func TestClassifyAllSkipsSentinelStock(t *testing.T) {
 	unknown := services.AssetClassUnknown
 	repo := &mockSyncStockRepo{all: []models.Stock{
-		{ID: newTestUUID(), Ticker: "BADTICK", AssetClass: &unknown, SecurityGroup: &unknown},
+		{ID: newTestUUID(), Ticker: "BADTICK", AssetClass: &unknown}, // security_group nil
 	}}
 	classifier := &fakeAssetClassifier{}
 	svc := services.NewStockClassificationService(repo, classifier)

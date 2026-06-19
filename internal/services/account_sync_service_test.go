@@ -282,6 +282,30 @@ func TestSyncAccount_SkipsAlreadyClassifiedStock(t *testing.T) {
 	}
 }
 
+func TestSyncAccount_SkipsSentinelStock(t *testing.T) {
+	account := makeTestAccount()
+	bc := &mockBalanceClient{snapshot: models.KisAccountSnapshot{
+		CashBalance: mustDecimal("0"),
+		Holdings: []models.KisHoldingPosition{
+			{Ticker: "BADTICK", Name: "분류 실패 종목", Quantity: mustDecimal("10")},
+		},
+	}}
+	unknown := services.AssetClassUnknown
+	stockID := newTestUUID()
+	// asset_class sentinel, security_group still nil — must NOT be re-queried.
+	stocks := &mockSyncStockRepo{all: []models.Stock{{ID: stockID, Ticker: "BADTICK", AssetClass: &unknown}}}
+	svc := makeSyncSvc(bc, &mockSyncAccountRepo{}, &mockSyncHoldingRepo{}, stocks, &mockSyncGroupRepo{})
+	classifier := &fakeAssetClassifier{byTicker: map[string]string{"BADTICK": "etf"}}
+	svc.SetClassifier(classifier)
+
+	if _, err := svc.SyncAccount(context.Background(), account, "12345678", "01", false); err != nil {
+		t.Fatalf("SyncAccount: %v", err)
+	}
+	if classifier.calls != 0 {
+		t.Errorf("classifier called %d times, want 0 (sentinel skipped)", classifier.calls)
+	}
+}
+
 func TestSyncAccount_EmptySnapshotAllowed(t *testing.T) {
 	account := makeTestAccount()
 	stockID := newTestUUID()
