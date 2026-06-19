@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/kadragon/portfolio-manager/internal/container"
+	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 	"github.com/kadragon/portfolio-manager/internal/web/templates"
 )
@@ -198,7 +199,7 @@ func (h *StockHandler) update(c echo.Context) error {
 	// values leave it unchanged.
 	if form.Has("asset_class") {
 		assetClass := strings.TrimSpace(form.Get("asset_class"))
-		if (assetClass == "" || assetClass == "etf" || assetClass == "stock") && !assetClassEquals(updated.AssetClass, assetClass) {
+		if (assetClass == "" || models.ValidAssetClass(assetClass)) && !assetClassEquals(updated.AssetClass, assetClass) {
 			upd, uerr := h.c.Stocks.UpdateAssetClass(ctx, s.ID, assetClass)
 			if uerr != nil {
 				return uerr

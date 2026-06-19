@@ -6,6 +6,23 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
+// Asset class values. Drive account eligibility in the rebalance engine
+// (IRP/연금 hold ETFs/funds only, never individual stocks).
+const (
+	AssetClassETF   = "etf"
+	AssetClassStock = "stock"
+)
+
+// ValidAssetClass reports whether s is a recognized asset class.
+func ValidAssetClass(s string) bool {
+	switch s {
+	case AssetClassETF, AssetClassStock:
+		return true
+	default:
+		return false
+	}
+}
+
 // Stock is a ticker held in a portfolio group.
 type Stock struct {
 	ID       uuidx.UUID

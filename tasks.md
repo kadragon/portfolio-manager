@@ -76,7 +76,7 @@ fetch); user confirmed hiding the rate is preferred over keeping the cold lookup
 - [x] [debt] negative account AUM (huge negative cash) yields negative target values; clamp AUM to zero before splitting. Defensive against theoretical state, no failing test (source: agy) — `internal/services/rebalance_service.go:494` — **obsolete: same per-account AUM split removed in PR #117 (commit `d31e028`); no AUM-derived target values remain to clamp.**
 - [x] [test] no guard that every `_groupOrder` entry has a `_placementScore` key — silent default-0 score if a group is added without updating the score map (source: pr-review-toolkit:review-pr) — `internal/services/rebalance_service.go:379` — **resolved: `TestPlacementScoreCoversAllGroups` in `planner_test.go` asserts every `_groupOrder` entry has a `_placementScore` row.**
 - [ ] [refactor] `assetClassEquals` two-line helper used once — inline for parity with `accounts.go` (source: pr-review-toolkit:review-pr) — `internal/web/handlers/stocks.go:24`
-- [ ] [refactor] add `models.ValidAssetClass(s)` mirroring `ValidAccountType` to centralize "etf"/"stock" vocabulary (source: pr-review-toolkit:review-pr) — `internal/models/account.go`
+- [x] [refactor] add `models.ValidAssetClass(s)` mirroring `ValidAccountType` to centralize "etf"/"stock" vocabulary (source: pr-review-toolkit:review-pr) — `internal/models/account.go` — **resolved: `ValidAssetClass` + `AssetClassETF`/`AssetClassStock` consts added to `internal/models/stock.go`; call sites in `web/handlers/stocks.go` + `services/stock_classification.go` swapped to it; `TestValidAssetClass` table test added.**
 
 ## Review Backlog
 
