@@ -31,7 +31,7 @@
 
 - 표준 `testing`, `*_test.go` (대상 패키지 옆)
 - 화이트박스(`package foo`) 또는 블랙박스(`package foo_test`) — 헬퍼 검증은 화이트박스
-- 통합 테스트는 `//go:build integration` 빌드 태그
+- KIS live(통합) 테스트는 `KIS_LIVE=1` 환경변수 가드 — 미설정 시 `t.Skip` (예: `internal/kis/overseas_price_live_test.go`, GP-2)
 - 커버리지 85%+ 유지 (`make go-cover`; 생성 코드 제외)
 - 테이블 드리븐 테스트 선호
 
