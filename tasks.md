@@ -34,6 +34,26 @@ sync/`ClassifyAll`; (2) throttle the synchronous `ClassifyAll` KIS loop. Files:
 
 **Lint/test:** `go test ./... && golangci-lint run && templ generate --check`
 
+## Sprint Contract — lazy display-rate fetch (PR #112 follow-up)
+
+status: done
+
+**Scope:** PR #112 review-backlog perf finding — `GetPortfolioSummary` eagerly calls
+`GetUSDKRW()` before the holdings loop, forcing one cold EXIM lookup even for KRW-only
+portfolios. Defer the fetch so it fires only when a USD holding is actually valued.
+File: `internal/services/portfolio_service.go` (+ `internal/services/portfolio_service_test.go`).
+
+**Acceptance criteria:**
+- [x] KRW-only portfolio triggers 0 `FetchUSDRate` calls (lazy fetch on first USD holding).
+- [x] USD portfolio still values correctly and `USDKRWRate` is populated.
+- [x] `go test ./... && golangci-lint run && templ generate --check` all green.
+
+**Out of scope:** ExchangeRateService caching changes; display-rate UI behavior.
+**Decision:** KRW-only portfolio now renders dashboard USD/KRW as `-` (no USD exposure → no
+fetch); user confirmed hiding the rate is preferred over keeping the cold lookup.
+
+**Lint/test:** `go test ./... && golangci-lint run && templ generate --check`
+
 ## Review Backlog
 
 ### PR #100 — [HARNESS] Upgrade harness to Level 2 (2026-05-27)
@@ -48,7 +68,7 @@ sync/`ClassifyAll`; (2) throttle the synchronous `ClassifyAll` KIS loop. Files:
 
 ### PR #112 — [FEAT] resolve historical prices to nearest prior trading day (2026-06-03)
 
-- [ ] [perf] `GetPortfolioSummary` fetches `GetUSDKRW()` eagerly to populate the display rate, adding one cold EXIM lookup for KRW-only portfolios — bounded to 1 fetch/day by `cachedRates`, but consider decoupling the display-rate fetch from valuation if it shows up in latency (source: codex) — `internal/services/portfolio_service.go:133`
+- [x] [perf] `GetPortfolioSummary` fetches `GetUSDKRW()` eagerly to populate the display rate, adding one cold EXIM lookup for KRW-only portfolios — bounded to 1 fetch/day by `cachedRates`, but consider decoupling the display-rate fetch from valuation if it shows up in latency (source: codex) — `internal/services/portfolio_service.go:133` — **resolved: USD/KRW now fetched lazily via `resolveUSDKRW` closure on first USD holding (memoizes nil); KRW-only portfolios make 0 EXIM calls and render the dashboard rate as `-`. Tests `TestGetPortfolioSummaryKRWOnlyNoRateFetch`/`...USDFetchesRate`.**
 
 ### PR #113 — [FEAT] tax-aware rebalancing (2026-06-03)
 
