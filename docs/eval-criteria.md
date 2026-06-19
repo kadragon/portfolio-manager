@@ -9,7 +9,7 @@ Sprint Contract — [feature name]
 
 Correctness:   [what passing looks like — specific test or command]
 Coverage:      [minimum test coverage or scenario list]
-Layer safety:  [arch tests pass — go test ./internal/arch/... exits 0]
+Layer safety:  [arch tests pass — go test ./internal/arch/ exits 0]
 No regressions:[full test suite green — go test ./... exits 0]
 ```
 
@@ -44,7 +44,7 @@ How to test: `go test ./...` green; manually verify the new behavior in the runn
 How to test: `go test ./internal/arch/ -v`
 
 ### 3. Test coverage (weight: 2)
-- Score 5: New behavior has unit tests; edge cases covered; integration test uses `//go:build integration` tag if KIS API involved
+- Score 5: New behavior has unit tests; edge cases covered; KIS live tests gated by `KIS_LIVE=1` (`t.Skip` otherwise) if KIS API involved
 - Score 3: Core behavior tested; edge cases may be missing
 - Score 1: No tests for new behavior
 
