@@ -50,3 +50,7 @@ Schema / lifecycle:
 - [ ] [harness] `internal/web/static/css/app.css` is tracked in git; compiled output creates noisy diffs and build-env divergence risk — add to `.gitignore` and generate in CI/Docker instead (source: pr-review-toolkit:review-pr) — `internal/web/static/css/app.css`
 - [ ] [debt] DaisyUI base-100/200 role inversion from convention (100=card, 200=canvas) is intentional but confusing; document design decision in `docs/` or DESIGN.md comment block (source: review) — `internal/web/tailwind/input.css:15-19`
 - [ ] [doc] Commit message format: project uses `[TYPE]` prefix (AGENTS.md), not Conventional Commits `type(scope):` — align or update `docs/conventions.md` to accept both (source: pr-review-toolkit:review-pr)
+
+### PR #122 — [DOCS] fix review-backlog doc findings (2026-06-19)
+
+- [ ] [doc] `docs/conventions.md:34` + `docs/architecture.md:23` claim `//go:build integration` build tag for (KIS) integration tests, but no `.go` file uses it — real gate is `t.Skip`+`KIS_LIVE=1` (AGENTS.md GP-2). Reconcile both untouched docs to the actual mechanism (source: review) — `docs/conventions.md:34`, `docs/architecture.md:23`

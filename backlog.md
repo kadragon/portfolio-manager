@@ -15,7 +15,7 @@ Branch `feat/go-rewrite`. Phases 0–8 done; Phase 9 (LLM/insights) dropped. Cut
 - [x] DELETE `src/`, `tests/` (py), `pyproject.toml`, `uv.lock`, `.bandit`; pre-commit py hooks; `scripts/check_*.py` + `scripts/sweep.sh`
 - [x] remove `scripts/parity_check.sh` + `handoff-go-rewrite.md` (oracle gone; `TASKS-go-rewrite.md` never existed)
 - [ ] [debt] `.claude/settings.local.json` permissions: `uv run`/pytest → go/golangci — **manual user step** (agent write to settings denied by permission classifier)
-- [~] final 38-route parity sweep — **skipped**: per-slice MATCH already verified during phases; Python oracle deleted. `docker compose up` smoke deferred to deploy.
+- [x] final 38-route parity sweep — **skipped**: per-slice MATCH already verified during phases; Python oracle deleted. `docker compose up` smoke deferred to deploy.
 
 ### Phase 10 follow-ups (Go gaps vs Python)
 
