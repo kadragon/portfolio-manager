@@ -32,6 +32,8 @@ func TestResolveSyncService(t *testing.T) {
 		{"keyID not 1 and not found warns", ptrInt64(3), defaultSync, true},
 	}
 
+	// No t.Parallel() — subtests redirect the global log.Writer; concurrent
+	// execution would race on the shared buffer and restoration.
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
@@ -51,6 +53,13 @@ func TestResolveSyncService(t *testing.T) {
 			logged := strings.Contains(buf.String(), "no sync service for requested KIS key")
 			if logged != tc.wantLog {
 				t.Errorf("warning logged = %v (%q), want %v", logged, buf.String(), tc.wantLog)
+			}
+
+			// PR #111: the fallback warning must never leak the requested key ID value.
+			if tc.wantLog && tc.keyID != nil {
+				if keyStr := fmt.Sprintf("%d", *tc.keyID); strings.Contains(buf.String(), keyStr) {
+					t.Errorf("warning log leaked key ID %q: %q", keyStr, buf.String())
+				}
 			}
 		})
 	}
