@@ -202,14 +202,23 @@ func TestGetPortfolioSummaryUSDFetchesRate(t *testing.T) {
 
 	g, _ := c.Groups.Create(ctx, "해외주", 100.0)
 	exchange := "NASD"
-	s, _ := c.Stocks.Create(ctx, "AAPL", g.ID)
-	_, _ = c.Stocks.UpdateExchange(ctx, s.ID, exchange)
 	acc, _ := c.Accounts.Create(ctx, "해외계좌", numeric.Zero)
-	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(5))
-
 	today, _ := datex.ParseDate("2026-06-01")
-	p, _ := numeric.FromString("195.89")
-	_, _ = c.StockPrices.Save(ctx, "AAPL", today, p, "USD", "Apple Inc.", sql.NullString{String: "NASD", Valid: true})
+
+	// Two USD holdings: proves the rate is fetched once per portfolio (memoized),
+	// not once per holding.
+	for _, tk := range []struct {
+		ticker, name, price string
+	}{
+		{"AAPL", "Apple Inc.", "195.89"},
+		{"MSFT", "Microsoft Corp.", "430.50"},
+	} {
+		s, _ := c.Stocks.Create(ctx, tk.ticker, g.ID)
+		_, _ = c.Stocks.UpdateExchange(ctx, s.ID, exchange)
+		_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(5))
+		p, _ := numeric.FromString(tk.price)
+		_, _ = c.StockPrices.Save(ctx, tk.ticker, today, p, "USD", tk.name, sql.NullString{String: "NASD", Valid: true})
+	}
 
 	exim := &countingEximClient{rate: 1300}
 	exchangeRate := services.NewEximExchangeRateService(exim)
@@ -220,8 +229,8 @@ func TestGetPortfolioSummaryUSDFetchesRate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPortfolioSummary USD: %v", err)
 	}
-	if exim.calls == 0 {
-		t.Error("USD portfolio did not fetch USD rate, want >=1")
+	if exim.calls != 1 {
+		t.Errorf("USD portfolio fetched USD rate %d time(s) for 2 USD holdings, want exactly 1 (memoized)", exim.calls)
 	}
 	if summary.USDKRWRate == nil {
 		t.Error("USDKRWRate is nil for USD portfolio, want populated")
