@@ -62,7 +62,7 @@ func classifyStock(
 		exchange = *st.Exchange
 	}
 	ac, sg, err := classifier.Classify(st.Ticker, exchange)
-	if err != nil || (ac != "etf" && ac != "stock") {
+	if err != nil || !models.ValidAssetClass(ac) {
 		if st.AssetClass == nil {
 			// Asset class unresolved — stamp the sentinel on asset_class ALONE so
 			// the ticker stops being re-queried. security_group keeps its KIS
@@ -83,7 +83,7 @@ func classifyStock(
 		return st, false, err
 	}
 	changed := false
-	if st.AssetClass == nil && (ac == "etf" || ac == "stock") {
+	if st.AssetClass == nil && models.ValidAssetClass(ac) {
 		updated, uerr := updater.UpdateAssetClass(ctx, st.ID, ac)
 		if uerr != nil {
 			return st, false, uerr
