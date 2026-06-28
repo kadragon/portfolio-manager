@@ -35,5 +35,6 @@ type Account struct {
 	KisAPIKeyID  *int64
 	// AccountType is the tax/eligibility class: "brokerage", "irp", "pension"
 	// (연금저축), or "isa". nil = unclassified (treated strictly: buys blocked).
-	AccountType *string
+	AccountType    *string
+	TossAccountSeq *int64
 }

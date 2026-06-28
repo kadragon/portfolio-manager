@@ -19,7 +19,7 @@ const createAccount = `-- name: CreateAccount :one
 
 INSERT INTO accounts (id, name, cash_balance, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?)
-RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq
 `
 
 type CreateAccountParams struct {
@@ -49,6 +49,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
 		&i.AccountType,
+		&i.TossAccountSeq,
 	)
 	return i, err
 }
@@ -316,7 +317,7 @@ func (q *Queries) DeleteStock(ctx context.Context, id uuidx.UUID) error {
 }
 
 const getAccountByID = `-- name: GetAccountByID :one
-SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type FROM accounts WHERE id = ?
+SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq FROM accounts WHERE id = ?
 `
 
 func (q *Queries) GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, error) {
@@ -331,6 +332,7 @@ func (q *Queries) GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, e
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
 		&i.AccountType,
+		&i.TossAccountSeq,
 	)
 	return i, err
 }
@@ -533,7 +535,7 @@ func (q *Queries) GetStockPriceOnOrBeforeDate(ctx context.Context, arg GetStockP
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type FROM accounts
+SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq FROM accounts
 `
 
 func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
@@ -554,6 +556,7 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 			&i.KisAccountNo,
 			&i.KisApiKeyID,
 			&i.AccountType,
+			&i.TossAccountSeq,
 		); err != nil {
 			return nil, err
 		}
@@ -819,19 +822,20 @@ func (q *Queries) ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]
 
 const updateAccount = `-- name: UpdateAccount :one
 UPDATE accounts
-SET name = ?, cash_balance = ?, kis_account_no = ?, kis_api_key_id = ?, account_type = ?, updated_at = ?
+SET name = ?, cash_balance = ?, kis_account_no = ?, kis_api_key_id = ?, account_type = ?, toss_account_seq = ?, updated_at = ?
 WHERE id = ?
-RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq
 `
 
 type UpdateAccountParams struct {
-	Name         string
-	CashBalance  numeric.Decimal
-	KisAccountNo sql.NullString
-	KisApiKeyID  sql.NullInt64
-	AccountType  sql.NullString
-	UpdatedAt    ktime.Time
-	ID           uuidx.UUID
+	Name           string
+	CashBalance    numeric.Decimal
+	KisAccountNo   sql.NullString
+	KisApiKeyID    sql.NullInt64
+	AccountType    sql.NullString
+	TossAccountSeq sql.NullInt64
+	UpdatedAt      ktime.Time
+	ID             uuidx.UUID
 }
 
 func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error) {
@@ -841,6 +845,7 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		arg.KisAccountNo,
 		arg.KisApiKeyID,
 		arg.AccountType,
+		arg.TossAccountSeq,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -854,13 +859,14 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
 		&i.AccountType,
+		&i.TossAccountSeq,
 	)
 	return i, err
 }
 
 const updateAccountNameCash = `-- name: UpdateAccountNameCash :one
 UPDATE accounts SET name = ?, cash_balance = ?, updated_at = ? WHERE id = ?
-RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq
 `
 
 type UpdateAccountNameCashParams struct {
@@ -887,6 +893,7 @@ func (q *Queries) UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNa
 		&i.KisAccountNo,
 		&i.KisApiKeyID,
 		&i.AccountType,
+		&i.TossAccountSeq,
 	)
 	return i, err
 }

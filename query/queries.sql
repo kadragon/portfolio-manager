@@ -85,7 +85,7 @@ RETURNING *;
 
 -- name: UpdateAccount :one
 UPDATE accounts
-SET name = ?, cash_balance = ?, kis_account_no = ?, kis_api_key_id = ?, account_type = ?, updated_at = ?
+SET name = ?, cash_balance = ?, kis_account_no = ?, kis_api_key_id = ?, account_type = ?, toss_account_seq = ?, updated_at = ?
 WHERE id = ?
 RETURNING *;
 

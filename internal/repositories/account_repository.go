@@ -78,16 +78,26 @@ func (r *AccountRepository) UpdateNameCash(ctx context.Context, id uuidx.UUID, n
 	return toAccount(row), nil
 }
 
-// Update sets all editable fields including KIS and account type.
-func (r *AccountRepository) Update(ctx context.Context, id uuidx.UUID, name string, cashBalance numeric.Decimal, kisAccountNo sql.NullString, kisAPIKeyID sql.NullInt64, accountType sql.NullString) (models.Account, error) {
+// Update sets all editable fields including broker bindings and account type.
+func (r *AccountRepository) Update(
+	ctx context.Context,
+	id uuidx.UUID,
+	name string,
+	cashBalance numeric.Decimal,
+	kisAccountNo sql.NullString,
+	kisAPIKeyID sql.NullInt64,
+	accountType sql.NullString,
+	tossAccountSeq sql.NullInt64,
+) (models.Account, error) {
 	row, err := r.q.UpdateAccount(ctx, sqlc.UpdateAccountParams{
-		Name:         name,
-		CashBalance:  cashBalance,
-		KisAccountNo: kisAccountNo,
-		KisApiKeyID:  kisAPIKeyID,
-		AccountType:  accountType,
-		UpdatedAt:    ktime.Now(),
-		ID:           id,
+		Name:           name,
+		CashBalance:    cashBalance,
+		KisAccountNo:   kisAccountNo,
+		KisApiKeyID:    kisAPIKeyID,
+		AccountType:    accountType,
+		TossAccountSeq: tossAccountSeq,
+		UpdatedAt:      ktime.Now(),
+		ID:             id,
 	})
 	if err != nil {
 		return models.Account{}, err
@@ -116,14 +126,19 @@ func toAccount(row sqlc.Account) models.Account {
 	if row.AccountType.Valid {
 		accountType = &row.AccountType.String
 	}
+	var tossAccountSeq *int64
+	if row.TossAccountSeq.Valid {
+		tossAccountSeq = &row.TossAccountSeq.Int64
+	}
 	return models.Account{
-		ID:           row.ID,
-		Name:         row.Name,
-		CashBalance:  row.CashBalance,
-		CreatedAt:    row.CreatedAt.Time,
-		UpdatedAt:    row.UpdatedAt.Time,
-		KisAccountNo: kisAccountNo,
-		KisAPIKeyID:  kisAPIKeyID,
-		AccountType:  accountType,
+		ID:             row.ID,
+		Name:           row.Name,
+		CashBalance:    row.CashBalance,
+		CreatedAt:      row.CreatedAt.Time,
+		UpdatedAt:      row.UpdatedAt.Time,
+		KisAccountNo:   kisAccountNo,
+		KisAPIKeyID:    kisAPIKeyID,
+		AccountType:    accountType,
+		TossAccountSeq: tossAccountSeq,
 	}
 }

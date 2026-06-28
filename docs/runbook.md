@@ -39,6 +39,24 @@ go test -tags integration ./...   # 통합 테스트 포함
 go test ./internal/arch/   # 아키텍처 가드 (레이어 경계)
 ```
 
+### Live API smoke tests
+
+Live tests are opt-in and must never run in CI by default.
+
+```bash
+set -a && source .env && set +a
+TOSS_LIVE=1 go test ./internal/toss -run TestLiveFetchAccountSnapshot -count=1 -v
+```
+
+Toss account sync requires:
+
+- `TOSS_CLIENT_ID`
+- `TOSS_CLIENT_SECRET`
+- `TOSS_BASE_URL` (optional; defaults to `https://openapi.tossinvest.com`)
+- `TOSS_ACCOUNT_SEQ` (optional for the live test; when absent, the first account from `/api/v1/accounts` is used)
+
+The live test calls only read endpoints: OAuth token issuance, accounts, holdings, KRW/USD buying power, and USD/KRW exchange rate. It logs counts and presence checks only; do not print tokens, account numbers, raw holdings, or balances.
+
 ## 린트/검증
 
 ```bash
