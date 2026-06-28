@@ -42,6 +42,15 @@ func seedAccount(t *testing.T, c *container.Container, name string) models.Accou
 	return a
 }
 
+func mustNumeric(t *testing.T, s string) numeric.Decimal {
+	t.Helper()
+	d, err := numeric.FromString(s)
+	if err != nil {
+		t.Fatalf("parse decimal %q: %v", s, err)
+	}
+	return d
+}
+
 // --- list ---
 
 func TestAccountsListOK(t *testing.T) {
@@ -273,6 +282,42 @@ func TestAccountUpdateKisAccountNoSetAndClear(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "KIS 동기화") {
 		t.Error("KIS sync button should not render when kis_account_no cleared")
+	}
+}
+
+func TestAccountUpdateTossAccountSeqSetAndClear(t *testing.T) {
+	e, c := setupAccounts(t)
+	a := seedAccount(t, c, "Toss")
+
+	rec := do(e, http.MethodPut, "/accounts/"+a.ID.String(), url.Values{
+		"name":             {"Toss"},
+		"cash_balance":     {"0"},
+		"toss_account_seq": {"7"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set Toss: status = %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Toss 동기화") {
+		t.Error("Toss sync button missing when toss_account_seq set")
+	}
+	got, err := c.Accounts.GetByID(context.Background(), a.ID)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	if got.TossAccountSeq == nil || *got.TossAccountSeq != 7 {
+		t.Fatalf("toss_account_seq = %v, want 7", got.TossAccountSeq)
+	}
+
+	rec = do(e, http.MethodPut, "/accounts/"+a.ID.String(), url.Values{
+		"name":             {"Toss"},
+		"cash_balance":     {"0"},
+		"toss_account_seq": {""},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("clear Toss: status = %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "Toss 동기화") {
+		t.Error("Toss sync button should not render when toss_account_seq cleared")
 	}
 }
 
@@ -525,7 +570,7 @@ func TestSyncAccountNormalizeKisAccountNo(t *testing.T) {
 	}
 	updated, err := c.Accounts.Update(ctx, acc.ID, acc.Name, acc.CashBalance,
 		sql.NullString{String: "12345678-01", Valid: true},
-		sql.NullInt64{}, sql.NullString{})
+		sql.NullInt64{}, sql.NullString{}, sql.NullInt64{})
 	if err != nil {
 		t.Fatalf("update account: %v", err)
 	}
@@ -542,11 +587,18 @@ func (m *mockEmptyBalanceClient) FetchAccountSnapshot(_, _ string) (models.KisAc
 	return models.KisAccountSnapshot{}, nil
 }
 
-type trackingBalanceClient struct{ called bool }
+type trackingBalanceClient struct {
+	called    bool
+	firstArg  string
+	secondArg string
+	cash      numeric.Decimal
+}
 
-func (c *trackingBalanceClient) FetchAccountSnapshot(_, _ string) (models.KisAccountSnapshot, error) {
+func (c *trackingBalanceClient) FetchAccountSnapshot(first, second string) (models.KisAccountSnapshot, error) {
 	c.called = true
-	return models.KisAccountSnapshot{}, nil
+	c.firstArg = first
+	c.secondArg = second
+	return models.KisAccountSnapshot{CashBalance: c.cash}, nil
 }
 
 // TestSyncAccountKeyIDRouting verifies that an account with KisAPIKeyID=2 uses the
@@ -571,6 +623,7 @@ func TestSyncAccountKeyIDRouting(t *testing.T) {
 	updated, err := c.Accounts.Update(ctx, acc.ID, acc.Name, acc.CashBalance,
 		sql.NullString{String: "4659285601", Valid: true},
 		sql.NullInt64{Int64: 2, Valid: true}, sql.NullString{},
+		sql.NullInt64{},
 	)
 	if err != nil {
 		t.Fatalf("update: %v", err)
@@ -585,6 +638,42 @@ func TestSyncAccountKeyIDRouting(t *testing.T) {
 	}
 	if !key2.called {
 		t.Error("key-2 client not called for KisAPIKeyID=2 account")
+	}
+}
+
+func TestSyncTossAccountUsesAccountSeq(t *testing.T) {
+	e, c := setupAccounts(t)
+	ctx := context.Background()
+
+	tossClient := &trackingBalanceClient{cash: mustNumeric(t, "4500")}
+	c.TossAccountSync = services.NewKisAccountSyncService(
+		c.Accounts, c.Holdings, c.Stocks, c.Groups, tossClient, "",
+	)
+
+	acc, err := c.Accounts.Create(ctx, "Toss 계좌", numeric.Zero)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	updated, err := c.Accounts.Update(ctx, acc.ID, acc.Name, acc.CashBalance,
+		sql.NullString{}, sql.NullInt64{}, sql.NullString{},
+		sql.NullInt64{Int64: 7, Valid: true},
+	)
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	rec := do(e, http.MethodPost, "/accounts/"+updated.ID.String()+"/sync/toss", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !tossClient.called {
+		t.Fatal("Toss client not called")
+	}
+	if tossClient.firstArg != "7" || tossClient.secondArg != "" {
+		t.Fatalf("FetchAccountSnapshot args = (%q,%q), want (7,empty)", tossClient.firstArg, tossClient.secondArg)
+	}
+	if !strings.Contains(rec.Body.String(), "Toss 계좌 동기화 완료") {
+		t.Fatalf("response body missing success message: %s", rec.Body.String())
 	}
 }
 

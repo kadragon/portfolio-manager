@@ -14,14 +14,15 @@ import (
 )
 
 type Account struct {
-	ID           uuidx.UUID
-	Name         string
-	CashBalance  numeric.Decimal
-	CreatedAt    ktime.Time
-	UpdatedAt    ktime.Time
-	KisAccountNo sql.NullString
-	KisApiKeyID  sql.NullInt64
-	AccountType  sql.NullString
+	ID             uuidx.UUID
+	Name           string
+	CashBalance    numeric.Decimal
+	CreatedAt      ktime.Time
+	UpdatedAt      ktime.Time
+	KisAccountNo   sql.NullString
+	KisApiKeyID    sql.NullInt64
+	AccountType    sql.NullString
+	TossAccountSeq sql.NullInt64
 }
 
 type Deposit struct {

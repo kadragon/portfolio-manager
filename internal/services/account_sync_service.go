@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/models"
@@ -101,6 +102,13 @@ func NewKisAccountSyncService(
 	}
 }
 
+// SetDefaultGroupName changes the group used for newly discovered stocks.
+func (s *KisAccountSyncService) SetDefaultGroupName(name string) {
+	if strings.TrimSpace(name) != "" {
+		s.defaultGroupName = name
+	}
+}
+
 // SyncAccount fetches a KIS balance snapshot and reconciles local holdings + cash.
 // Pass allowEmptySnapshot=true only when the account has been fully liquidated.
 func (s *KisAccountSyncService) SyncAccount(
@@ -136,7 +144,7 @@ func (s *KisAccountSyncService) SyncAccount(
 			"existing_holding_count": len(existingHoldings),
 		})
 		return models.KisAccountSyncResult{}, &KisEmptySnapshotError{
-			msg: "KIS 스냅샷이 비어 있어 기존 보유 내역을 보호합니다. 실제로 전량 매도된 경우 allow_empty_snapshot=True로 재실행하세요.",
+			msg: "브로커 스냅샷이 비어 있어 기존 보유 내역을 보호합니다. 실제로 전량 매도된 경우 allow_empty_snapshot=True로 재실행하세요.",
 		}
 	}
 
@@ -293,13 +301,18 @@ func (s *KisAccountSyncService) SyncAccount(
 	}
 
 	oldCash := account.CashBalance
-	if _, err := s.accounts.UpdateNameCash(ctx, account.ID, account.Name, snapshot.CashBalance); err != nil {
-		return models.KisAccountSyncResult{}, err
+	cashBalance := snapshot.CashBalance
+	if snapshot.PreserveCashBalance {
+		cashBalance = oldCash
+	} else {
+		if _, err := s.accounts.UpdateNameCash(ctx, account.ID, account.Name, snapshot.CashBalance); err != nil {
+			return models.KisAccountSyncResult{}, err
+		}
 	}
 
 	result := models.KisAccountSyncResult{
 		AccountID:         account.ID,
-		CashBalance:       snapshot.CashBalance,
+		CashBalance:       cashBalance,
 		OldCashBalance:    oldCash,
 		HoldingCount:      len(targetQty),
 		CreatedStockCount: createdStockCount,
@@ -320,7 +333,8 @@ func (s *KisAccountSyncService) SyncAccount(
 	s.logEvent(baseEvent, map[string]any{
 		"event":                "sync_success",
 		"old_cash_balance":     oldCash.String(),
-		"cash_balance":         snapshot.CashBalance.String(),
+		"cash_balance":         cashBalance.String(),
+		"cash_balance_updated": !snapshot.PreserveCashBalance,
 		"holding_count":        len(targetQty),
 		"created_stock_count":  createdStockCount,
 		"allow_empty_snapshot": allowEmptySnapshot,

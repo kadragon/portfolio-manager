@@ -14,6 +14,13 @@ func kisAccountNoVal(a models.Account) string {
 	return ""
 }
 
+func tossAccountSeqVal(a models.Account) string {
+	if a.TossAccountSeq != nil {
+		return fmt.Sprintf("%d", *a.TossAccountSeq)
+	}
+	return ""
+}
+
 func itoa64(i int64) string { return fmt.Sprintf("%d", i) }
 
 // accountTypeOptions lists the selectable account types and their Korean labels.
@@ -89,6 +96,18 @@ templ AccountRow(account models.Account) {
 						KIS 동기화
 					</button>
 				}
+				if account.TossAccountSeq != nil {
+					<button
+						type="button"
+						class="btn btn-ghost btn-xs"
+						hx-post={ "/accounts/" + account.ID.String() + "/sync/toss" }
+						hx-target={ "#sync-result-" + account.ID.String() }
+						hx-swap="outerHTML"
+						data-request-message="Toss 계좌를 동기화하는 중…"
+					>
+						Toss 동기화
+					</button>
+				}
 				<button
 					type="button"
 					class="btn btn-error btn-xs"
@@ -143,6 +162,19 @@ templ AccountForm(account models.Account, availableKisKeyIDs []int64, errorMessa
 				name="kis_account_no"
 				value={ kisAccountNoVal(account) }
 				placeholder="KIS 계좌번호 (예: 12345678-01)"
+				autocomplete="off"
+				class="input input-bordered input-sm mt-1"
+			/>
+			<label class="sr-only" for={ "account-toss-" + account.ID.String() }>Toss accountSeq</label>
+			<input
+				form={ "edit-account-" + account.ID.String() }
+				id={ "account-toss-" + account.ID.String() }
+				type="number"
+				name="toss_account_seq"
+				value={ tossAccountSeqVal(account) }
+				placeholder="Toss accountSeq (예: 1)"
+				min="1"
+				step="1"
 				autocomplete="off"
 				class="input input-bordered input-sm mt-1"
 			/>
@@ -223,7 +255,7 @@ templ ClassifyResultPartial(success bool, message string) {
 
 // SyncResultPartial renders the KIS sync result row (hx-swap outerHTML).
 // result may be nil on failure.
-templ SyncResultPartial(accountID string, success bool, message string, result *models.KisAccountSyncResult, showConfirmEmpty bool) {
+templ SyncResultPartial(accountID string, syncPath string, success bool, message string, result *models.KisAccountSyncResult, showConfirmEmpty bool) {
 	<tr id={ "sync-result-" + accountID }>
 		<td colspan="3">
 			<div
@@ -238,7 +270,7 @@ templ SyncResultPartial(accountID string, success bool, message string, result *
 						<button
 							type="button"
 							class="btn btn-xs btn-warning mt-2"
-							hx-post={ "/accounts/" + accountID + "/sync" }
+							hx-post={ syncPath }
 							hx-vals='{"confirm_empty": "true"}'
 							hx-target={ "#sync-result-" + accountID }
 							hx-swap="outerHTML"

@@ -21,6 +21,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/repositories"
 	"github.com/kadragon/portfolio-manager/internal/services"
+	"github.com/kadragon/portfolio-manager/internal/toss"
 )
 
 // Container holds shared dependencies for the web layer.
@@ -39,6 +40,7 @@ type Container struct {
 	OrderClient         services.OrderClient                      // nil if KIS not configured
 	AccountSync         *services.KisAccountSyncService           // nil if KIS not configured; key-1 service
 	AccountSyncByKeyID  map[int64]*services.KisAccountSyncService // keyed by kis_api_key_id
+	TossAccountSync     *services.KisAccountSyncService           // nil if Toss not configured
 	PriceSync           *services.PriceSyncService                // nil if KIS not configured
 	StockClassification *services.StockClassificationService      // backfills asset_class via KIS; Enabled()==false if KIS absent
 	KisCano             string
@@ -75,6 +77,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	var orderClient services.OrderClient
 	var accountSync *services.KisAccountSyncService
 	accountSyncByKeyID := map[int64]*services.KisAccountSyncService{}
+	var tossAccountSync *services.KisAccountSyncService
 	var rebalanceSync services.SyncService
 	var assetClassifier services.AssetClassifier
 	kisCano := ""
@@ -117,6 +120,13 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		}
 	}
 
+	if setupKIS {
+		if tossClient := buildTossClient(); tossClient != nil {
+			tossAccountSync = services.NewKisAccountSyncService(accounts, holdings, stocks, groups, tossClient, ".data/toss_sync.log")
+			tossAccountSync.SetDefaultGroupName("Toss 자동동기화")
+		}
+	}
+
 	priceService := services.NewPriceService(stockPrices)
 	_ = services.NewStockService(stocks, priceService)
 	portfolio := services.NewPortfolioService(groups, stocks, holdings, accounts, deposits, priceService, exchangeRate)
@@ -147,6 +157,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		OrderClient:         orderClient,
 		AccountSync:         accountSync,
 		AccountSyncByKeyID:  accountSyncByKeyID,
+		TossAccountSync:     tossAccountSync,
 		PriceSync:           priceSync,
 		StockClassification: stockClassification,
 		KisCano:             kisCano,
@@ -628,4 +639,15 @@ func buildExchangeRate() *services.ExchangeRateService {
 
 	log.Printf("exchange rate: not configured (USD_KRW_RATE or EXIM_AUTH_KEY missing) — USD holdings will show ₩0 KRW value")
 	return nil
+}
+
+func buildTossClient() services.BalanceClient {
+	clientID := strings.TrimSpace(os.Getenv("TOSS_CLIENT_ID"))
+	clientSecret := strings.TrimSpace(os.Getenv("TOSS_CLIENT_SECRET"))
+	if clientID == "" || clientSecret == "" {
+		return nil
+	}
+	baseURL := strings.TrimSpace(os.Getenv("TOSS_BASE_URL"))
+	log.Printf("Toss account sync client initialized")
+	return toss.NewClient(&http.Client{Timeout: 30 * time.Second}, baseURL, clientID, clientSecret)
 }

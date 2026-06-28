@@ -25,12 +25,13 @@ func Schema() string { return schemaSQL }
 // addedColumns are columns introduced by the Go layer after the original
 // Peewee schema. On a fresh database schema.sql already creates them; on an
 // existing production database the CREATE TABLE IF NOT EXISTS is a no-op, so
-// migrate() appends them with ALTER TABLE. Always nullable TEXT (SQLite forbids
+// migrate() appends them with ALTER TABLE. Always nullable (SQLite forbids
 // ALTER ADD COLUMN NOT NULL without a default on a non-empty table).
-var addedColumns = []struct{ table, column string }{
-	{"stocks", "asset_class"},
-	{"accounts", "account_type"},
-	{"stocks", "security_group"},
+var addedColumns = []struct{ table, column, columnType string }{
+	{"stocks", "asset_class", "TEXT"},
+	{"accounts", "account_type", "TEXT"},
+	{"stocks", "security_group", "TEXT"},
+	{"accounts", "toss_account_seq", "INTEGER"},
 }
 
 // migrate applies idempotent ALTER TABLE ADD COLUMN for every entry in
@@ -44,7 +45,7 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		if has {
 			continue
 		}
-		stmt := fmt.Sprintf("ALTER TABLE %q ADD COLUMN %q TEXT", ac.table, ac.column)
+		stmt := fmt.Sprintf("ALTER TABLE %q ADD COLUMN %q %s", ac.table, ac.column, ac.columnType)
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("db: add column %s.%s: %w", ac.table, ac.column, err)
 		}

@@ -8,7 +8,7 @@ Go (Echo + HTMX) 포트폴리오 관리 앱. SQLite (modernc pure-Go) + sqlc, KI
 |------|-------------|
 | `docs/architecture.md` | 소스 구조 수정, 새 모듈 추가, 레이어 경계 관련 작업 전 |
 | `docs/conventions.md` | 새 파일 작성, 라우트 추가, 커밋 메시지 작성 전 |
-| `docs/runbook.md` | 빌드/테스트/배포 명령어 필요 시, 실패 디버깅 시 |
+| `docs/runbook.md` | 빌드/테스트/배포 명령어, live API smoke, 실패 디버깅 시 |
 | `docs/workflows.md` | 구현 사이클 시작 시, 컨텍스트 관리 전략 필요 시 |
 | `docs/docker.md` | Docker 실행/트러블슈팅 시 |
 | `docs/delegation.md` | 서브에이전트 위임 패턴, spawn 계약, 라우팅 테이블 |

@@ -34,7 +34,7 @@ func TestAccountTypeRoundTrip(t *testing.T) {
 
 	updated, err := repo.Update(ctx, a.ID, a.Name, a.CashBalance,
 		sql.NullString{}, sql.NullInt64{},
-		sql.NullString{String: "irp", Valid: true})
+		sql.NullString{String: "irp", Valid: true}, sql.NullInt64{})
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -67,6 +67,9 @@ func TestAccountCreateAndList(t *testing.T) {
 	}
 	if a.KisAccountNo != nil || a.KisAPIKeyID != nil {
 		t.Fatalf("KIS fields should be nil: %+v", a)
+	}
+	if a.TossAccountSeq != nil {
+		t.Fatalf("Toss account seq should be nil: %+v", a)
 	}
 
 	all, err := repo.ListAll(ctx)
@@ -143,6 +146,7 @@ func TestAccountUpdateFull(t *testing.T) {
 	updated, err := repo.Update(ctx, a.ID, "B", cash,
 		sql.NullString{String: "12345678-01", Valid: true},
 		sql.NullInt64{Int64: 1, Valid: true}, sql.NullString{},
+		sql.NullInt64{Int64: 7, Valid: true},
 	)
 	if err != nil {
 		t.Fatalf("update: %v", err)
@@ -156,16 +160,19 @@ func TestAccountUpdateFull(t *testing.T) {
 	if updated.KisAPIKeyID == nil || *updated.KisAPIKeyID != 1 {
 		t.Fatalf("kis_api_key_id = %v", updated.KisAPIKeyID)
 	}
+	if updated.TossAccountSeq == nil || *updated.TossAccountSeq != 7 {
+		t.Fatalf("toss_account_seq = %v", updated.TossAccountSeq)
+	}
 
 	// Clear KIS by setting NULL
 	cleared, err := repo.Update(ctx, a.ID, "B", cash,
 		sql.NullString{Valid: false},
-		sql.NullInt64{Valid: false}, sql.NullString{},
+		sql.NullInt64{Valid: false}, sql.NullString{}, sql.NullInt64{},
 	)
 	if err != nil {
 		t.Fatalf("clear KIS: %v", err)
 	}
-	if cleared.KisAccountNo != nil || cleared.KisAPIKeyID != nil {
+	if cleared.KisAccountNo != nil || cleared.KisAPIKeyID != nil || cleared.TossAccountSeq != nil {
 		t.Fatalf("KIS fields not cleared: %+v", cleared)
 	}
 }
@@ -179,6 +186,7 @@ func TestAccountUpdateNameCashPreservesKIS(t *testing.T) {
 	_, err := repo.Update(ctx, a.ID, "A", cash,
 		sql.NullString{String: "12345678-01", Valid: true},
 		sql.NullInt64{Int64: 1, Valid: true}, sql.NullString{},
+		sql.NullInt64{Int64: 3, Valid: true},
 	)
 	if err != nil {
 		t.Fatalf("set KIS: %v", err)
@@ -194,5 +202,8 @@ func TestAccountUpdateNameCashPreservesKIS(t *testing.T) {
 	}
 	if updated.KisAPIKeyID == nil || *updated.KisAPIKeyID != 1 {
 		t.Fatalf("KIS key id changed: %v", updated.KisAPIKeyID)
+	}
+	if updated.TossAccountSeq == nil || *updated.TossAccountSeq != 3 {
+		t.Fatalf("Toss account seq changed: %v", updated.TossAccountSeq)
 	}
 }

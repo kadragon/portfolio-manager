@@ -38,6 +38,7 @@ func (h *AccountHandler) Register(e *echo.Echo) {
 	e.PUT("/accounts/:id", h.update)
 	e.DELETE("/accounts/:id", h.delete)
 	e.POST("/accounts/:id/sync", h.syncAccount)
+	e.POST("/accounts/:id/sync/toss", h.syncTossAccount)
 	e.POST("/accounts/classify-stocks", h.classifyStocks)
 }
 
@@ -188,7 +189,15 @@ func (h *AccountHandler) update(c echo.Context) error {
 		accountType = sql.NullString{String: t, Valid: true}
 	}
 
-	updated, err := h.c.Accounts.Update(ctx, id, name, cashBalance, kisAccountNo, kisAPIKeyID, accountType)
+	tossAccountSeq := sql.NullInt64{}
+	if raw := strings.TrimSpace(c.FormValue("toss_account_seq")); raw != "" {
+		var seq int64
+		if _, err2 := fmt.Sscanf(raw, "%d", &seq); err2 == nil && seq > 0 {
+			tossAccountSeq = sql.NullInt64{Int64: seq, Valid: true}
+		}
+	}
+
+	updated, err := h.c.Accounts.Update(ctx, id, name, cashBalance, kisAccountNo, kisAPIKeyID, accountType, tossAccountSeq)
 	if err != nil {
 		return err
 	}
@@ -257,6 +266,42 @@ func (h *AccountHandler) syncAccount(c echo.Context) error {
 	return renderSyncResult(c, id.String(), true, "KIS 계좌 동기화 완료", &syncResult, false)
 }
 
+func (h *AccountHandler) syncTossAccount(c echo.Context) error {
+	ctx := c.Request().Context()
+	id, err := uuidx.Parse(c.Param("id"))
+	if err != nil {
+		return renderSyncResultPath(c, c.Param("id"), "/accounts/"+c.Param("id")+"/sync/toss", false, "잘못된 계좌 ID입니다.", nil, false)
+	}
+
+	if h.c.TossAccountSync == nil {
+		return renderSyncResultPath(c, id.String(), "/accounts/"+id.String()+"/sync/toss", false,
+			"Toss 계좌 동기화 서비스가 설정되지 않았습니다. (.env에 TOSS_CLIENT_ID/TOSS_CLIENT_SECRET 확인)", nil, false)
+	}
+
+	confirmEmpty := strings.ToLower(c.FormValue("confirm_empty")) == "true"
+
+	account, err := h.c.Accounts.GetByID(ctx, id)
+	if err != nil || account == nil {
+		return renderSyncResultPath(c, id.String(), "/accounts/"+id.String()+"/sync/toss", false, "계좌를 찾을 수 없습니다.", nil, false)
+	}
+	if account.TossAccountSeq == nil {
+		return renderSyncResultPath(c, id.String(), "/accounts/"+id.String()+"/sync/toss", false,
+			"이 계좌에는 Toss accountSeq가 설정되지 않았습니다.", nil, false)
+	}
+
+	accountSeq := fmt.Sprintf("%d", *account.TossAccountSeq)
+	syncResult, err := h.c.TossAccountSync.SyncAccount(ctx, *account, accountSeq, "", confirmEmpty)
+	if err != nil {
+		if services.IsKisEmptySnapshotError(err) {
+			return renderSyncResultPath(c, id.String(), "/accounts/"+id.String()+"/sync/toss", false,
+				"동기화 중단: "+err.Error(), nil, !confirmEmpty)
+		}
+		msg := fmt.Sprintf("동기화 실패: %s", html.EscapeString(err.Error()))
+		return renderSyncResultPath(c, id.String(), "/accounts/"+id.String()+"/sync/toss", false, msg, nil, false)
+	}
+	return renderSyncResultPath(c, id.String(), "/accounts/"+id.String()+"/sync/toss", true, "Toss 계좌 동기화 완료", &syncResult, false)
+}
+
 // classifyStocks backfills asset_class (ETF/stock) for unclassified stocks via KIS.
 // Needed so IRP/연금 accounts can be recommended domestic-listed ETFs.
 func (h *AccountHandler) classifyStocks(c echo.Context) error {
@@ -281,7 +326,11 @@ func (h *AccountHandler) classifyStocks(c echo.Context) error {
 }
 
 func renderSyncResult(c echo.Context, accountIDStr string, success bool, message string, result *models.KisAccountSyncResult, showConfirmEmpty bool) error {
-	return templates.SyncResultPartial(accountIDStr, success, message, result, showConfirmEmpty).Render(c.Request().Context(), c.Response().Writer)
+	return renderSyncResultPath(c, accountIDStr, "/accounts/"+accountIDStr+"/sync", success, message, result, showConfirmEmpty)
+}
+
+func renderSyncResultPath(c echo.Context, accountIDStr, syncPath string, success bool, message string, result *models.KisAccountSyncResult, showConfirmEmpty bool) error {
+	return templates.SyncResultPartial(accountIDStr, syncPath, success, message, result, showConfirmEmpty).Render(c.Request().Context(), c.Response().Writer)
 }
 
 // normalizeKisAccountNo extracts the 8-digit account number and 2-digit product code
