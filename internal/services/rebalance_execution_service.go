@@ -136,7 +136,7 @@ func (s *RebalanceExecutionService) ExecuteRebalanceOrders(
 	exchangeMap map[string]string,
 ) models.RebalanceExecutionResult {
 	intentResult := s.CreateOrderIntents(recs, exchangeMap)
-	executable, deferred := splitExecutableIntents(intentResult.Intents, dryRun)
+	executable, deferred := splitExecutableIntents(intentResult.Intents)
 
 	var executions []models.OrderExecutionResult
 	if !dryRun && s.orderClient != nil {
@@ -213,22 +213,18 @@ func (s *RebalanceExecutionService) ExecuteRebalanceOrders(
 	}
 }
 
-func splitExecutableIntents(intents []models.OrderIntent, dryRun bool) (executable, deferred []models.OrderIntent) {
-	if dryRun {
-		return intents, nil
-	}
-	hasSell := false
+func splitExecutableIntents(intents []models.OrderIntent) (executable, deferred []models.OrderIntent) {
+	sellAccounts := make(map[string]bool)
 	for _, intent := range intents {
 		if intent.Side == "sell" {
-			hasSell = true
-			break
+			sellAccounts[intent.AccountID.String()] = true
 		}
 	}
-	if !hasSell {
+	if len(sellAccounts) == 0 {
 		return intents, nil
 	}
 	for _, intent := range intents {
-		if intent.Side == "buy" {
+		if intent.Side == "buy" && sellAccounts[intent.AccountID.String()] {
 			deferred = append(deferred, intent)
 			continue
 		}

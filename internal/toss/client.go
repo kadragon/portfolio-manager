@@ -70,13 +70,6 @@ type exchangeRateResponse struct {
 	} `json:"result"`
 }
 
-type orderCreateResponse struct {
-	Result struct {
-		OrderID       string  `json:"orderId"`
-		ClientOrderID *string `json:"clientOrderId"`
-	} `json:"result"`
-}
-
 type holdingItem struct {
 	Symbol   string `json:"symbol"`
 	Name     string `json:"name"`
@@ -178,17 +171,13 @@ func (c *Client) PlaceOrder(accountSeq string, intent models.OrderIntent) (map[s
 		return nil, parseAPIError("toss order", resp.StatusCode, respBody)
 	}
 
-	var parsed orderCreateResponse
-	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return nil, fmt.Errorf("toss order: json unmarshal: %w", err)
-	}
-	if parsed.Result.OrderID == "" {
-		return nil, fmt.Errorf("toss order: missing orderId")
-	}
-
 	var raw map[string]any
 	if err := json.Unmarshal(respBody, &raw); err != nil {
-		return nil, fmt.Errorf("toss order: json unmarshal raw: %w", err)
+		return nil, fmt.Errorf("toss order: json unmarshal: %w", err)
+	}
+	result, _ := raw["result"].(map[string]any)
+	if orderID, _ := result["orderId"].(string); orderID == "" {
+		return nil, fmt.Errorf("toss order: missing orderId")
 	}
 	return raw, nil
 }

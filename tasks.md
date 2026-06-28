@@ -106,3 +106,7 @@ fetch); user confirmed hiding the rate is preferred over keeping the cold lookup
 ### PR #129 — [REFACTOR] centralize asset-class vocabulary via models.ValidAssetClass (2026-06-19)
 
 - [ ] [refactor] `AssetClassUnknown = "unknown"` sentinel lives in `services` while the new valid-class consts (`AssetClassETF`/`AssetClassStock`) live in `models`; co-locating the sentinel in `models/stock.go` would unify the asset_class value space, but ripples to external `services.AssetClassUnknown` references in test files (out of PR #129 scope) (source: review) — `internal/services/stock_classification.go:20`
+
+### PR #132 — fix/toss-post-review-fixes (2026-06-28)
+
+- [ ] [debt] `accountOrderRouter.PlaceOrder` and `ExecuteRebalanceOrders` persistence loop use `context.Background()` — `OrderClient` interface carries no `ctx` parameter (same pattern as existing KIS order clients). Systemic fix: add `ctx context.Context` to `OrderClient.PlaceOrder`, `kisOrderPlacer`, `tossOrderPlacer` interfaces and all implementations (`kis.DomesticOrderClient`, `kis.OverseasOrderClient`, `toss.Client.PlaceOrder`) (source: agy, review) — `internal/container/container.go:258`, `internal/services/rebalance_execution_service.go:170`

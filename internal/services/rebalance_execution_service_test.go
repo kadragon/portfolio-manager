@@ -266,6 +266,38 @@ func TestExecuteBuyOnlyCallsOrderAPI(t *testing.T) {
 	}
 }
 
+func TestExecuteDefersSameAccountBuysOnly(t *testing.T) {
+	accountA := uuidx.New()
+	accountB := uuidx.New()
+
+	recSellA := makeRec("AAPL", models.ActionSell, "USD", "2")
+	recSellA.AccountID = accountA
+	recBuyA := makeRec("MSFT", models.ActionBuy, "USD", "3")
+	recBuyA.AccountID = accountA
+	recBuyB := makeRec("005930", models.ActionBuy, "KRW", "7")
+	recBuyB.AccountID = accountB
+
+	resp := map[string]any{"rt_cd": "0", "msg_cd": "APBK0013", "msg1": "주문 전송 완료"}
+	client := &mockOrderClient{response: resp}
+	svc := services.NewRebalanceExecutionService(client, nil, nil)
+	result := svc.ExecuteRebalanceOrders([]models.RebalanceRecommendation{recSellA, recBuyA, recBuyB}, false, nil)
+
+	// Account A's buy is deferred (same account as sell), Account B's buy executes.
+	if len(result.Deferred) != 1 || result.Deferred[0].Ticker != "MSFT" {
+		t.Fatalf("deferred = %+v, want only MSFT (account A)", result.Deferred)
+	}
+	tickers := make(map[string]bool)
+	for _, c := range client.calls {
+		tickers[c.intent.Ticker] = true
+	}
+	if !tickers["AAPL"] || !tickers["005930"] {
+		t.Fatalf("expected AAPL sell + 005930 buy to execute, got calls = %+v", client.calls)
+	}
+	if tickers["MSFT"] {
+		t.Fatal("MSFT (account A buy) should not execute while account A has sell")
+	}
+}
+
 func TestExecuteSingleFailureContinues(t *testing.T) {
 	recs := []models.RebalanceRecommendation{
 		makeRec("AAPL", models.ActionSell, "USD", "2"),

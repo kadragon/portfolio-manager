@@ -513,3 +513,21 @@ func TestPlaceOrderValidatesInput(t *testing.T) {
 		t.Fatal("expected side error")
 	}
 }
+
+func TestFetchBuyingPowerNegativeReturnsError(t *testing.T) {
+	srv := tokenOnlyServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/buying-power" {
+			writeJSON(t, w, map[string]any{"result": map[string]any{
+				"currency":        r.URL.Query().Get("currency"),
+				"cashBuyingPower": "-500",
+			}})
+		}
+	})
+	t.Cleanup(srv.Close)
+
+	client := NewClient(srv.Client(), srv.URL, "cid", "secret")
+	_, err := client.FetchAccountSnapshot("7", "")
+	if err == nil || !strings.Contains(err.Error(), "negative") {
+		t.Fatalf("expected negative buying-power error, got %v", err)
+	}
+}
