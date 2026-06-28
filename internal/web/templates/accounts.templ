@@ -16,7 +16,7 @@ func kisAccountNoVal(a models.Account) string {
 
 func tossAccountSeqVal(a models.Account) string {
 	if a.TossAccountSeq != nil {
-		return fmt.Sprintf("%d", *a.TossAccountSeq)
+		return itoa64(*a.TossAccountSeq)
 	}
 	return ""
 }

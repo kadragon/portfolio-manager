@@ -8,6 +8,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/services"
+	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
 // --- mock helpers ---
@@ -20,13 +21,11 @@ type mockOrderClient struct {
 }
 
 type mockOrderCall struct {
-	ticker, side string
-	quantity     int
-	exchange     string
+	intent models.OrderIntent
 }
 
-func (m *mockOrderClient) PlaceOrder(ticker, side string, quantity int, exchange string) (map[string]any, error) {
-	m.calls = append(m.calls, mockOrderCall{ticker, side, quantity, exchange})
+func (m *mockOrderClient) PlaceOrder(intent models.OrderIntent) (map[string]any, error) {
+	m.calls = append(m.calls, mockOrderCall{intent: intent})
 	if len(m.perCall) > 0 {
 		fn := m.perCall[0]
 		m.perCall = m.perCall[1:]
@@ -174,6 +173,28 @@ func TestCreateOrderIntentsOverseasExchange(t *testing.T) {
 	}
 }
 
+func TestCreateOrderIntentsPreservesAccountAndAmount(t *testing.T) {
+	accountID := uuidx.New()
+	rec := makeRec("005930", models.ActionBuy, "KRW", "7")
+	rec.AccountID = accountID
+	rec.AccountName = "Toss"
+	rec.Amount = mustN("700000")
+
+	svc := services.NewRebalanceExecutionService(nil, nil, nil)
+	result := svc.CreateOrderIntents([]models.RebalanceRecommendation{rec}, nil)
+
+	if len(result.Intents) != 1 {
+		t.Fatalf("want 1 intent, got %d", len(result.Intents))
+	}
+	got := result.Intents[0]
+	if got.AccountID != accountID || got.AccountName != "Toss" {
+		t.Fatalf("account not preserved: %+v", got)
+	}
+	if !got.Amount.Equal(mustN("700000").Decimal) {
+		t.Fatalf("amount = %s, want 700000", got.Amount.String())
+	}
+}
+
 func TestExecuteDryRunNoAPICalls(t *testing.T) {
 	recs := []models.RebalanceRecommendation{
 		makeRec("005930", models.ActionBuy, "KRW", "7"),
@@ -195,7 +216,7 @@ func TestExecuteDryRunNoAPICalls(t *testing.T) {
 	}
 }
 
-func TestExecuteCallsOrderAPIInOrder(t *testing.T) {
+func TestExecuteDefersBuysWhenSellsPresent(t *testing.T) {
 	recs := []models.RebalanceRecommendation{
 		makeRec("005930", models.ActionBuy, "KRW", "7"),
 		makeRec("AAPL", models.ActionSell, "USD", "2"),
@@ -206,28 +227,82 @@ func TestExecuteCallsOrderAPIInOrder(t *testing.T) {
 	svc := services.NewRebalanceExecutionService(client, nil, nil)
 	result := svc.ExecuteRebalanceOrders(recs, false, nil)
 
+	if len(client.calls) != 1 {
+		t.Fatalf("want 1 API call, got %d", len(client.calls))
+	}
+	if client.calls[0].intent.Ticker != "AAPL" || client.calls[0].intent.Side != "sell" {
+		t.Errorf("first call should be AAPL sell, got %+v", client.calls[0])
+	}
+	if len(result.Executions) != 1 {
+		t.Fatalf("want 1 execution, got %d", len(result.Executions))
+	}
+	if result.Executions[0].Status != "success" {
+		t.Errorf("sell should succeed")
+	}
+	if len(result.Deferred) != 1 || result.Deferred[0].Ticker != "005930" {
+		t.Fatalf("deferred buys = %+v, want 005930", result.Deferred)
+	}
+}
+
+func TestExecuteBuyOnlyCallsOrderAPI(t *testing.T) {
+	recs := []models.RebalanceRecommendation{
+		makeRec("005930", models.ActionBuy, "KRW", "7"),
+		makeRec("000660", models.ActionBuy, "KRW", "3"),
+	}
+
+	resp := map[string]any{"rt_cd": "0", "msg_cd": "APBK0013", "msg1": "주문 전송 완료"}
+	client := &mockOrderClient{response: resp}
+	svc := services.NewRebalanceExecutionService(client, nil, nil)
+	result := svc.ExecuteRebalanceOrders(recs, false, nil)
+
 	if len(client.calls) != 2 {
 		t.Fatalf("want 2 API calls, got %d", len(client.calls))
 	}
-	if client.calls[0].ticker != "AAPL" || client.calls[0].side != "sell" {
-		t.Errorf("first call should be AAPL sell, got %+v", client.calls[0])
+	if client.calls[0].intent.Ticker != "005930" || client.calls[1].intent.Ticker != "000660" {
+		t.Fatalf("calls = %+v, want buy rec order", client.calls)
 	}
-	if client.calls[1].ticker != "005930" || client.calls[1].side != "buy" {
-		t.Errorf("second call should be 005930 buy, got %+v", client.calls[1])
+	if len(result.Deferred) != 0 {
+		t.Fatalf("buy-only run should not defer orders: %+v", result.Deferred)
 	}
-	if len(result.Executions) != 2 {
-		t.Fatalf("want 2 executions, got %d", len(result.Executions))
+}
+
+func TestExecuteDefersSameAccountBuysOnly(t *testing.T) {
+	accountA := uuidx.New()
+	accountB := uuidx.New()
+
+	recSellA := makeRec("AAPL", models.ActionSell, "USD", "2")
+	recSellA.AccountID = accountA
+	recBuyA := makeRec("MSFT", models.ActionBuy, "USD", "3")
+	recBuyA.AccountID = accountA
+	recBuyB := makeRec("005930", models.ActionBuy, "KRW", "7")
+	recBuyB.AccountID = accountB
+
+	resp := map[string]any{"rt_cd": "0", "msg_cd": "APBK0013", "msg1": "주문 전송 완료"}
+	client := &mockOrderClient{response: resp}
+	svc := services.NewRebalanceExecutionService(client, nil, nil)
+	result := svc.ExecuteRebalanceOrders([]models.RebalanceRecommendation{recSellA, recBuyA, recBuyB}, false, nil)
+
+	// Account A's buy is deferred (same account as sell), Account B's buy executes.
+	if len(result.Deferred) != 1 || result.Deferred[0].Ticker != "MSFT" {
+		t.Fatalf("deferred = %+v, want only MSFT (account A)", result.Deferred)
 	}
-	if result.Executions[0].Status != "success" || result.Executions[1].Status != "success" {
-		t.Errorf("both should succeed")
+	tickers := make(map[string]bool)
+	for _, c := range client.calls {
+		tickers[c.intent.Ticker] = true
+	}
+	if !tickers["AAPL"] || !tickers["005930"] {
+		t.Fatalf("expected AAPL sell + 005930 buy to execute, got calls = %+v", client.calls)
+	}
+	if tickers["MSFT"] {
+		t.Fatal("MSFT (account A buy) should not execute while account A has sell")
 	}
 }
 
 func TestExecuteSingleFailureContinues(t *testing.T) {
 	recs := []models.RebalanceRecommendation{
 		makeRec("AAPL", models.ActionSell, "USD", "2"),
+		makeRec("MSFT", models.ActionSell, "USD", "1"),
 		makeRec("005930", models.ActionBuy, "KRW", "7"),
-		makeRec("000660", models.ActionBuy, "KRW", "3"),
 	}
 
 	failResp := map[string]any{"rt_cd": "1", "msg_cd": "APBK0919", "msg1": "주문가능수량 부족"}
@@ -237,17 +312,16 @@ func TestExecuteSingleFailureContinues(t *testing.T) {
 		perCall: []func() (map[string]any, error){
 			func() (map[string]any, error) { return okResp, nil },
 			func() (map[string]any, error) { return failResp, nil },
-			func() (map[string]any, error) { return okResp, nil },
 		},
 	}
 	svc := services.NewRebalanceExecutionService(client, nil, nil)
 	result := svc.ExecuteRebalanceOrders(recs, false, nil)
 
-	if len(client.calls) != 3 {
-		t.Errorf("want 3 API calls, got %d", len(client.calls))
+	if len(client.calls) != 2 {
+		t.Errorf("want 2 API calls, got %d", len(client.calls))
 	}
-	if len(result.Executions) != 3 {
-		t.Fatalf("want 3 executions, got %d", len(result.Executions))
+	if len(result.Executions) != 2 {
+		t.Fatalf("want 2 executions, got %d", len(result.Executions))
 	}
 	if result.Executions[0].Status != "success" {
 		t.Errorf("exec 0: want success, got %s", result.Executions[0].Status)
@@ -258,8 +332,8 @@ func TestExecuteSingleFailureContinues(t *testing.T) {
 	if result.Executions[1].Message != "주문가능수량 부족" {
 		t.Errorf("exec 1 message: want 주문가능수량 부족, got %s", result.Executions[1].Message)
 	}
-	if result.Executions[2].Status != "success" {
-		t.Errorf("exec 2: want success, got %s", result.Executions[2].Status)
+	if len(result.Deferred) != 1 || result.Deferred[0].Ticker != "005930" {
+		t.Fatalf("deferred buys = %+v, want 005930", result.Deferred)
 	}
 }
 
@@ -277,7 +351,7 @@ func TestExecuteResultsPersisted(t *testing.T) {
 	svc := services.NewRebalanceExecutionService(client, repo, nil)
 	svc.ExecuteRebalanceOrders(recs, false, nil)
 
-	if len(repo.calls) != 3 { // 2 executed + 1 skipped
+	if len(repo.calls) != 3 { // 1 executed + 1 skipped + 1 deferred
 		t.Errorf("want 3 repo.Create calls, got %d", len(repo.calls))
 	}
 	statuses := map[string]bool{}
@@ -289,6 +363,9 @@ func TestExecuteResultsPersisted(t *testing.T) {
 	}
 	if !statuses["skipped"] {
 		t.Error("expected skipped status in persisted records")
+	}
+	if !statuses["deferred"] {
+		t.Error("expected deferred status in persisted records")
 	}
 }
 

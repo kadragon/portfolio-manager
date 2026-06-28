@@ -88,7 +88,7 @@ templ RebalancePage(
 						if hasOrderClient {
 							<button type="submit" class="btn btn-primary btn-sm" hx-disabled-elt="this">주문 실행</button>
 						} else {
-							<button type="button" class="btn btn-sm btn-disabled" disabled title="KIS 주문 클라이언트가 설정되지 않았습니다.">주문 실행 불가 (KIS 미설정)</button>
+							<button type="button" class="btn btn-sm btn-disabled" disabled title="브로커 주문 클라이언트가 설정되지 않았습니다.">주문 실행 불가 (주문 클라이언트 미설정)</button>
 						}
 					</form>
 				</div>
@@ -295,11 +295,18 @@ templ RebalanceResultPartial(result *models.RebalanceExecutionResult, message st
 					<strong>성공:</strong> { fmt.Sprintf("%d", countStatus(result.Executions, "success")) }
 					<strong>실패:</strong> { fmt.Sprintf("%d", countStatus(result.Executions, "failed")) }
 					<strong>스킵:</strong> { fmt.Sprintf("%d", len(result.Skipped)) }
+					<strong>보류:</strong> { fmt.Sprintf("%d", len(result.Deferred)) }
 				</p>
+				if len(result.Deferred) > 0 {
+					<div class="alert alert-warning text-sm py-2">
+						매도 주문이 포함되어 매수 주문을 보류했습니다. 매도 체결과 계좌 동기화를 확인한 뒤 리밸런싱을 다시 실행하세요.
+					</div>
+				}
 				if result.SyncWarning != "" {
 					<div class="alert alert-error text-sm py-2">동기화 경고: { result.SyncWarning }</div>
 				}
 				@rebalanceFailedExecs(result.Executions)
+				@rebalanceDeferredExecs(result.Deferred)
 			}
 			<p><a href="/rebalance" class="btn btn-ghost btn-xs">리밸런싱 화면으로 돌아가기</a></p>
 		</div>
@@ -328,6 +335,36 @@ templ rebalanceFailedExecs(execs []models.OrderExecutionResult) {
 							<td>{ ex.Intent.Side }</td>
 							<td>{ ex.Status }</td>
 							<td>{ ex.Message }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+templ rebalanceDeferredExecs(intents []models.OrderIntent) {
+	if len(intents) > 0 {
+		<h4 class="text-sm font-semibold text-base-content mb-1">보류한 매수 주문</h4>
+		<div class="overflow-x-auto" tabindex="0" aria-label="보류한 매수 주문 표">
+			<table class="table table-sm">
+				<thead>
+					<tr>
+						<th class="text-xs uppercase tracking-wider">종목명</th>
+						<th class="text-xs uppercase tracking-wider">티커</th>
+						<th class="text-xs uppercase tracking-wider">계좌</th>
+						<th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
+						<th class="text-xs uppercase tracking-wider">통화</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, intent := range intents {
+						<tr>
+							<td>{ stockName(intent.StockName, intent.Ticker) }</td>
+							<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ intent.Ticker }</code></td>
+							<td>{ intent.AccountName }</td>
+							<td class="text-right font-mono">{ fmt.Sprintf("%d주", intent.Quantity) }</td>
+							<td>{ intent.Currency }</td>
 						</tr>
 					}
 				</tbody>
