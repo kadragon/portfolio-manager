@@ -3,6 +3,7 @@ package toss
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 )
 
@@ -416,5 +418,98 @@ func TestNewClientDefaults(t *testing.T) {
 	}
 	if c.BaseURL != defaultBaseURL {
 		t.Fatalf("BaseURL = %q, want %q", c.BaseURL, defaultBaseURL)
+	}
+}
+
+func TestPlaceOrderCreatesMarketQuantityOrder(t *testing.T) {
+	var orderBody string
+	var accountHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth2/token":
+			writeJSON(t, w, map[string]any{
+				"access_token": "tok",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			})
+		case "/api/v1/orders":
+			if r.Method != http.MethodPost {
+				t.Fatalf("order method = %s", r.Method)
+			}
+			if got := r.Header.Get("Authorization"); got != "Bearer tok" {
+				t.Fatalf("authorization = %q", got)
+			}
+			accountHeader = r.Header.Get("X-Tossinvest-Account")
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			orderBody = string(body)
+			writeJSON(t, w, map[string]any{"result": map[string]any{
+				"orderId":       "ord-1",
+				"clientOrderId": nil,
+			}})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client := NewClient(srv.Client(), srv.URL, "cid", "secret")
+	got, err := client.PlaceOrder("7", models.OrderIntent{
+		Ticker:   "aapl",
+		Side:     "buy",
+		Quantity: 3,
+	})
+	if err != nil {
+		t.Fatalf("PlaceOrder: %v", err)
+	}
+	if accountHeader != "7" {
+		t.Fatalf("account header = %q, want 7", accountHeader)
+	}
+	var body map[string]string
+	if err := json.Unmarshal([]byte(orderBody), &body); err != nil {
+		t.Fatalf("decode order body: %v", err)
+	}
+	want := map[string]string{
+		"symbol":    "AAPL",
+		"side":      "BUY",
+		"orderType": "MARKET",
+		"quantity":  "3",
+	}
+	if !reflect.DeepEqual(body, want) {
+		t.Fatalf("body = %v, want %v", body, want)
+	}
+	if result, ok := got["result"].(map[string]any); !ok || result["orderId"] != "ord-1" {
+		t.Fatalf("raw response = %#v", got)
+	}
+}
+
+func TestPlaceOrderHTTPError(t *testing.T) {
+	srv := tokenOnlyServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/orders" {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			fmt.Fprint(w, `{"error":{"code":"insufficient-buying-power","message":"주문 가능 금액이 부족합니다.","requestId":"req-1"}}`)
+		}
+	})
+	t.Cleanup(srv.Close)
+
+	client := NewClient(srv.Client(), srv.URL, "cid", "secret")
+	_, err := client.PlaceOrder("7", models.OrderIntent{Ticker: "005930", Side: "buy", Quantity: 1})
+	if err == nil || !strings.Contains(err.Error(), "insufficient-buying-power") {
+		t.Fatalf("expected order API error, got %v", err)
+	}
+}
+
+func TestPlaceOrderValidatesInput(t *testing.T) {
+	client := NewClient(nil, "http://localhost", "cid", "secret")
+	if _, err := client.PlaceOrder("", models.OrderIntent{Ticker: "005930", Side: "buy", Quantity: 1}); err == nil {
+		t.Fatal("expected accountSeq error")
+	}
+	if _, err := client.PlaceOrder("7", models.OrderIntent{Ticker: "005930", Side: "buy"}); err == nil {
+		t.Fatal("expected quantity error")
+	}
+	if _, err := client.PlaceOrder("7", models.OrderIntent{Ticker: "005930", Side: "hold", Quantity: 1}); err == nil {
+		t.Fatal("expected side error")
 	}
 }

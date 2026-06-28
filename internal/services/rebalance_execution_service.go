@@ -9,9 +9,9 @@ import (
 
 const defaultOverseasExchange = "NASD"
 
-// OrderClient places a single order via KIS.
+// OrderClient places a single order through the configured brokerage route.
 type OrderClient interface {
-	PlaceOrder(ticker, side string, quantity int, exchange string) (map[string]any, error)
+	PlaceOrder(intent models.OrderIntent) (map[string]any, error)
 }
 
 // ExecutionRepo persists order execution records.
@@ -96,12 +96,15 @@ func (s *RebalanceExecutionService) CreateOrderIntents(
 		}
 
 		intent := models.OrderIntent{
-			Ticker:    rec.Ticker,
-			Side:      string(rec.Action),
-			Quantity:  qty,
-			Currency:  currency,
-			Exchange:  exchange,
-			StockName: rec.StockName,
+			Ticker:      rec.Ticker,
+			Side:        string(rec.Action),
+			Quantity:    qty,
+			Currency:    currency,
+			Exchange:    exchange,
+			StockName:   rec.StockName,
+			AccountID:   rec.AccountID,
+			AccountName: rec.AccountName,
+			Amount:      rec.Amount,
 		}
 		if qty == 0 {
 			skipped = append(skipped, intent)
@@ -133,11 +136,12 @@ func (s *RebalanceExecutionService) ExecuteRebalanceOrders(
 	exchangeMap map[string]string,
 ) models.RebalanceExecutionResult {
 	intentResult := s.CreateOrderIntents(recs, exchangeMap)
+	executable, deferred := splitExecutableIntents(intentResult.Intents, dryRun)
 
 	var executions []models.OrderExecutionResult
 	if !dryRun && s.orderClient != nil {
-		for _, intent := range intentResult.Intents {
-			resp, err := s.orderClient.PlaceOrder(intent.Ticker, intent.Side, intent.Quantity, intent.Exchange)
+		for _, intent := range executable {
+			resp, err := s.orderClient.PlaceOrder(intent)
 			status := "success"
 			msg := ""
 			if err != nil {
@@ -181,6 +185,16 @@ func (s *RebalanceExecutionService) ExecuteRebalanceOrders(
 				nil,
 			)
 		}
+		for _, d := range deferred {
+			_, _ = s.execRepo.Create(
+				context.Background(),
+				d.Ticker, d.Side,
+				d.Quantity,
+				d.Currency, "deferred", "deferred until sell orders are confirmed and account state is synced",
+				d.Exchange,
+				nil,
+			)
+		}
 	}
 
 	syncWarning := ""
@@ -193,7 +207,32 @@ func (s *RebalanceExecutionService) ExecuteRebalanceOrders(
 	return models.RebalanceExecutionResult{
 		Intents:     intentResult.Intents,
 		Skipped:     intentResult.Skipped,
+		Deferred:    deferred,
 		Executions:  executions,
 		SyncWarning: syncWarning,
 	}
+}
+
+func splitExecutableIntents(intents []models.OrderIntent, dryRun bool) (executable, deferred []models.OrderIntent) {
+	if dryRun {
+		return intents, nil
+	}
+	hasSell := false
+	for _, intent := range intents {
+		if intent.Side == "sell" {
+			hasSell = true
+			break
+		}
+	}
+	if !hasSell {
+		return intents, nil
+	}
+	for _, intent := range intents {
+		if intent.Side == "buy" {
+			deferred = append(deferred, intent)
+			continue
+		}
+		executable = append(executable, intent)
+	}
+	return executable, deferred
 }

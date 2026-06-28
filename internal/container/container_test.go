@@ -2,6 +2,8 @@ package container
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"reflect"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/kadragon/portfolio-manager/internal/db"
 	"github.com/kadragon/portfolio-manager/internal/kis"
+	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/services"
 )
 
@@ -86,8 +90,8 @@ func TestKISClientsShareTokenManager(t *testing.T) {
 	if !ok {
 		t.Fatal("expected unified price client")
 	}
-	orderClient, ok := buildOrderClient(auth).(*kis.UnifiedOrderClient)
-	if !ok {
+	orderClient := buildOrderClient(auth)
+	if orderClient == nil {
 		t.Fatal("expected unified order client")
 	}
 	balanceClient, ok := buildBalanceClient(auth).(*kis.DomesticBalanceClient)
@@ -124,6 +128,113 @@ func TestContainerWiresAccountSyncIntoRebalanceExecution(t *testing.T) {
 	field := reflect.ValueOf(c.RebalanceExecution).Elem().FieldByName("syncService")
 	if field.IsNil() {
 		t.Fatal("rebalance execution sync service is nil")
+	}
+}
+
+type fakeKISOrderClient struct {
+	calls []models.OrderIntent
+}
+
+func (f *fakeKISOrderClient) PlaceOrder(ticker, side string, quantity int, exchange string) (map[string]any, error) {
+	f.calls = append(f.calls, models.OrderIntent{
+		Ticker:   ticker,
+		Side:     side,
+		Quantity: quantity,
+		Exchange: exchange,
+	})
+	return map[string]any{"broker": "kis"}, nil
+}
+
+type fakeTossOrderClient struct {
+	accountSeqs []string
+	intents     []models.OrderIntent
+}
+
+func (f *fakeTossOrderClient) PlaceOrder(accountSeq string, intent models.OrderIntent) (map[string]any, error) {
+	f.accountSeqs = append(f.accountSeqs, accountSeq)
+	f.intents = append(f.intents, intent)
+	return map[string]any{"broker": "toss"}, nil
+}
+
+func TestAccountOrderRouterUsesTossAccountSeq(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, q, err := db.OpenMemory()
+	if err != nil {
+		t.Fatalf("open memory: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	c := NewWithQueries(sqlDB, q)
+
+	account, err := c.Accounts.Create(ctx, "Toss", numeric.Zero)
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	account, err = c.Accounts.Update(ctx, account.ID, account.Name, account.CashBalance,
+		sql.NullString{}, sql.NullInt64{}, sql.NullString{}, sql.NullInt64{Int64: 7, Valid: true})
+	if err != nil {
+		t.Fatalf("set toss account seq: %v", err)
+	}
+
+	kisClient := &fakeKISOrderClient{}
+	tossClient := &fakeTossOrderClient{}
+	router := &accountOrderRouter{accounts: c.Accounts, kis: kisClient, toss: tossClient}
+
+	resp, err := router.PlaceOrder(models.OrderIntent{
+		AccountID: account.ID,
+		Ticker:    "005930",
+		Side:      "buy",
+		Quantity:  3,
+	})
+	if err != nil {
+		t.Fatalf("PlaceOrder: %v", err)
+	}
+	if resp["broker"] != "toss" {
+		t.Fatalf("broker = %v, want toss", resp["broker"])
+	}
+	if len(tossClient.accountSeqs) != 1 || tossClient.accountSeqs[0] != "7" {
+		t.Fatalf("toss account seqs = %v, want [7]", tossClient.accountSeqs)
+	}
+	if len(kisClient.calls) != 0 {
+		t.Fatalf("KIS should not be called: %v", kisClient.calls)
+	}
+}
+
+func TestAccountOrderRouterFallsBackToKIS(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, q, err := db.OpenMemory()
+	if err != nil {
+		t.Fatalf("open memory: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	c := NewWithQueries(sqlDB, q)
+
+	account, err := c.Accounts.Create(ctx, "KIS", numeric.Zero)
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+
+	kisClient := &fakeKISOrderClient{}
+	tossClient := &fakeTossOrderClient{}
+	router := &accountOrderRouter{accounts: c.Accounts, kis: kisClient, toss: tossClient}
+
+	resp, err := router.PlaceOrder(models.OrderIntent{
+		AccountID: account.ID,
+		Ticker:    "AAPL",
+		Side:      "sell",
+		Quantity:  2,
+		Exchange:  "NASD",
+	})
+	if err != nil {
+		t.Fatalf("PlaceOrder: %v", err)
+	}
+	if resp["broker"] != "kis" {
+		t.Fatalf("broker = %v, want kis", resp["broker"])
+	}
+	if len(kisClient.calls) != 1 || kisClient.calls[0].Ticker != "AAPL" {
+		t.Fatalf("KIS calls = %v, want AAPL call", kisClient.calls)
+	}
+	if len(tossClient.intents) != 0 {
+		t.Fatalf("Toss should not be called: %v", tossClient.intents)
 	}
 }
 

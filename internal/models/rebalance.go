@@ -24,6 +24,7 @@ type RebalanceRecommendation struct {
 	Quantity           *numeric.Decimal // nil when uncomputable
 	StockName          string
 	GroupName          string
+	AccountID          uuidx.UUID
 	AccountName        string
 	RebalanceGroupName string
 	Reason             string
@@ -81,18 +82,21 @@ type RebalancePlan struct {
 
 // OrderIntent is a standardized order request before sending to KIS.
 type OrderIntent struct {
-	Ticker    string
-	Side      string // "buy" or "sell"
-	Quantity  int
-	Currency  string
-	Exchange  string // overseas exchange code; "" for domestic
-	StockName string
+	Ticker      string
+	Side        string // "buy" or "sell"
+	Quantity    int
+	Currency    string
+	Exchange    string // overseas exchange code; "" for domestic
+	StockName   string
+	AccountID   uuidx.UUID
+	AccountName string
+	Amount      numeric.Decimal
 }
 
 // OrderExecutionResult is the result of executing one order.
 type OrderExecutionResult struct {
 	Intent      OrderIntent
-	Status      string // "success", "failed", "skipped"
+	Status      string // "success", "failed", "skipped", "deferred"
 	Message     string
 	RawResponse map[string]any
 }
@@ -101,6 +105,7 @@ type OrderExecutionResult struct {
 type RebalanceExecutionResult struct {
 	Intents     []OrderIntent
 	Skipped     []OrderIntent
+	Deferred    []OrderIntent
 	Executions  []OrderExecutionResult
 	SyncWarning string
 }

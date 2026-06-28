@@ -3,6 +3,7 @@
 package toss
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,6 +70,13 @@ type exchangeRateResponse struct {
 	} `json:"result"`
 }
 
+type orderCreateResponse struct {
+	Result struct {
+		OrderID       string  `json:"orderId"`
+		ClientOrderID *string `json:"clientOrderId"`
+	} `json:"result"`
+}
+
 type holdingItem struct {
 	Symbol   string `json:"symbol"`
 	Name     string `json:"name"`
@@ -117,6 +125,72 @@ func (c *Client) FetchAccountSnapshot(accountSeq, _ string) (models.KisAccountSn
 		CashBalance: cashBalance,
 		Holdings:    holdings,
 	}, nil
+}
+
+// PlaceOrder creates a market quantity order for the given Toss accountSeq.
+func (c *Client) PlaceOrder(accountSeq string, intent models.OrderIntent) (map[string]any, error) {
+	accountSeq = strings.TrimSpace(accountSeq)
+	if accountSeq == "" {
+		return nil, fmt.Errorf("toss order: accountSeq is required")
+	}
+	if intent.Quantity <= 0 {
+		return nil, fmt.Errorf("toss order: quantity must be positive")
+	}
+
+	side, err := tossOrderSide(intent.Side)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := c.accessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	payload := map[string]string{
+		"symbol":    strings.ToUpper(strings.TrimSpace(intent.Ticker)),
+		"side":      side,
+		"orderType": "MARKET",
+		"quantity":  fmt.Sprintf("%d", intent.Quantity),
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("toss order: json marshal: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/api/v1/orders", bytes.NewReader(body)) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
+	if err != nil {
+		return nil, fmt.Errorf("toss order: create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Tossinvest-Account", accountSeq)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.HTTP.Do(req) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
+	if err != nil {
+		return nil, fmt.Errorf("toss order: request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("toss order: read response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, parseAPIError("toss order", resp.StatusCode, respBody)
+	}
+
+	var parsed orderCreateResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, fmt.Errorf("toss order: json unmarshal: %w", err)
+	}
+	if parsed.Result.OrderID == "" {
+		return nil, fmt.Errorf("toss order: missing orderId")
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(respBody, &raw); err != nil {
+		return nil, fmt.Errorf("toss order: json unmarshal raw: %w", err)
+	}
+	return raw, nil
 }
 
 func (c *Client) fetchHoldings(token, accountSeq string) ([]models.KisHoldingPosition, error) {
@@ -349,4 +423,15 @@ func parseDecimal(s string) decimal.Decimal {
 		return decimal.Zero
 	}
 	return d
+}
+
+func tossOrderSide(side string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(side)) {
+	case "buy":
+		return "BUY", nil
+	case "sell":
+		return "SELL", nil
+	default:
+		return "", fmt.Errorf("toss order: unsupported side %q", side)
+	}
 }

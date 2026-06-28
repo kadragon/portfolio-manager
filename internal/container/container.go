@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/kadragon/portfolio-manager/internal/db"
 	"github.com/kadragon/portfolio-manager/internal/db/sqlc"
 	"github.com/kadragon/portfolio-manager/internal/kis"
@@ -37,7 +39,7 @@ type Container struct {
 	Portfolio           *services.PortfolioService
 	Rebalance           *services.RebalanceService
 	RebalanceExecution  *services.RebalanceExecutionService
-	OrderClient         services.OrderClient                      // nil if KIS not configured
+	OrderClient         services.OrderClient                      // nil if no brokerage order client is configured
 	AccountSync         *services.KisAccountSyncService           // nil if KIS not configured; key-1 service
 	AccountSyncByKeyID  map[int64]*services.KisAccountSyncService // keyed by kis_api_key_id
 	TossAccountSync     *services.KisAccountSyncService           // nil if Toss not configured
@@ -75,6 +77,8 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	var priceClient services.PriceClient
 	var exchangeRate *services.ExchangeRateService
 	var orderClient services.OrderClient
+	var kisOrderClient *kis.UnifiedOrderClient
+	var tossClient *toss.Client
 	var accountSync *services.KisAccountSyncService
 	accountSyncByKeyID := map[int64]*services.KisAccountSyncService{}
 	var tossAccountSync *services.KisAccountSyncService
@@ -87,7 +91,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		kisAuth := buildKISAuth()
 		priceClient = buildKISClient(kisAuth)
 		exchangeRate = buildExchangeRate()
-		orderClient = buildOrderClient(kisAuth)
+		kisOrderClient = buildOrderClient(kisAuth)
 		assetClassifier = buildAssetClassifier(kisAuth)
 
 		kisCano, kisAcntPrdtCd = loadKISAccount()
@@ -121,10 +125,18 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	}
 
 	if setupKIS {
-		if tossClient := buildTossClient(); tossClient != nil {
+		if tossClient = buildTossClient(); tossClient != nil {
 			tossAccountSync = services.NewKisAccountSyncService(accounts, holdings, stocks, groups, tossClient, ".data/toss_sync.log")
 			tossAccountSync.SetDefaultGroupName("Toss 자동동기화")
 			tossAccountSync.SetClassifier(assetClassifier)
+		}
+	}
+
+	if kisOrderClient != nil || tossClient != nil {
+		orderClient = &accountOrderRouter{
+			accounts: accounts,
+			kis:      kisOrderClient,
+			toss:     tossClient,
 		}
 	}
 
@@ -225,6 +237,43 @@ func (a *rebalanceSyncAdapter) SyncAccount() error {
 		}
 	}
 	return nil
+}
+
+type kisOrderPlacer interface {
+	PlaceOrder(ticker, side string, quantity int, exchange string) (map[string]any, error)
+}
+
+type tossOrderPlacer interface {
+	PlaceOrder(accountSeq string, intent models.OrderIntent) (map[string]any, error)
+}
+
+type accountOrderRouter struct {
+	accounts *repositories.AccountRepository
+	kis      kisOrderPlacer
+	toss     tossOrderPlacer
+}
+
+func (r *accountOrderRouter) PlaceOrder(intent models.OrderIntent) (map[string]any, error) {
+	if intent.AccountID.UUID != uuid.Nil && r.accounts != nil {
+		account, err := r.accounts.GetByID(context.Background(), intent.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("load order account: %w", err)
+		}
+		if account == nil {
+			return nil, fmt.Errorf("load order account: account not found")
+		}
+		if account.TossAccountSeq != nil {
+			if r.toss == nil {
+				return nil, fmt.Errorf("toss order client not configured")
+			}
+			return r.toss.PlaceOrder(fmt.Sprintf("%d", *account.TossAccountSeq), intent)
+		}
+	}
+
+	if r.kis == nil {
+		return nil, fmt.Errorf("KIS order client not configured")
+	}
+	return r.kis.PlaceOrder(intent.Ticker, intent.Side, intent.Quantity, intent.Exchange)
 }
 
 // SyncServiceForKeyID returns the KisAccountSyncService for the given kis_api_key_id,
@@ -414,7 +463,7 @@ func loadKISAccount() (cano, acntPrdtCd string) {
 }
 
 // buildOrderClient returns a UnifiedOrderClient, or nil if keys/account are absent.
-func buildOrderClient(auth *kisAuth) services.OrderClient {
+func buildOrderClient(auth *kisAuth) *kis.UnifiedOrderClient {
 	if auth == nil || auth.cano == "" {
 		return nil
 	}
@@ -642,7 +691,7 @@ func buildExchangeRate() *services.ExchangeRateService {
 	return nil
 }
 
-func buildTossClient() services.BalanceClient {
+func buildTossClient() *toss.Client {
 	clientID := strings.TrimSpace(os.Getenv("TOSS_CLIENT_ID"))
 	clientSecret := strings.TrimSpace(os.Getenv("TOSS_CLIENT_SECRET"))
 	if clientID == "" || clientSecret == "" {
