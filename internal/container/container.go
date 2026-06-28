@@ -124,6 +124,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		if tossClient := buildTossClient(); tossClient != nil {
 			tossAccountSync = services.NewKisAccountSyncService(accounts, holdings, stocks, groups, tossClient, ".data/toss_sync.log")
 			tossAccountSync.SetDefaultGroupName("Toss 자동동기화")
+			tossAccountSync.SetClassifier(assetClassifier)
 		}
 	}
 

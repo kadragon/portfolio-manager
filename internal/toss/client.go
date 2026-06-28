@@ -227,7 +227,11 @@ func (c *Client) fetchBuyingPower(token, accountSeq, currency string) (numeric.D
 	if !strings.EqualFold(parsed.Result.Currency, currency) {
 		return numeric.Decimal{}, fmt.Errorf("toss buying-power: unexpected currency %q", parsed.Result.Currency)
 	}
-	return numeric.Wrap(parseDecimal(parsed.Result.CashBuyingPower)), nil
+	power := numeric.Wrap(parseDecimal(parsed.Result.CashBuyingPower))
+	if power.IsNegative() {
+		return numeric.Decimal{}, fmt.Errorf("toss buying-power: negative %s cashBuyingPower %q", currency, parsed.Result.CashBuyingPower)
+	}
+	return power, nil
 }
 
 func (c *Client) fetchUSDKRWRate(token string) (numeric.Decimal, error) {
