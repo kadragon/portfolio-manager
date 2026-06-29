@@ -147,7 +147,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 
 	var priceSync *services.PriceSyncService
 	if priceClient != nil {
-		priceSync = services.NewPriceSyncService(priceClient, stockPrices, stocks)
+		priceSync = services.NewPriceSyncService(priceClient, stockPrices, stocks, deposits)
 	}
 
 	execRepo := &execRepoAdapter{r: orderExecutions}

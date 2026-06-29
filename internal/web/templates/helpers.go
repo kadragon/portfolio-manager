@@ -77,6 +77,20 @@ func rateColorClassForDark(rate *numeric.Decimal) string {
 	return ""
 }
 
+// rateColorClassForPtr returns a normal-surface CSS class for an optional rate.
+func rateColorClassForPtr(rate *numeric.Decimal) string {
+	if rate == nil {
+		return ""
+	}
+	if rate.IsPositive() {
+		return "text-success"
+	}
+	if rate.IsNegative() {
+		return "text-error"
+	}
+	return ""
+}
+
 // signedRateHTML returns an HTML snippet: formatted signed percent, or the dim dash span.
 // safe to use with templ.Raw().
 func signedRateHTML(rates map[string]numeric.Decimal, period string) string {

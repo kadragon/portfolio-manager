@@ -2,12 +2,14 @@ package services_test
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/datex"
 	"github.com/kadragon/portfolio-manager/internal/db"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/repositories"
 	"github.com/kadragon/portfolio-manager/internal/services"
 )
@@ -41,7 +43,7 @@ func (c *trackingClient) GetHistoricalClose(ticker string, _ datex.Date, _ strin
 	return 50.0, nil
 }
 
-func newSyncRepos(t *testing.T) (*repositories.StockPriceRepository, *repositories.StockRepository, *repositories.GroupRepository) {
+func newSyncRepos(t *testing.T) (*repositories.StockPriceRepository, *repositories.StockRepository, *repositories.GroupRepository, *repositories.DepositRepository) {
 	t.Helper()
 	sqlDB, q, err := db.OpenMemory()
 	if err != nil {
@@ -50,11 +52,12 @@ func newSyncRepos(t *testing.T) (*repositories.StockPriceRepository, *repositori
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	return repositories.NewStockPriceRepository(q),
 		repositories.NewStockRepository(q),
-		repositories.NewGroupRepository(q)
+		repositories.NewGroupRepository(q),
+		repositories.NewDepositRepository(q)
 }
 
 func TestPriceSyncServiceSavesCurrentPrice(t *testing.T) {
-	priceRepo, stockRepo, groupRepo := newSyncRepos(t)
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
 	ctx := context.Background()
 
 	g, err := groupRepo.Create(ctx, "test", 0)
@@ -71,7 +74,7 @@ func TestPriceSyncServiceSavesCurrentPrice(t *testing.T) {
 			"AAPL": {Symbol: "AAPL", Price: 200.0, Currency: "USD", Exchange: "NASD"},
 		},
 	}
-	svc := services.NewPriceSyncService(client, priceRepo, stockRepo)
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
 	svc.SyncOnce(ctx)
 
 	sp, err := priceRepo.GetLatestByTicker(ctx, "AAPL")
@@ -86,8 +89,61 @@ func TestPriceSyncServiceSavesCurrentPrice(t *testing.T) {
 	}
 }
 
+func TestPriceSyncServiceSyncsBenchmarksWithoutStockRows(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"SPY":    {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+			"QQQ":    {Symbol: "QQQ", Price: 450.0, Currency: "USD", Exchange: "NASD"},
+			"226490": {Symbol: "226490", Price: 30000.0, Currency: "KRW"},
+		},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	for _, ticker := range []string{"SPY", "QQQ", "226490"} {
+		sp, err := priceRepo.GetLatestByTicker(ctx, ticker)
+		if err != nil {
+			t.Fatalf("get latest %s: %v", ticker, err)
+		}
+		if sp == nil {
+			t.Fatalf("benchmark %s was not saved", ticker)
+		}
+	}
+}
+
+func TestPriceSyncServiceFetchesFirstDepositDateForBenchmarks(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	firstDepositDate := datex.New(2026, time.January, 15)
+	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), firstDepositDate, sql.NullString{})
+
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"SPY":    {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+			"QQQ":    {Symbol: "QQQ", Price: 450.0, Currency: "USD", Exchange: "NASD"},
+			"226490": {Symbol: "226490", Price: 30000.0, Currency: "KRW"},
+		},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	for _, ticker := range []string{"SPY", "QQQ", "226490"} {
+		sp, err := priceRepo.GetByTickerAndDate(ctx, ticker, firstDepositDate)
+		if err != nil {
+			t.Fatalf("get first deposit price %s: %v", ticker, err)
+		}
+		if sp == nil {
+			t.Fatalf("first deposit date price for %s was not saved", ticker)
+		}
+	}
+}
+
 func TestPriceSyncServiceSkipsHistoricalWhenPresent(t *testing.T) {
-	priceRepo, stockRepo, groupRepo := newSyncRepos(t)
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
 	ctx := context.Background()
 
 	g, _ := groupRepo.Create(ctx, "test", 0)
@@ -98,7 +154,7 @@ func TestPriceSyncServiceSkipsHistoricalWhenPresent(t *testing.T) {
 			"VYM": {Symbol: "VYM", Price: 160.0, Currency: "USD"},
 		},
 	}
-	svc := services.NewPriceSyncService(client, priceRepo, stockRepo)
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
 
 	// First sync: fills current price + all 4 historical periods.
 	svc.SyncOnce(ctx)
@@ -125,7 +181,7 @@ func TestPriceSyncServiceSkipsHistoricalWhenPresent(t *testing.T) {
 }
 
 func TestPriceSyncServiceSkipsZeroPrice(t *testing.T) {
-	priceRepo, stockRepo, groupRepo := newSyncRepos(t)
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
 	ctx := context.Background()
 
 	g, _ := groupRepo.Create(ctx, "test", 0)
@@ -136,7 +192,7 @@ func TestPriceSyncServiceSkipsZeroPrice(t *testing.T) {
 			"ZERO": {Symbol: "ZERO", Price: 0, Currency: "USD"},
 		},
 	}
-	svc := services.NewPriceSyncService(client, priceRepo, stockRepo)
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
 	svc.SyncOnce(ctx)
 
 	sp, _ := priceRepo.GetLatestByTicker(ctx, "ZERO")
@@ -145,27 +201,27 @@ func TestPriceSyncServiceSkipsZeroPrice(t *testing.T) {
 	}
 }
 
-func TestPriceSyncServiceEmpty(t *testing.T) {
-	priceRepo, stockRepo, _ := newSyncRepos(t)
+func TestPriceSyncServiceEmptyStockListStillSyncsBenchmarks(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
 	ctx := context.Background()
 
 	client := &trackingClient{}
-	svc := services.NewPriceSyncService(client, priceRepo, stockRepo)
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
 	svc.SyncOnce(ctx)
 
 	client.mu.Lock()
 	calls := len(client.priceCalls)
 	client.mu.Unlock()
-	if calls != 0 {
-		t.Errorf("want 0 calls with empty stock list, got %d", calls)
+	if calls != 3 {
+		t.Errorf("want 3 benchmark calls with empty stock list, got %d", calls)
 	}
 }
 
 func TestPriceSyncServiceStartStopsOnContextCancel(t *testing.T) {
-	priceRepo, stockRepo, _ := newSyncRepos(t)
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
 
 	client := &trackingClient{}
-	svc := services.NewPriceSyncService(client, priceRepo, stockRepo)
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

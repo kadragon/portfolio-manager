@@ -257,18 +257,71 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChang
 		}
 	}
 
+	benchmarkReturns := s.computeBenchmarkReturns(ctx, returnRate, firstDate)
+	benchmarkAverage, benchmarkAverageDiff := computeBenchmarkAverage(returnRate, benchmarkReturns)
+
 	return &models.PortfolioSummary{
-		Holdings:             pairs,
-		TotalValue:           totalStockValue,
-		TotalStockValue:      totalStockValue,
-		TotalCashBalance:     totalCash,
-		TotalAssets:          totalAssets,
-		TotalInvested:        totalInvested,
-		ReturnRate:           returnRate,
-		FirstDepositDate:     firstDate,
-		AnnualizedReturnRate: annualizedReturn,
-		USDKRWRate:           usdKRW,
+		Holdings:               pairs,
+		TotalValue:             totalStockValue,
+		TotalStockValue:        totalStockValue,
+		TotalCashBalance:       totalCash,
+		TotalAssets:            totalAssets,
+		TotalInvested:          totalInvested,
+		ReturnRate:             returnRate,
+		FirstDepositDate:       firstDate,
+		AnnualizedReturnRate:   annualizedReturn,
+		USDKRWRate:             usdKRW,
+		BenchmarkReturns:       benchmarkReturns,
+		BenchmarkAverageReturn: benchmarkAverage,
+		BenchmarkAverageDiff:   benchmarkAverageDiff,
 	}, nil
+}
+
+func (s *PortfolioService) computeBenchmarkReturns(ctx context.Context, portfolioReturn *numeric.Decimal, startDate *datex.Date) []models.BenchmarkReturn {
+	results := make([]models.BenchmarkReturn, 0, len(dashboardBenchmarks))
+	if s.priceService == nil || portfolioReturn == nil || startDate == nil {
+		for _, b := range dashboardBenchmarks {
+			results = append(results, models.BenchmarkReturn{Label: b.label, Ticker: b.ticker})
+		}
+		return results
+	}
+	for _, b := range dashboardBenchmarks {
+		benchmarkReturn := s.priceService.GetStockChangeSince(ctx, b.ticker, b.preferredExchange, *startDate)
+		var diff *numeric.Decimal
+		if benchmarkReturn != nil {
+			d := numeric.Wrap(portfolioReturn.Sub(benchmarkReturn.Decimal))
+			diff = &d
+		}
+		results = append(results, models.BenchmarkReturn{
+			Label:      b.label,
+			Ticker:     b.ticker,
+			ReturnRate: benchmarkReturn,
+			Difference: diff,
+		})
+	}
+	return results
+}
+
+func computeBenchmarkAverage(portfolioReturn *numeric.Decimal, benchmarks []models.BenchmarkReturn) (*numeric.Decimal, *numeric.Decimal) {
+	if portfolioReturn == nil {
+		return nil, nil
+	}
+	sum := numeric.Zero
+	count := int64(0)
+	for _, b := range benchmarks {
+		if b.ReturnRate == nil {
+			continue
+		}
+		sum = numeric.Wrap(sum.Add(b.ReturnRate.Decimal))
+		count++
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	divisor := numeric.FromInt(count)
+	avg := numeric.Wrap(sum.Div(divisor.Decimal))
+	diff := numeric.Wrap(portfolioReturn.Sub(avg.Decimal))
+	return &avg, &diff
 }
 
 // ComputeGroupSummary aggregates holdings by group for the allocation table.
