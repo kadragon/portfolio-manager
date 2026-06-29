@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/container"
 	"github.com/kadragon/portfolio-manager/internal/datex"
@@ -126,6 +127,63 @@ func TestGetPortfolioSummaryWithData(t *testing.T) {
 	groupRows := services.ComputeGroupSummary(summary)
 	if len(groupRows) == 0 {
 		t.Error("ComputeGroupSummary returned empty rows for non-empty portfolio")
+	}
+}
+
+func TestGetPortfolioSummaryBenchmarkReturns(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	g, _ := c.Groups.Create(ctx, "성장주", 100.0)
+	s, _ := c.Stocks.Create(ctx, "005930", g.ID)
+	acc, _ := c.Accounts.Create(ctx, "내 계좌", numeric.Zero)
+	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(120))
+
+	start := datex.New(2026, time.January, 1)
+	today := datex.New(2026, time.June, 1)
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(100), start, sql.NullString{})
+
+	savePrice := func(ticker, price, currency, name, exchange string, d datex.Date) {
+		t.Helper()
+		p, _ := numeric.FromString(price)
+		ex := sql.NullString{}
+		if exchange != "" {
+			ex = sql.NullString{String: exchange, Valid: true}
+		}
+		if _, err := c.StockPrices.Save(ctx, ticker, d, p, currency, name, ex); err != nil {
+			t.Fatalf("save price %s %s: %v", ticker, d.ISO(), err)
+		}
+	}
+
+	savePrice("005930", "1", "KRW", "삼성전자", "", today)
+	savePrice("SPY", "100", "USD", "SPDR S&P 500 ETF", "AMEX", start)
+	savePrice("SPY", "110", "USD", "SPDR S&P 500 ETF", "AMEX", today)
+	savePrice("QQQ", "100", "USD", "Invesco QQQ Trust", "NASD", start)
+	savePrice("QQQ", "130", "USD", "Invesco QQQ Trust", "NASD", today)
+	savePrice("226490", "100", "KRW", "KODEX KOSPI", "", start)
+	savePrice("226490", "90", "KRW", "KODEX KOSPI", "", today)
+
+	priceService := services.NewPriceService(c.StockPrices).WithTodayProvider(func() time.Time { return today.Time })
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
+
+	summary, err := ps.GetPortfolioSummary(ctx, true)
+	if err != nil {
+		t.Fatalf("GetPortfolioSummary: %v", err)
+	}
+	if len(summary.BenchmarkReturns) != 3 {
+		t.Fatalf("BenchmarkReturns len = %d, want 3", len(summary.BenchmarkReturns))
+	}
+	if summary.BenchmarkAverageReturn == nil {
+		t.Fatal("BenchmarkAverageReturn is nil")
+	}
+	if got, want := summary.BenchmarkAverageReturn.StringFixed(1), "10.0"; got != want {
+		t.Errorf("BenchmarkAverageReturn = %s, want %s", got, want)
+	}
+	if summary.BenchmarkAverageDiff == nil {
+		t.Fatal("BenchmarkAverageDiff is nil")
+	}
+	if got, want := summary.BenchmarkAverageDiff.StringFixed(1), "10.0"; got != want {
+		t.Errorf("BenchmarkAverageDiff = %s, want %s", got, want)
 	}
 }
 

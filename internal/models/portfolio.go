@@ -38,16 +38,27 @@ type GroupHoldingsWithPrice struct {
 
 // PortfolioSummary aggregates valuation and return-rate data.
 type PortfolioSummary struct {
-	Holdings             []GroupHoldingPair
-	TotalValue           numeric.Decimal
-	TotalStockValue      numeric.Decimal
-	TotalCashBalance     numeric.Decimal
-	TotalAssets          numeric.Decimal
-	TotalInvested        numeric.Decimal
-	ReturnRate           *numeric.Decimal
-	FirstDepositDate     *datex.Date
-	AnnualizedReturnRate *numeric.Decimal
-	USDKRWRate           *numeric.Decimal // nil when no exchange rate available
+	Holdings               []GroupHoldingPair
+	TotalValue             numeric.Decimal
+	TotalStockValue        numeric.Decimal
+	TotalCashBalance       numeric.Decimal
+	TotalAssets            numeric.Decimal
+	TotalInvested          numeric.Decimal
+	ReturnRate             *numeric.Decimal
+	FirstDepositDate       *datex.Date
+	AnnualizedReturnRate   *numeric.Decimal
+	USDKRWRate             *numeric.Decimal // nil when no exchange rate available
+	BenchmarkReturns       []BenchmarkReturn
+	BenchmarkAverageReturn *numeric.Decimal
+	BenchmarkAverageDiff   *numeric.Decimal
+}
+
+// BenchmarkReturn is one dashboard benchmark compared with the portfolio return.
+type BenchmarkReturn struct {
+	Label      string
+	Ticker     string
+	ReturnRate *numeric.Decimal
+	Difference *numeric.Decimal
 }
 
 // GroupHoldingPair mirrors Python's list[tuple[Group, StockHoldingWithPrice]].

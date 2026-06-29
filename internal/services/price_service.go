@@ -148,6 +148,26 @@ func (s *PriceService) GetStockChangeRates(ctx context.Context, ticker, preferre
 	return result
 }
 
+// GetStockChangeSince returns rate-of-change (%) from the nearest cached close
+// at or before startDate to the current cached price.
+func (s *PriceService) GetStockChangeSince(ctx context.Context, ticker string, startDate datex.Date) *numeric.Decimal {
+	if s.stockPrices == nil || startDate.Time.IsZero() {
+		return nil
+	}
+	currentPrice, _, _, _ := s.GetStockPrice(ctx, ticker, "")
+	if currentPrice.IsZero() {
+		return nil
+	}
+	start := s.getOnOrBefore(ctx, ticker, startDate)
+	if start == nil || !start.Price.IsPositive() {
+		return nil
+	}
+	rate := numeric.Wrap(
+		currentPrice.Sub(start.Price.Decimal).Div(start.Price.Decimal).Mul(hundred.Decimal),
+	)
+	return &rate
+}
+
 // computeTargetDates builds the historical reference date for each period.
 func computeTargetDates(today time.Time) map[string]time.Time {
 	return map[string]time.Time{

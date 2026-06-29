@@ -9,6 +9,7 @@ import (
 
 	"github.com/kadragon/portfolio-manager/internal/datex"
 	"github.com/kadragon/portfolio-manager/internal/ktime"
+	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/repositories"
 )
@@ -24,6 +25,7 @@ type PriceSyncService struct {
 	client      PriceClient
 	stockPrices *repositories.StockPriceRepository
 	stocks      *repositories.StockRepository
+	deposits    *repositories.DepositRepository
 }
 
 // NewPriceSyncService constructs the service. All deps are required.
@@ -31,11 +33,13 @@ func NewPriceSyncService(
 	client PriceClient,
 	stockPrices *repositories.StockPriceRepository,
 	stocks *repositories.StockRepository,
+	deposits *repositories.DepositRepository,
 ) *PriceSyncService {
 	return &PriceSyncService{
 		client:      client,
 		stockPrices: stockPrices,
 		stocks:      stocks,
+		deposits:    deposits,
 	}
 }
 
@@ -64,26 +68,24 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 		log.Printf("price sync: list stocks: %v", err)
 		return
 	}
+	targets := syncTargets(allStocks)
 
 	today := datex.FromTime(ktime.NowKST())
-	targetDates := computeTargetDates(today.Time)
+	historicalDates := s.syncHistoricalDates(ctx, today)
 
-	for idx, stock := range allStocks {
+	for idx, target := range targets {
 		if ctx.Err() != nil {
 			return
 		}
 
-		preferredExchange := ""
-		if stock.Exchange != nil {
-			preferredExchange = *stock.Exchange
-		}
+		preferredExchange := target.preferredExchange
 
 		if idx > 0 {
 			delay(ctx, syncCallDelay)
 		}
-		quote, err := s.client.GetPrice(stock.Ticker, preferredExchange)
+		quote, err := s.client.GetPrice(target.ticker, preferredExchange)
 		if err != nil {
-			log.Printf("price sync: get price %s: %v", stock.Ticker, err)
+			log.Printf("price sync: get price %s: %v", target.ticker, err)
 			continue
 		}
 		if quote.Price <= 0 {
@@ -99,32 +101,34 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 		if quote.Exchange != "" {
 			exc = sql.NullString{String: toOrderExchange(quote.Exchange), Valid: true}
 		}
-		if _, err := s.stockPrices.Save(ctx, stock.Ticker, today, price, quote.Currency, quote.Name, exc); err != nil {
-			log.Printf("price sync: save %s: %v", stock.Ticker, err)
+		if _, err := s.stockPrices.Save(ctx, target.ticker, today, price, quote.Currency, quote.Name, exc); err != nil {
+			log.Printf("price sync: save %s: %v", target.ticker, err)
 		}
 
 		// Persist resolved exchange (canonical form) to stock when it differs from the stored value.
 		// canonical is the 4-letter code (NASD/NYSE/AMEX) expected by GetPrice/prioritizedExchanges.
-		if quote.Exchange != "" {
+		if target.stock != nil && quote.Exchange != "" {
 			canonical := quote.Exchange
-			if stock.Exchange == nil || *stock.Exchange != canonical {
-				if _, err := s.stocks.UpdateExchange(ctx, stock.ID, canonical); err == nil {
-					stock.Exchange = &canonical
+			if target.stock.Exchange == nil || *target.stock.Exchange != canonical {
+				if _, err := s.stocks.UpdateExchange(ctx, target.stock.ID, canonical); err == nil {
+					target.stock.Exchange = &canonical
 					preferredExchange = canonical
 				} else {
-					log.Printf("price sync: update exchange %s: %v", stock.Ticker, err)
+					log.Printf("price sync: update exchange %s: %v", target.ticker, err)
 				}
 			}
 		}
 
 		// Fetch any missing historical closes (fetch-once: immutable past data).
-		for _, label := range []string{"1y", "6m", "1m", "1d"} {
-			targetDate := datex.FromTime(targetDates[label])
-			if cached, _ := s.stockPrices.GetByTickerAndDate(ctx, stock.Ticker, targetDate); cached != nil && cached.Price.IsPositive() {
+		for _, targetDate := range historicalDates {
+			if cached, _ := s.stockPrices.GetByTickerAndDate(ctx, target.ticker, targetDate); cached != nil && cached.Price.IsPositive() {
 				continue
 			}
 			delay(ctx, syncCallDelay)
-			raw, histErr := s.client.GetHistoricalClose(stock.Ticker, targetDate, preferredExchange)
+			if ctx.Err() != nil {
+				return
+			}
+			raw, histErr := s.client.GetHistoricalClose(target.ticker, targetDate, preferredExchange)
 			if histErr != nil || raw <= 0 {
 				continue
 			}
@@ -132,11 +136,70 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 			if parseErr != nil || !pastClose.IsPositive() {
 				continue
 			}
-			if _, err := s.stockPrices.Save(ctx, stock.Ticker, targetDate, pastClose, quote.Currency, quote.Name, exc); err != nil {
-				log.Printf("price sync: save historical %s: %v", stock.Ticker, err)
+			if _, err := s.stockPrices.Save(ctx, target.ticker, targetDate, pastClose, quote.Currency, quote.Name, exc); err != nil {
+				log.Printf("price sync: save historical %s: %v", target.ticker, err)
 			}
 		}
 	}
+}
+
+func (s *PriceSyncService) syncHistoricalDates(ctx context.Context, today datex.Date) []datex.Date {
+	targetDates := computeTargetDates(today.Time)
+	dates := make([]datex.Date, 0, len(targetDates)+1)
+	seen := make(map[string]bool, len(targetDates)+1)
+	for _, label := range []string{"1y", "6m", "1m", "1d"} {
+		d := datex.FromTime(targetDates[label])
+		dates = append(dates, d)
+		seen[d.ISO()] = true
+	}
+	if s.deposits == nil {
+		return dates
+	}
+	firstDate, err := s.deposits.GetFirstDepositDate(ctx)
+	if err != nil || firstDate == nil || firstDate.Time.IsZero() {
+		return dates
+	}
+	if firstDate.ISO() >= today.ISO() {
+		return dates
+	}
+	adjusted := datex.FromTime(prevBizDay(firstDate.Time))
+	if seen[adjusted.ISO()] {
+		return dates
+	}
+	return append(dates, adjusted)
+}
+
+type priceSyncTarget struct {
+	ticker            string
+	preferredExchange string
+	stock             *models.Stock
+}
+
+func syncTargets(stocks []models.Stock) []priceSyncTarget {
+	targets := make([]priceSyncTarget, 0, len(stocks)+len(dashboardBenchmarks))
+	seen := make(map[string]bool, len(stocks)+len(dashboardBenchmarks))
+	for i := range stocks {
+		preferredExchange := ""
+		if stocks[i].Exchange != nil {
+			preferredExchange = *stocks[i].Exchange
+		}
+		targets = append(targets, priceSyncTarget{
+			ticker:            stocks[i].Ticker,
+			preferredExchange: preferredExchange,
+			stock:             &stocks[i],
+		})
+		seen[stocks[i].Ticker] = true
+	}
+	for _, b := range dashboardBenchmarks {
+		if seen[b.ticker] {
+			continue
+		}
+		targets = append(targets, priceSyncTarget{
+			ticker:            b.ticker,
+			preferredExchange: b.preferredExchange,
+		})
+	}
+	return targets
 }
 
 func delay(ctx context.Context, d time.Duration) {

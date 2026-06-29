@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/kadragon/portfolio-manager/internal/numeric"
@@ -37,5 +38,9 @@ func TestDashboardIndexPopulated(t *testing.T) {
 	e.ServeHTTP(rr, rec)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "벤치마크") {
+		t.Error("benchmark comparison missing")
 	}
 }

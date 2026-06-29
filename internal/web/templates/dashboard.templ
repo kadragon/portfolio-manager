@@ -78,6 +78,7 @@ templ dashboardSummary(summary *models.PortfolioSummary) {
 			<div class="stat-value text-base font-mono">{ formatRate(summary.USDKRWRate) }</div>
 		</div>
 	</div>
+	@benchmarkComparison(summary)
 	<div class="card bg-base-100">
 		<div class="card-body p-4 sm:p-6">
 			<div class="overflow-x-auto" tabindex="0" aria-label="보유 종목 표 가로 스크롤 영역">
@@ -104,6 +105,70 @@ templ dashboardSummary(summary *models.PortfolioSummary) {
 								@holdingRow(pair)
 							}
 						}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+}
+
+templ benchmarkComparison(summary *models.PortfolioSummary) {
+	<div class="card bg-base-100 mb-4">
+		<div class="card-body p-4 sm:p-5">
+			<div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+				<h2 class="card-title text-base">벤치마크</h2>
+				<p class="text-xs text-base-content/50">첫 입금일 이후 수익률 기준</p>
+			</div>
+			<div class="overflow-x-auto" tabindex="0" aria-label="벤치마크 수익률 비교 표 가로 스크롤 영역">
+				<table class="table table-sm">
+					<caption class="sr-only">내 수익률과 S&P 500, Nasdaq, KOSPI 벤치마크 및 평균 수익률 차이</caption>
+					<thead>
+						<tr class="text-xs uppercase tracking-wider">
+							<th>기준</th>
+							<th class="text-center">티커</th>
+							<th class="text-right">수익률</th>
+							<th class="text-right">내 수익률 차이</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, benchmark := range summary.BenchmarkReturns {
+							<tr>
+								<th scope="row" class="font-semibold">{ benchmark.Label }</th>
+								<td class="text-center"><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded inline-block min-w-16 text-center">{ benchmark.Ticker }</code></td>
+								<td class={ "text-right font-mono " + rateColorClassForPtr(benchmark.ReturnRate) }>
+									if benchmark.ReturnRate != nil {
+										{ accountformat.FormatSignedPercent(*benchmark.ReturnRate) }
+									} else {
+										-
+									}
+								</td>
+								<td class={ "text-right font-mono " + rateColorClassForPtr(benchmark.Difference) }>
+									if benchmark.Difference != nil {
+										{ accountformat.FormatSignedPercent(*benchmark.Difference) }
+									} else {
+										-
+									}
+								</td>
+							</tr>
+						}
+						<tr class="border-t border-base-300">
+							<th scope="row" class="font-semibold">평균</th>
+							<td class="text-center text-base-content/40">-</td>
+							<td class={ "text-right font-mono " + rateColorClassForPtr(summary.BenchmarkAverageReturn) }>
+								if summary.BenchmarkAverageReturn != nil {
+									{ accountformat.FormatSignedPercent(*summary.BenchmarkAverageReturn) }
+								} else {
+									-
+								}
+							</td>
+							<td class={ "text-right font-mono " + rateColorClassForPtr(summary.BenchmarkAverageDiff) }>
+								if summary.BenchmarkAverageDiff != nil {
+									{ accountformat.FormatSignedPercent(*summary.BenchmarkAverageDiff) }
+								} else {
+									-
+								}
+							</td>
+						</tr>
 					</tbody>
 				</table>
 			</div>

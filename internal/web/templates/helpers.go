@@ -48,10 +48,8 @@ func formatRate(rate *numeric.Decimal) string {
 	return accountformat.FormatKRW(*rate)
 }
 
-// rateColorClassForMap returns a CSS class for a change-rate value. Returns "" if period absent.
-func rateColorClassForMap(rates map[string]numeric.Decimal, period string) string {
-	rate, ok := rates[period]
-	if !ok {
+func rateColor(rate *numeric.Decimal) string {
+	if rate == nil {
 		return ""
 	}
 	if rate.IsPositive() {
@@ -61,6 +59,15 @@ func rateColorClassForMap(rates map[string]numeric.Decimal, period string) strin
 		return "text-error"
 	}
 	return ""
+}
+
+// rateColorClassForMap returns a CSS class for a change-rate value. Returns "" if period absent.
+func rateColorClassForMap(rates map[string]numeric.Decimal, period string) string {
+	rate, ok := rates[period]
+	if !ok {
+		return ""
+	}
+	return rateColor(&rate)
 }
 
 // rateColorClassForDark returns dark-theme CSS class for a change-rate value.
@@ -75,6 +82,11 @@ func rateColorClassForDark(rate *numeric.Decimal) string {
 		return "text-down-on-dark"
 	}
 	return ""
+}
+
+// rateColorClassForPtr returns a normal-surface CSS class for an optional rate.
+func rateColorClassForPtr(rate *numeric.Decimal) string {
+	return rateColor(rate)
 }
 
 // signedRateHTML returns an HTML snippet: formatted signed percent, or the dim dash span.
