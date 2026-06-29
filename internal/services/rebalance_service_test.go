@@ -1160,8 +1160,8 @@ func TestBuildPlanSkipsBuyBelowOneExecutableShare(t *testing.T) {
 	if !numericEq(sum.TotalBuyKRW, "0") {
 		t.Errorf("TotalBuyKRW = %v, want 0", sum.TotalBuyKRW)
 	}
-	if len(sum.UnmetGroups) == 0 {
-		t.Errorf("UnmetGroups should be non-empty when sub-share skip occurs, got %v", sum.UnmetGroups)
+	if !containsString(sum.UnmetGroups, "해외배당") {
+		t.Errorf("expected 해외배당 in UnmetGroups (sub-share skip), got %v", sum.UnmetGroups)
 	}
 }
 
