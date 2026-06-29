@@ -773,6 +773,9 @@ func (s *RebalanceService) buildBuyRecs(
 		}
 		amountLocal := krwToLocal(buyKRW, candidate.currency, candidate.valueLocalBase, candidate.valueKRWBase)
 		qty := calcQuantity(amountLocal, candidate.valueLocalBase, candidate.qtyBase)
+		if !hasExecutableWholeShare(qty) {
+			continue
+		}
 
 		rec := models.RebalanceRecommendation{
 			Ticker:             candidate.ticker,
@@ -953,6 +956,10 @@ func calcQuantity(amountLocal, posLocalValue, posQty decimal.Decimal) *decimal.D
 	}
 	q := amountLocal.Div(posLocalValue).Mul(posQty)
 	return &q
+}
+
+func hasExecutableWholeShare(qty *decimal.Decimal) bool {
+	return qty != nil && qty.Floor().GreaterThanOrEqual(decimal.NewFromInt(1))
 }
 
 func ptrDecimal(d *decimal.Decimal) *numeric.Decimal {
