@@ -1160,6 +1160,9 @@ func TestBuildPlanSkipsBuyBelowOneExecutableShare(t *testing.T) {
 	if !numericEq(sum.TotalBuyKRW, "0") {
 		t.Errorf("TotalBuyKRW = %v, want 0", sum.TotalBuyKRW)
 	}
+	if len(sum.UnmetGroups) == 0 {
+		t.Errorf("UnmetGroups should be non-empty when sub-share skip occurs, got %v", sum.UnmetGroups)
+	}
 }
 
 // TestBuildPlanEmptyPortfolio verifies emptyPlan() is returned when total assets == 0.

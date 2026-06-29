@@ -774,6 +774,10 @@ func (s *RebalanceService) buildBuyRecs(
 		amountLocal := krwToLocal(buyKRW, candidate.currency, candidate.valueLocalBase, candidate.valueKRWBase)
 		qty := calcQuantity(amountLocal, candidate.valueLocalBase, candidate.qtyBase)
 		if !hasExecutableWholeShare(qty) {
+			if couldNotBuy[c.acctID] == nil {
+				couldNotBuy[c.acctID] = map[string]bool{}
+			}
+			couldNotBuy[c.acctID][c.group] = true
 			continue
 		}
 
