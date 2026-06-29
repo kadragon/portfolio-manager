@@ -150,11 +150,11 @@ func (s *PriceService) GetStockChangeRates(ctx context.Context, ticker, preferre
 
 // GetStockChangeSince returns rate-of-change (%) from the nearest cached close
 // at or before startDate to the current cached price.
-func (s *PriceService) GetStockChangeSince(ctx context.Context, ticker, preferredExchange string, startDate datex.Date) *numeric.Decimal {
+func (s *PriceService) GetStockChangeSince(ctx context.Context, ticker string, startDate datex.Date) *numeric.Decimal {
 	if s.stockPrices == nil || startDate.Time.IsZero() {
 		return nil
 	}
-	currentPrice, _, _, _ := s.GetStockPrice(ctx, ticker, preferredExchange)
+	currentPrice, _, _, _ := s.GetStockPrice(ctx, ticker, "")
 	if currentPrice.IsZero() {
 		return nil
 	}

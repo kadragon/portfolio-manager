@@ -286,7 +286,7 @@ func (s *PortfolioService) computeBenchmarkReturns(ctx context.Context, portfoli
 		return results
 	}
 	for _, b := range dashboardBenchmarks {
-		benchmarkReturn := s.priceService.GetStockChangeSince(ctx, b.ticker, b.preferredExchange, *startDate)
+		benchmarkReturn := s.priceService.GetStockChangeSince(ctx, b.ticker, *startDate)
 		var diff *numeric.Decimal
 		if benchmarkReturn != nil {
 			d := numeric.Wrap(portfolioReturn.Sub(benchmarkReturn.Decimal))

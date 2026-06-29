@@ -159,10 +159,14 @@ func (s *PriceSyncService) syncHistoricalDates(ctx context.Context, today datex.
 	if err != nil || firstDate == nil || firstDate.Time.IsZero() {
 		return dates
 	}
-	if seen[firstDate.ISO()] {
+	if firstDate.ISO() >= today.ISO() {
 		return dates
 	}
-	return append(dates, *firstDate)
+	adjusted := datex.FromTime(prevBizDay(firstDate.Time))
+	if seen[adjusted.ISO()] {
+		return dates
+	}
+	return append(dates, adjusted)
 }
 
 type priceSyncTarget struct {
