@@ -1102,6 +1102,69 @@ func TestBuildPlanDeploysPreexistingIdleCash(t *testing.T) {
 	}
 }
 
+func TestBuildPlanSkipsBuyBelowOneExecutableShare(t *testing.T) {
+	groups := makeStandardGroups()
+	byName := map[string]models.Group{}
+	for _, g := range groups {
+		byName[g.Name] = g
+	}
+	dividendETF := makeStock("458730", byName["해외배당"].ID)
+	growth := makeStock("005930", byName["국내성장"].ID)
+	krDiv := makeStock("000660", byName["국내배당"].ID)
+	usGrowth := makeStock("QQQ", byName["해외성장"].ID)
+	usStable := makeStock("VOO", byName["해외안정"].ID)
+
+	qty := mustN("1")
+	divValue := mustN("50000")
+	growthValue := mustN("350000")
+	krDivValue := mustN("150000")
+	usGrowthValue := mustN("250000")
+	usStableValue := mustN("100000")
+	summary := models.PortfolioSummary{
+		Holdings: []models.GroupHoldingPair{
+			{Group: byName["국내성장"], Holding: models.StockHoldingWithPrice{Stock: growth, Quantity: growthValue, Price: mustN("1"), Currency: "KRW", Name: "삼성전자", ValueKRW: &growthValue}},
+			{Group: byName["국내배당"], Holding: models.StockHoldingWithPrice{Stock: krDiv, Quantity: krDivValue, Price: mustN("1"), Currency: "KRW", Name: "SK하이닉스", ValueKRW: &krDivValue}},
+			{Group: byName["해외성장"], Holding: models.StockHoldingWithPrice{Stock: usGrowth, Quantity: usGrowthValue, Price: mustN("1"), Currency: "USD", Name: "QQQ", ValueKRW: &usGrowthValue}},
+			{Group: byName["해외안정"], Holding: models.StockHoldingWithPrice{Stock: usStable, Quantity: usStableValue, Price: mustN("1"), Currency: "USD", Name: "VOO", ValueKRW: &usStableValue}},
+			{Group: byName["해외배당"], Holding: models.StockHoldingWithPrice{Stock: dividendETF, Quantity: qty, Price: divValue, Currency: "KRW", Name: "미래에셋 TIGER 미국배당다우존스", ValueKRW: &divValue}},
+		},
+		TotalValue:  mustN("900000"),
+		TotalAssets: mustN("912002"),
+	}
+	isa := makeTypedAccount("ISA", "12002", models.AccountTypeISA)
+	holdingsByAccount := map[uuidx.UUID][]models.Holding{
+		isa.ID: {
+			makeHolding(isa.ID, dividendETF.ID, "1"),
+		},
+	}
+
+	svc := services.NewRebalanceService()
+	plan, err := svc.BuildPlan(services.BuildPlanParams{
+		Summary:           summary,
+		Accounts:          []models.Account{isa},
+		HoldingsByAccount: holdingsByAccount,
+		Groups:            groups,
+		Stocks:            []models.Stock{growth, krDiv, usGrowth, usStable, dividendETF},
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan error: %v", err)
+	}
+
+	if len(plan.BuyRecs) != 0 {
+		t.Fatalf("want no buy recommendation below 1 executable share, got %+v", plan.BuyRecs)
+	}
+	sum := findAccountSummary(plan, isa.ID)
+	if !numericEq(sum.UnusedCashKRW, "12002") {
+		t.Errorf("UnusedCashKRW = %v, want 12002", sum.UnusedCashKRW)
+	}
+	if !numericEq(sum.TotalBuyKRW, "0") {
+		t.Errorf("TotalBuyKRW = %v, want 0", sum.TotalBuyKRW)
+	}
+	if len(sum.UnmetGroups) == 0 {
+		t.Errorf("UnmetGroups should be non-empty when sub-share skip occurs, got %v", sum.UnmetGroups)
+	}
+}
+
 // TestBuildPlanEmptyPortfolio verifies emptyPlan() is returned when total assets == 0.
 func TestBuildPlanEmptyPortfolio(t *testing.T) {
 	svc := services.NewRebalanceService()
