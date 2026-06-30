@@ -55,6 +55,18 @@ func TestCalcQuantity(t *testing.T) {
 	if calcQuantity(amount, posValue, decimal.Zero) != nil {
 		t.Errorf("calcQuantity with zero posQty should be nil")
 	}
+
+	// Precision: 10/3*3 must equal exactly 10, not 9.9999…
+	// Mul-before-Div eliminates intermediate truncation.
+	three := decimal.NewFromInt(3)
+	ten := decimal.NewFromInt(10)
+	precGot := calcQuantity(ten, three, three)
+	if precGot == nil {
+		t.Fatal("calcQuantity(10,3,3) returned nil")
+	}
+	if !precGot.Equal(ten) {
+		t.Errorf("calcQuantity precision: got %s, want 10 (Mul-before-Div required)", precGot.String())
+	}
 }
 
 func TestPtrDecimal(t *testing.T) {
@@ -111,6 +123,18 @@ func TestKrwToLocal(t *testing.T) {
 	// USD with non-positive valueLocal → unchanged
 	if got := krwToLocal(amountKRW, "USD", decimal.Zero, decimal.NewFromInt(13500)); !got.Equal(amountKRW) {
 		t.Errorf("krwToLocal(USD, zero local) = %s, want 13500", got.String())
+	}
+
+	// Precision: 100 * (3/10) = 30 exactly — Div-of-Div loses precision (10/3 truncates),
+	// Mul-before-Div (100*3/10) gives exact 30.
+	// values: amountKRW=100 valueLocal=3 valueKRW=10 → expect 30
+	precAmt := decimal.NewFromInt(100)
+	precLocal := decimal.NewFromInt(3)
+	precKRW := decimal.NewFromInt(10)
+	precGot := krwToLocal(precAmt, "USD", precLocal, precKRW)
+	want30 := decimal.NewFromInt(30)
+	if !precGot.Equal(want30) {
+		t.Errorf("krwToLocal precision: got %s, want 30 (Mul-before-Div required)", precGot.String())
 	}
 }
 

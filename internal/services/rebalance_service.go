@@ -946,10 +946,9 @@ func (s *RebalanceService) buildAccountSummaries(
 
 func krwToLocal(amountKRW decimal.Decimal, currency string, valueLocal, valueKRW decimal.Decimal) decimal.Decimal {
 	if currency == "USD" && valueLocal.IsPositive() && valueKRW.IsPositive() {
-		fx := valueKRW.Div(valueLocal)
-		if fx.IsPositive() {
-			return amountKRW.Div(fx)
-		}
+		// Mul-before-Div: amountKRW * valueLocal / valueKRW avoids intermediate
+		// truncation from computing the FX rate as a separate Div step.
+		return amountKRW.Mul(valueLocal).Div(valueKRW)
 	}
 	return amountKRW
 }
@@ -958,7 +957,8 @@ func calcQuantity(amountLocal, posLocalValue, posQty decimal.Decimal) *decimal.D
 	if !posLocalValue.IsPositive() || !posQty.IsPositive() {
 		return nil
 	}
-	q := amountLocal.Div(posLocalValue).Mul(posQty)
+	// Mul-before-Div: multiply first to preserve precision before dividing.
+	q := amountLocal.Mul(posQty).Div(posLocalValue)
 	return &q
 }
 
