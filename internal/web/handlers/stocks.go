@@ -208,9 +208,13 @@ func (h *StockHandler) update(c echo.Context) error {
 		}
 	}
 	// security_group: KIS scty_grp_id_cd (e.g. "EF"/"ST"), normalized uppercase;
-	// empty clears it back to "미지정". Free-text override of the KIS-derived value.
+	// empty clears it back to "미지정". Only recognized codes are accepted;
+	// KIS sync bypasses this handler and writes codes directly.
 	if form.Has("security_group") {
 		securityGroup := strings.ToUpper(strings.TrimSpace(form.Get("security_group")))
+		if securityGroup != "" && !models.ValidSecurityGroup(securityGroup) {
+			return echo.NewHTTPError(http.StatusUnprocessableEntity, "invalid security_group code")
+		}
 		if !assetClassEquals(updated.SecurityGroup, securityGroup) {
 			upd, uerr := h.c.Stocks.UpdateSecurityGroup(ctx, s.ID, securityGroup)
 			if uerr != nil {

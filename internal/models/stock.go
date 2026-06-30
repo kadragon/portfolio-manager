@@ -23,6 +23,33 @@ func ValidAssetClass(s string) bool {
 	}
 }
 
+// KIS security-group codes (scty_grp_id_cd), normalized uppercase.
+// Display/audit metadata only — not used by canHold eligibility logic.
+const (
+	SecurityGroupStock       = "ST" // 주식
+	SecurityGroupDomesticETF = "EF" // 국내ETF
+	SecurityGroupETN         = "EN" // ETN
+	SecurityGroupELW         = "EW" // ELW
+	SecurityGroupFund        = "MF" // 펀드
+	SecurityGroupREIT        = "RT" // 리츠
+	SecurityGroupForeignETF  = "FE" // 해외ETF
+	SecurityGroupForeignStk  = "FS" // 해외주식
+)
+
+// ValidSecurityGroup reports whether s is a recognized KIS security-group code.
+// Does NOT accept empty string (mirrors ValidAssetClass). The web handler accepts
+// empty separately to clear the field; KIS sync bypasses this check entirely.
+func ValidSecurityGroup(s string) bool {
+	switch s {
+	case SecurityGroupStock, SecurityGroupDomesticETF, SecurityGroupETN,
+		SecurityGroupELW, SecurityGroupFund, SecurityGroupREIT,
+		SecurityGroupForeignETF, SecurityGroupForeignStk:
+		return true
+	default:
+		return false
+	}
+}
+
 // Stock is a ticker held in a portfolio group.
 type Stock struct {
 	ID       uuidx.UUID

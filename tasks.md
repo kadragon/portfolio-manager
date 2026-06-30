@@ -23,12 +23,6 @@ Schema / lifecycle:
 - [x] [debt] ClassifyAll loops KIS calls synchronously with no throttle inside the web handler; large unclassified sets risk KIS rate-limit and HTTP timeout — add inter-call delay or background job + HTMX polling (source: agy) — internal/services/stock_classification.go:88 — **resolved: ctx-aware inter-call delay (`SetCallDelay`, container injects 200ms) + loop-top ctx.Err() guard; background-job+HTMX-polling deferred (see Out of scope).**
 - [ ] [doc] Drop redundant html.EscapeString in classifyStocks/syncAccount handlers (templ auto-escapes `{ message }`, output is double-escaped) — cosmetic, currently consistent with sibling handler (source: security-review) — internal/web/handlers/accounts.go:272
 
-### PR #117 — dead-code cleanup + review backlog (2026-06-04)
-
-- [ ] [debt] `security_group` update handler accepts any free-text (uppercased/trimmed) while `asset_class` enforces an allowlist; an allowlist here must match every code KIS sync legitimately writes (ST/EF/EN/EW/MF/RT/FE/FS + any unseen) or it breaks sync — needs canonical code-set decision before guarding (source: pr-review-toolkit:review-pr) — internal/web/handlers/stocks.go:209
-- [ ] [perf] `calcQuantity`/`krwToLocal` (pre-existing) divide before multiply; decimal.Div truncates, so reorder Mul-before-Div to cut precision loss — behavior-changing on pinned test expectations, needs careful test (source: agy) — internal/services/rebalance_service.go calcQuantity/krwToLocal
-- [ ] [test] no KIS_LIVE-guarded integration test that a real overseas KIS response round-trips through `OverseasSecurityGroup` (FE/FS); unit-tested only (source: pr-review-toolkit:review-pr) — internal/kis/overseas_info.go
-
 ### PR #119 — refactor(ui): separate page canvas from card surface (2026-06-04)
 
 - [ ] [harness] `internal/web/static/css/app.css` is tracked in git; compiled output creates noisy diffs and build-env divergence risk — add to `.gitignore` and generate in CI/Docker instead (source: pr-review-toolkit:review-pr) — `internal/web/static/css/app.css`
@@ -46,6 +40,10 @@ Schema / lifecycle:
 ### PR #135 — [FEAT] skip buy recs when executable qty < 1 whole share (2026-06-29)
 
 - [ ] [debt] `hasExecutableWholeShare` applies a blanket ≥1 whole-share floor to all currencies including USD, where some brokers support fractional shares; if fractional trading is ever enabled for overseas stocks, this guard will need per-currency / per-account-type gating (source: agy) — `internal/services/rebalance_service.go:961`
+
+### PR #137 — PR #117 backlog close (2026-06-30)
+
+- [ ] [debt] `ValidSecurityGroup` allowlist may reject unknown-but-legitimate future KIS `scty_grp_id_cd` codes not in the initial 8; classifier path intentionally bypasses it, but extend the allowlist if KIS adds new codes (source: codex, review) — `internal/models/stock.go:ValidSecurityGroup`
 
 ### PR #136 — [FEAT] add dashboard benchmark comparison (2026-06-30)
 
