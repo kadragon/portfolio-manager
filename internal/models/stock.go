@@ -37,12 +37,11 @@ const (
 )
 
 // ValidSecurityGroup reports whether s is a recognized KIS security-group code.
-// Empty string is accepted (clears the field back to unclassified).
-// KIS sync bypasses this check and writes codes directly.
+// Does NOT accept empty string (mirrors ValidAssetClass). The web handler accepts
+// empty separately to clear the field; KIS sync bypasses this check entirely.
 func ValidSecurityGroup(s string) bool {
 	switch s {
-	case "",
-		SecurityGroupStock, SecurityGroupDomesticETF, SecurityGroupETN,
+	case SecurityGroupStock, SecurityGroupDomesticETF, SecurityGroupETN,
 		SecurityGroupELW, SecurityGroupFund, SecurityGroupREIT,
 		SecurityGroupForeignETF, SecurityGroupForeignStk:
 		return true

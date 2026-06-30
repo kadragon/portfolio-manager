@@ -306,6 +306,20 @@ func TestStockUpdateClearsSecurityGroup(t *testing.T) {
 	}
 }
 
+func TestStockUpdateInvalidSecurityGroup422(t *testing.T) {
+	e, c := setupStocks(t)
+	g := seedGroup(t, c, "g")
+	s := seedStock(t, c, "INV", g)
+
+	rec := do(e, http.MethodPut, "/groups/"+g.ID.String()+"/stocks/"+s.ID.String(), url.Values{
+		"ticker":         {"INV"},
+		"security_group": {"XX"},
+	})
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422 for invalid security_group", rec.Code)
+	}
+}
+
 func TestStockUpdateEmptyTicker422(t *testing.T) {
 	e, c := setupStocks(t)
 	g := seedGroup(t, c, "g")

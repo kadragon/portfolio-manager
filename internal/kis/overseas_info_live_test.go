@@ -55,12 +55,16 @@ func TestLiveOverseasInfoSecurityGroup(t *testing.T) {
 	if env == "demo" || env == "vps" || env == "paper" {
 		baseURL = "https://openapivts.koreainvestment.com:29443"
 	}
+	trID := os.Getenv("KIS_OVERSEAS_INFO_TR_ID")
+	if trID == "" {
+		trID = "CTPF1702R"
+	}
 	ic := &OverseasInfoClient{
 		HTTP:      http.DefaultClient,
 		BaseURL:   baseURL,
 		AppKey:    appKey,
 		AppSecret: appSecret,
-		TrID:      "CTPF1702R",
+		TrID:      trID,
 		CustType:  custType,
 		Manager:   mgr,
 	}

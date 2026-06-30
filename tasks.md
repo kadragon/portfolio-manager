@@ -41,6 +41,10 @@ Schema / lifecycle:
 
 - [ ] [debt] `hasExecutableWholeShare` applies a blanket ≥1 whole-share floor to all currencies including USD, where some brokers support fractional shares; if fractional trading is ever enabled for overseas stocks, this guard will need per-currency / per-account-type gating (source: agy) — `internal/services/rebalance_service.go:961`
 
+### PR #137 — PR #117 backlog close (2026-06-30)
+
+- [ ] [debt] `ValidSecurityGroup` allowlist may reject unknown-but-legitimate future KIS `scty_grp_id_cd` codes not in the initial 8; classifier path intentionally bypasses it, but extend the allowlist if KIS adds new codes (source: codex, review) — `internal/models/stock.go:ValidSecurityGroup`
+
 ### PR #136 — [FEAT] add dashboard benchmark comparison (2026-06-30)
 
 - [ ] [debt] `computeBenchmarkReturns` skips showing benchmark return rates when `portfolioReturn == nil` (shows "-" for all values); benchmark rates could be shown without the diff column when portfolio return is unavailable — design decision deferred (source: inline) — `internal/services/portfolio_service.go`

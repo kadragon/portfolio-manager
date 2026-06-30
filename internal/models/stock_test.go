@@ -9,9 +9,9 @@ func TestValidSecurityGroup(t *testing.T) {
 			t.Errorf("ValidSecurityGroup(%q) = false, want true", code)
 		}
 	}
-	// empty clears the field — treated as valid at the handler level
-	if !ValidSecurityGroup("") {
-		t.Errorf("ValidSecurityGroup(\"\") = false, want true")
+	// empty is NOT a recognized code (handler accepts it separately to clear the field)
+	if ValidSecurityGroup("") {
+		t.Errorf("ValidSecurityGroup(\"\") = true, want false")
 	}
 	invalid := []string{"ef", "st", "XX", "ETF", "STOCK", " ST", "ST "}
 	for _, code := range invalid {
