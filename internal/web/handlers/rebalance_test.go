@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -178,5 +179,56 @@ func TestRebalanceExecuteWithPriceService(t *testing.T) {
 	rec := do(e, http.MethodPost, "/rebalance/execute", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+// TestRebalanceExecuteInvalidAccountID checks that POST /rebalance/execute with a
+// malformed account_id returns the "잘못된 계좌 ID입니다." error partial instead of
+// executing against all accounts.
+func TestRebalanceExecuteInvalidAccountID(t *testing.T) {
+	sqlDB, q, err := db.OpenMemory()
+	if err != nil {
+		t.Fatalf("open memory: %v", err)
+	}
+	t.Cleanup(func() { sqlDB.Close() })
+	c := container.NewWithQueries(sqlDB, q)
+	e := echo.New()
+	handlers.NewRebalanceHandler(c).Register(e)
+
+	rec := do(e, http.MethodPost, "/rebalance/execute", url.Values{"account_id": {"not-a-uuid"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "잘못된 계좌 ID입니다.") {
+		t.Errorf("invalid account_id message missing:\n%s", rec.Body.String())
+	}
+}
+
+// TestRebalanceExecuteScopedToAccount checks that POST /rebalance/execute with a
+// valid but unrelated account_id filters recommendations down to that account
+// (here: zero recs, since the account has no holdings/groups) rather than
+// executing the full cross-account plan.
+func TestRebalanceExecuteScopedToAccount(t *testing.T) {
+	sqlDB, q, err := db.OpenMemory()
+	if err != nil {
+		t.Fatalf("open memory: %v", err)
+	}
+	t.Cleanup(func() { sqlDB.Close() })
+	c := container.NewWithQueries(sqlDB, q)
+	e := echo.New()
+	handlers.NewRebalanceHandler(c).Register(e)
+
+	ctx := context.Background()
+	acc, err := c.Accounts.Create(ctx, "내 계좌", numeric.Zero)
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+
+	rec := do(e, http.MethodPost, "/rebalance/execute", url.Values{"account_id": {acc.ID.String()}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "잘못된 계좌 ID입니다.") {
+		t.Errorf("valid account_id should not be rejected:\n%s", rec.Body.String())
 	}
 }
