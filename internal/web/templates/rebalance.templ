@@ -61,7 +61,7 @@ templ RebalancePage(
 		}
 		if plan != nil {
 			@rebalanceDiagnostics(plan)
-			@rebalanceAccountSummaries(plan)
+			@rebalanceAccountSummaries(plan, restrictOverseas, hasOrderClient)
 		}
 		if plan == nil || (len(plan.SellRecs) == 0 && len(plan.BuyRecs) == 0) {
 			if errorMsg == "" {
@@ -79,14 +79,14 @@ templ RebalancePage(
 						hx-post="/rebalance/execute"
 						hx-target="#execute-result"
 						hx-swap="outerHTML"
-						hx-confirm="실제 주문을 실행하시겠습니까?"
+						hx-confirm="전체 계좌 주문을 실행하시겠습니까?"
 						data-request-message="주문을 실행하는 중…"
 					>
 						if restrictOverseas {
 							<input type="hidden" name="restrict_overseas" value="on"/>
 						}
 						if hasOrderClient {
-							<button type="submit" class="btn btn-primary btn-sm" hx-disabled-elt="this">주문 실행</button>
+							<button type="submit" class="btn btn-primary btn-sm" hx-disabled-elt="this">전체 계좌 일괄 실행</button>
 						} else {
 							<button type="button" class="btn btn-sm btn-disabled" disabled title="브로커 주문 클라이언트가 설정되지 않았습니다.">주문 실행 불가 (주문 클라이언트 미설정)</button>
 						}
@@ -202,12 +202,31 @@ templ rebalanceDiagnostics(plan *models.RebalancePlan) {
 	</section>
 }
 
-templ rebalanceAccountSummaries(plan *models.RebalancePlan) {
+templ rebalanceAccountSummaries(plan *models.RebalancePlan, restrictOverseas bool, hasOrderClient bool) {
 	for _, s := range plan.AccountSummaries {
 		if len(s.SellRecs) > 0 || len(s.BuyRecs) > 0 || len(s.UnmetGroups) > 0 {
 			<section class="card bg-base-100">
 				<div class="card-body p-4 sm:p-6">
-					<h3 class="text-base font-semibold text-base-content mb-2">{ s.AccountName }</h3>
+					<div class="flex items-center justify-between gap-2 mb-2">
+						<h3 class="text-base font-semibold text-base-content">{ s.AccountName }</h3>
+						if (len(s.SellRecs) > 0 || len(s.BuyRecs) > 0) && hasOrderClient {
+							<div id={ "account-execute-" + s.AccountID.String() }>
+								<form
+									hx-post="/rebalance/execute"
+									hx-target="#execute-result"
+									hx-swap="outerHTML"
+									hx-confirm={ s.AccountName + " 계좌 주문을 실행하시겠습니까?" }
+									data-request-message="주문을 실행하는 중…"
+								>
+									<input type="hidden" name="account_id" value={ s.AccountID.String() }/>
+									if restrictOverseas {
+										<input type="hidden" name="restrict_overseas" value="on"/>
+									}
+									<button type="submit" class="btn btn-primary btn-xs" hx-disabled-elt="this">이 계좌만 실행</button>
+								</form>
+							</div>
+						}
+					</div>
 					<div class="flex flex-wrap gap-4 text-xs mb-3">
 						<span>시작 현금 <span class="font-mono">{ accountformat.FormatKRW(s.StartingCashKRW) }</span></span>
 						<span>매도 현금 <span class="font-mono text-error">{ accountformat.FormatKRW(s.SellCashKRW) }</span></span>
@@ -310,6 +329,16 @@ templ RebalanceResultPartial(result *models.RebalanceExecutionResult, message st
 			}
 			<p><a href="/rebalance" class="btn btn-ghost btn-xs">리밸런싱 화면으로 돌아가기</a></p>
 		</div>
+	</div>
+}
+
+// RebalanceAccountExecuteDoneOOB out-of-band swaps the per-account execute
+// button (identified by accountID, echoed verbatim from the request's
+// account_id field) so it can't be double-clicked into resubmitting the same
+// orders after a successful scoped execution.
+templ RebalanceAccountExecuteDoneOOB(accountID string) {
+	<div id={ "account-execute-" + accountID } hx-swap-oob="true" class="text-xs text-success">
+		이 계좌 실행 완료 — 다시 실행하려면 새로고침하세요.
 	</div>
 }
 
