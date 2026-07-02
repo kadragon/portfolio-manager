@@ -70,16 +70,26 @@ func (h *RebalanceHandler) execute(c echo.Context) error {
 
 	allRecs := append(plan.SellRecs, plan.BuyRecs...)
 
-	if accountIDParam := c.FormValue("account_id"); accountIDParam != "" {
+	accountIDParam := c.FormValue("account_id")
+	if accountIDParam != "" {
 		accountID, err := uuidx.Parse(accountIDParam)
 		if err != nil {
 			return templates.RebalanceResultPartial(nil, "잘못된 계좌 ID입니다.", false).Render(ctx, c.Response().Writer)
 		}
 		allRecs = filterRecsByAccount(allRecs, accountID)
+		if len(allRecs) == 0 {
+			return templates.RebalanceResultPartial(nil, "해당 계좌에 실행할 주문이 없습니다.", false).Render(ctx, c.Response().Writer)
+		}
 	}
 
 	result := h.c.RebalanceExecution.ExecuteRebalanceOrders(allRecs, false, exchangeMap)
-	return templates.RebalanceResultPartial(&result, "주문 실행 완료", true).Render(ctx, c.Response().Writer)
+	if err := templates.RebalanceResultPartial(&result, "주문 실행 완료", true).Render(ctx, c.Response().Writer); err != nil {
+		return err
+	}
+	if accountIDParam != "" {
+		return templates.RebalanceAccountExecuteDoneOOB(accountIDParam).Render(ctx, c.Response().Writer)
+	}
+	return nil
 }
 
 // filterRecsByAccount narrows recs to a single account for per-account execution.

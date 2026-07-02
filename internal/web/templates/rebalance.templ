@@ -210,19 +210,21 @@ templ rebalanceAccountSummaries(plan *models.RebalancePlan, restrictOverseas boo
 					<div class="flex items-center justify-between gap-2 mb-2">
 						<h3 class="text-base font-semibold text-base-content">{ s.AccountName }</h3>
 						if (len(s.SellRecs) > 0 || len(s.BuyRecs) > 0) && hasOrderClient {
-							<form
-								hx-post="/rebalance/execute"
-								hx-target="#execute-result"
-								hx-swap="outerHTML"
-								hx-confirm={ s.AccountName + " 계좌 주문을 실행하시겠습니까?" }
-								data-request-message="주문을 실행하는 중…"
-							>
-								<input type="hidden" name="account_id" value={ s.AccountID.String() }/>
-								if restrictOverseas {
-									<input type="hidden" name="restrict_overseas" value="on"/>
-								}
-								<button type="submit" class="btn btn-primary btn-xs" hx-disabled-elt="this">이 계좌만 실행</button>
-							</form>
+							<div id={ "account-execute-" + s.AccountID.String() }>
+								<form
+									hx-post="/rebalance/execute"
+									hx-target="#execute-result"
+									hx-swap="outerHTML"
+									hx-confirm={ s.AccountName + " 계좌 주문을 실행하시겠습니까?" }
+									data-request-message="주문을 실행하는 중…"
+								>
+									<input type="hidden" name="account_id" value={ s.AccountID.String() }/>
+									if restrictOverseas {
+										<input type="hidden" name="restrict_overseas" value="on"/>
+									}
+									<button type="submit" class="btn btn-primary btn-xs" hx-disabled-elt="this">이 계좌만 실행</button>
+								</form>
+							</div>
 						}
 					</div>
 					<div class="flex flex-wrap gap-4 text-xs mb-3">
@@ -327,6 +329,16 @@ templ RebalanceResultPartial(result *models.RebalanceExecutionResult, message st
 			}
 			<p><a href="/rebalance" class="btn btn-ghost btn-xs">리밸런싱 화면으로 돌아가기</a></p>
 		</div>
+	</div>
+}
+
+// RebalanceAccountExecuteDoneOOB out-of-band swaps the per-account execute
+// button (identified by accountID, echoed verbatim from the request's
+// account_id field) so it can't be double-clicked into resubmitting the same
+// orders after a successful scoped execution.
+templ RebalanceAccountExecuteDoneOOB(accountID string) {
+	<div id={ "account-execute-" + accountID } hx-swap-oob="true" class="text-xs text-success">
+		이 계좌 실행 완료 — 다시 실행하려면 새로고침하세요.
 	</div>
 }
 
