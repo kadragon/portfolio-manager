@@ -328,7 +328,6 @@ func loadKISAccount() (cano, acntPrdtCd string) {
 	return
 }
 
-// buildOrderClient returns a UnifiedOrderClient, or nil if keys/account are absent.
 // domesticInfoClassifier / overseasInfoClassifier are the slices of the KIS info
 // clients that kisAssetClassifier depends on; narrow interfaces so the routing
 // (incl. the overseas exchange fallback) is unit-testable with fakes.

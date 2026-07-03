@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -124,8 +125,10 @@ func (s *BandAlertService) notify(ctx context.Context, msg string) error {
 	return nil
 }
 
-// breachSignature encodes the breach set (group + direction, diagnostic order)
-// so alerts fire exactly when the set changes. Empty when nothing is breached.
+// breachSignature encodes the breach set (group + direction) so alerts fire
+// exactly when the set changes. Sorted — ListGroups has no ORDER BY, so the
+// diagnostic order may vary between runs and must not flap the signature.
+// Empty when nothing is breached.
 func breachSignature(diags []models.GroupDiagnostic) string {
 	var parts []string
 	for _, d := range diags {
@@ -136,6 +139,7 @@ func breachSignature(diags []models.GroupDiagnostic) string {
 			parts = append(parts, d.RebalanceGroupName+":하단")
 		}
 	}
+	sort.Strings(parts)
 	return strings.Join(parts, ",")
 }
 
@@ -195,6 +199,12 @@ func checkBands(summary models.PortfolioSummary, groups []models.Group) ([]model
 	}
 	valueByGroup := map[string]decimal.Decimal{}
 	for _, pair := range summary.Holdings {
+		// PortfolioService values USD holdings at a NON-nil ₩0 when the FX rate
+		// is unavailable (USDKRWRate stays nil) — a nil-only check would count
+		// them as ₩0 and fire false breach alerts.
+		if pair.Holding.Currency == "USD" && summary.USDKRWRate == nil {
+			return nil, fmt.Errorf("%s: USD/KRW rate unavailable", pair.Holding.Stock.Ticker)
+		}
 		if pair.Holding.ValueKRW == nil {
 			return nil, fmt.Errorf("%s: KRW value unavailable (missing exchange rate)", pair.Holding.Stock.Ticker)
 		}

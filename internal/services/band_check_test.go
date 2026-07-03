@@ -123,3 +123,40 @@ func TestCheckBandsMissingFXFails(t *testing.T) {
 		t.Fatal("want error for missing ValueKRW, got nil")
 	}
 }
+
+// TestCheckBandsMissingUSDRateFails: PortfolioService values USD holdings at a
+// NON-nil ₩0 when the exchange rate is unavailable (portfolio_service.go sets
+// ValueKRW = &numeric.Zero and USDKRWRate = nil). A nil-only guard passes and
+// every USD position silently counts as ₩0 — false breach alerts. checkBands
+// must reject USD holdings when summary.USDKRWRate is nil.
+func TestCheckBandsMissingUSDRateFails(t *testing.T) {
+	summary, groups := bandFixture(t,
+		map[string]float64{"해외성장": 25, "국내성장": 25},
+		map[string]string{"해외성장": "0", "국내성장": "100"},
+	)
+	for i := range summary.Holdings {
+		if summary.Holdings[i].Group.Name == "해외성장" {
+			summary.Holdings[i].Holding.Currency = "USD"
+			zero := numeric.Wrap(decimal.Zero)
+			summary.Holdings[i].Holding.ValueKRW = &zero // non-nil ₩0, as production does
+		}
+	}
+	summary.USDKRWRate = nil
+	if _, err := checkBands(summary, groups); err == nil {
+		t.Fatal("want error for USD holding without USDKRWRate, got nil")
+	}
+}
+
+// TestBreachSignatureOrderIndependent: ListGroups has no ORDER BY, so SQLite
+// may return groups in a different order across runs. The signature must not
+// change when only the order changes — otherwise the dedup breaks and the
+// webhook re-alerts daily on an unchanged breach set.
+func TestBreachSignatureOrderIndependent(t *testing.T) {
+	a := models.GroupDiagnostic{RebalanceGroupName: "국내성장", IsUpperBreached: true}
+	b := models.GroupDiagnostic{RebalanceGroupName: "금", IsLowerBreached: true}
+	sig1 := breachSignature([]models.GroupDiagnostic{a, b})
+	sig2 := breachSignature([]models.GroupDiagnostic{b, a})
+	if sig1 != sig2 {
+		t.Fatalf("signature depends on diagnostic order: %q vs %q", sig1, sig2)
+	}
+}
