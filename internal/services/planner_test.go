@@ -23,6 +23,47 @@ func typedAcct(t string) models.Account {
 	return models.Account{ID: uuidx.New(), AccountType: &at}
 }
 
+// TestBandPctFor: 5/25 rule — a group's tolerance band is the smaller of 5%p
+// absolute and 25% of its target weight, so small-target groups get
+// proportionally tight bands instead of one loose fixed band.
+func TestBandPctFor(t *testing.T) {
+	cases := []struct{ target, want string }{
+		{"35", "5"},    // 25% of 35 = 8.75 → absolute cap 5 binds
+		{"25", "5"},    // 25% of 25 = 6.25 → absolute cap 5 binds
+		{"20", "5"},    // boundary: relative 5 == absolute cap 5
+		{"15", "3.75"}, // relative 25% binds
+		{"10", "2.5"},  // relative 25% binds
+		{"0", "0"},     // zero target → zero tolerance
+	}
+	for _, c := range cases {
+		target := decimal.RequireFromString(c.target)
+		want := decimal.RequireFromString(c.want)
+		if got := bandPctFor(target); !got.Equal(want) {
+			t.Errorf("bandPctFor(%s) = %s, want %s", c.target, got, want)
+		}
+	}
+}
+
+// TestBuildGroupAggregatesUses525Bands: 해외안정 (target 10%) at 12.3% breached the
+// old fixed ±2%p band but sits inside the 5/25 band (±2.5%p) — no trade.
+func TestBuildGroupAggregatesUses525Bands(t *testing.T) {
+	total := decimal.NewFromInt(1000)
+	current := map[string]decimal.Decimal{
+		"국내성장": decimal.NewFromInt(350),
+		"국내배당": decimal.NewFromInt(150),
+		"해외성장": decimal.NewFromInt(250),
+		"해외안정": decimal.NewFromInt(123), // 12.3% vs upper 12.5
+		"해외배당": decimal.NewFromInt(127),
+	}
+	agg := buildGroupAggregates(current, standardTargets(), total)
+	if agg["해외안정"].isUpperBreached {
+		t.Errorf("해외안정 at 12.3%% must be inside 5/25 band (upper 12.5%%), got breach")
+	}
+	if !agg["해외안정"].bandPct.Equal(decimal.RequireFromString("2.5")) {
+		t.Errorf("해외안정 bandPct = %s, want 2.5", agg["해외안정"].bandPct)
+	}
+}
+
 // TestComputeGroupNetActions: only aggregate band breaches produce trade needs —
 // over-band sells down to target, under-band buys up to target, in-band nothing.
 func TestComputeGroupNetActions(t *testing.T) {

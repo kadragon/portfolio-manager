@@ -25,12 +25,25 @@ var _groupOrder = []string{
 	"해외배당",
 }
 
-var _groupBands = map[string]decimal.Decimal{
-	"국내성장": decimal.NewFromInt(5),
-	"국내배당": decimal.NewFromInt(3),
-	"해외성장": decimal.NewFromInt(5),
-	"해외안정": decimal.NewFromInt(2),
-	"해외배당": decimal.NewFromInt(3),
+var _validGroups = func() map[string]bool {
+	m := make(map[string]bool, len(_groupOrder))
+	for _, g := range _groupOrder {
+		m[g] = true
+	}
+	return m
+}()
+
+var (
+	_bandAbsCapPct = decimal.NewFromInt(5)      // absolute cap: ±5%p
+	_bandRelRatio  = decimal.NewFromFloat(0.25) // relative: 25% of target
+)
+
+// bandPctFor returns a group's tolerance band via the 5/25 rule (Swedroe): the
+// smaller of 5%p absolute and 25% of the target weight. A fixed absolute band
+// is too tight for large-target groups (over-trading) and too loose for
+// small-target groups (unbounded relative drift); 5/25 scales with the target.
+func bandPctFor(targetPct decimal.Decimal) decimal.Decimal {
+	return decimal.Min(_bandAbsCapPct, targetPct.Mul(_bandRelRatio))
 }
 
 // BuildPlanParams bundles inputs for BuildPlan.
@@ -216,7 +229,7 @@ func toGroup(name string) (string, bool) {
 		}
 	}
 	norm := string(runes)
-	if _, ok := _groupBands[norm]; ok {
+	if _validGroups[norm] {
 		return norm, true
 	}
 	return "", false
@@ -282,7 +295,7 @@ func (s *RebalanceService) buildGroupDiagnostics(currentByGroup, targetByGroup m
 	diags := make([]models.GroupDiagnostic, 0, len(_groupOrder))
 	for _, name := range _groupOrder {
 		target := targetByGroup[name]
-		band := _groupBands[name]
+		band := bandPctFor(target)
 		currentVal := currentByGroup[name]
 		current := toPercent(currentVal, total)
 		lower := target.Sub(band)
@@ -402,7 +415,7 @@ func buildGroupAggregates(currentByGroup, targetByGroup map[string]decimal.Decim
 	for _, g := range _groupOrder {
 		currentVal := currentByGroup[g]
 		targetPct := targetByGroup[g]
-		band := _groupBands[g]
+		band := bandPctFor(targetPct)
 		currentPct := toPercent(currentVal, total)
 		targetVal := targetPct.Div(_percentBase).Mul(total)
 		agg[g] = groupAgg{
