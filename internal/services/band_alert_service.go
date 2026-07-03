@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -105,6 +107,12 @@ func (s *BandAlertService) notify(ctx context.Context, msg string) error {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.client.Do(req)
 	if err != nil {
+		// url.Error echoes the request URL, and webhook URLs carry secret
+		// tokens — strip it so the logged error stays secret-free.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			return fmt.Errorf("webhook request: %w", ue.Err)
+		}
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()

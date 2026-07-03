@@ -42,6 +42,25 @@ func TestBreachSignature(t *testing.T) {
 	}
 }
 
+// TestBandAlertErrorOmitsWebhookURL: webhook URLs carry secret tokens
+// (Slack/Discord); a failed request's error — which gets logged — must not
+// echo the URL back.
+func TestBandAlertErrorOmitsWebhookURL(t *testing.T) {
+	secretURL := "http://127.0.0.1:1/services/SECRET-TOKEN"
+	svc := &BandAlertService{
+		source:     &stubDiagSource{diags: []models.GroupDiagnostic{diag("국내성장", true, false)}},
+		webhookURL: secretURL,
+		client:     &http.Client{},
+	}
+	err := svc.CheckOnce(context.Background())
+	if err == nil {
+		t.Fatal("unreachable webhook must error")
+	}
+	if strings.Contains(err.Error(), "SECRET-TOKEN") {
+		t.Errorf("error leaks webhook URL: %v", err)
+	}
+}
+
 type stubDiagSource struct {
 	diags []models.GroupDiagnostic
 }
