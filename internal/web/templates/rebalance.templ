@@ -332,6 +332,53 @@ templ RebalanceResultPartial(result *models.RebalanceExecutionResult, message st
 	</div>
 }
 
+// DepositSuggestionPartial renders #deposit-suggestion-result (HTMX swap
+// target on the dashboard): the buy allocation for a simulated cash deposit.
+templ DepositSuggestionPartial(recs []models.RebalanceRecommendation, hasSells bool, errorMsg string) {
+	<div id="deposit-suggestion-result" class="mt-3 space-y-2" role="status" aria-live="polite">
+		if errorMsg != "" {
+			<div class="alert alert-error text-sm py-2">{ errorMsg }</div>
+		} else {
+			if hasSells {
+				<div class="alert alert-warning text-sm py-2">
+					일부 그룹이 밴드를 이탈해 매도가 필요합니다 — <a href="/rebalance" class="link">리밸런싱 화면</a>에서 전체 계획을 확인하세요.
+				</div>
+			}
+			if len(recs) == 0 {
+				<div class="alert alert-info text-sm py-2">
+					매수 제안이 없습니다 — 예치금이 1주 단가에 못 미치거나 이 계좌에서 매수 가능한 종목이 없습니다.
+				</div>
+			} else {
+				<div class="overflow-x-auto">
+					<table class="table table-sm">
+						<thead>
+							<tr>
+								<th class="text-xs uppercase tracking-wider">리밸런싱 그룹</th>
+								<th class="text-xs uppercase tracking-wider">티커</th>
+								<th class="text-xs uppercase tracking-wider">종목명</th>
+								<th class="text-right font-mono text-xs uppercase tracking-wider">수량</th>
+								<th class="text-right font-mono text-xs uppercase tracking-wider">금액(KRW)</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, rec := range recs {
+								<tr>
+									<td>{ rec.RebalanceGroupName }</td>
+									<td><code class="text-xs bg-base-300 px-1.5 py-0.5 rounded">{ rec.Ticker }</code></td>
+									<td>{ stockName(rec.StockName, rec.Ticker) }</td>
+									<td class="text-right font-mono">{ formatRebalanceQty(rec) }</td>
+									<td class="text-right font-mono font-semibold text-success">{ accountformat.FormatKRW(rec.AmountKRW) }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+				<p class="text-xs text-base-content/60">시뮬레이션 결과입니다. 실제 주문은 <a href="/rebalance" class="link">리밸런싱 화면</a>에서 실행하세요.</p>
+			}
+		}
+	</div>
+}
+
 // RebalanceAccountExecuteDoneOOB out-of-band swaps the per-account execute
 // button (identified by accountID, echoed verbatim from the request's
 // account_id field) so it can't be double-clicked into resubmitting the same

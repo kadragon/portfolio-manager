@@ -178,6 +178,35 @@ func (s *RebalanceService) CheckBands(summary models.PortfolioSummary, groups []
 	return s.buildGroupDiagnostics(currentByGroup, targetByGroup, total), nil
 }
 
+// BuildDepositPlan simulates depositing depositKRW of cash into accountID and
+// builds the resulting plan — its buy recommendations are the deposit
+// allocation suggestion (cash-flow rebalancing: new money flows to
+// under-target groups without selling). Caller inputs are not mutated.
+func (s *RebalanceService) BuildDepositPlan(p BuildPlanParams, accountID uuidx.UUID, depositKRW decimal.Decimal) (models.RebalancePlan, error) {
+	if !depositKRW.IsPositive() {
+		return models.RebalancePlan{}, fmt.Errorf("예치금은 0보다 커야 합니다")
+	}
+	accounts := make([]models.Account, len(p.Accounts))
+	copy(accounts, p.Accounts)
+	found := false
+	for i := range accounts {
+		if accounts[i].ID == accountID {
+			accounts[i].CashBalance = numeric.Wrap(accounts[i].CashBalance.Decimal.Add(depositKRW))
+			found = true
+		}
+	}
+	if !found {
+		return models.RebalancePlan{}, fmt.Errorf("예치 계좌를 찾을 수 없습니다")
+	}
+	p.Accounts = accounts
+	total := p.Summary.TotalAssets.Decimal
+	if p.Summary.TotalAssets.IsZero() {
+		total = p.Summary.TotalValue.Decimal
+	}
+	p.Summary.TotalAssets = numeric.Wrap(total.Add(depositKRW))
+	return s.BuildPlan(p)
+}
+
 // --- internal types ---
 
 type tickerSnapshot struct {
