@@ -87,3 +87,10 @@ make go-check              # build + vet + lint + test 일괄
 
 읽기 영향 모델: Stock, Group, Account, Holding, Deposit, StockPrice (6개).
 `OrderExecution`은 예외 (KST 도입 이후 생성). 타임스탬프는 `ktime.Now()`로 설정.
+
+### Pre-commit `go test` build failure on partial commits
+
+Pre-commit stashes **unstaged tracked** changes but leaves **untracked** files
+in place. An untracked test file referencing unstaged implementation code makes
+`go test ./...` fail at build time during commit. Fix: stage the implementation
+together with its test, or move the untracked test file aside for that commit.
