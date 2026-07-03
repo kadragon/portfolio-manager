@@ -1,6 +1,6 @@
 ---
 name: rebalance-plan
-description: Produce a quarterly (Feb/May/Aug/Nov) portfolio rebalancing trade-instruction document from the portfolio-manager DB, applying the user's allocation targets and Korean tax placement rules from .data/rebalance-policy.md. Use whenever the user asks for a rebalancing plan, trade instructions, portfolio drift check, or says "리밸런싱", "리밸런스 계획", "지시서", "포트폴리오 점검", "분기 리밸런싱", or mentions rebalancing in February, May, August, or November — even without naming the skill. Also use for off-cycle checks like "지금 비중 얼마나 틀어졌어?".
+description: Produce a quarterly (Feb/May/Aug/Nov) portfolio rebalancing trade-instruction document from the portfolio-manager DB, applying the user's allocation targets and Korean tax placement rules from .data/rebalance-policy.md. Use whenever the user asks for a rebalancing plan, trade instructions, portfolio drift check, or says "리밸런싱", "리밸런스 계획", "지시서", "포트폴리오 점검", "분기 리밸런싱", or mentions rebalancing in February, May, August, or November — even without naming the skill. Also use for off-cycle checks like "지금 비중 얼마나 틀어졌어?" and for deposit allocation — when the user says new money arrived or asks what to buy with a deposit ("예치금 들어왔어", "500만원 입금했는데 뭐 살까", "이번 달 적립금 배분").
 ---
 
 # Rebalance Plan
@@ -82,6 +82,26 @@ Path: `.data/rebalance-plan-YYYY-MM.md` (run month). Korean, user-facing. Struct
 ```
 
 End by telling the user: document path, order count, total taxable events, and the single largest trade.
+
+## Deposit mode (new-money allocation)
+
+When the user reports a deposit (amount + account) instead of asking for a full rebalance,
+plan **buys only — never sells**. New money is the cheapest rebalancing there is: it fixes
+underweights without tax events, which is why the policy prefers it over selling.
+
+1. Same inputs as step 1 (policy, FX, snapshot). Ask for the account if not given —
+   placement rules differ per account (e.g. cash landing in 연금저축 may only buy 금·채권).
+2. Recompute group weights against `total + deposit`. Allocate the deposit to below-target
+   groups in proportion to their shortfall (%p × total value), filling toward target.
+   The trading band does NOT gate deposit allocation — new money always deploys, even at
+   0.3%p drift; the band only exists to stop tax-costly sells.
+3. Only groups purchasable in the deposited account (policy placement rules) are eligible.
+   If the account's eligible groups are all at/above target, say so and suggest which
+   account the money should have gone to.
+4. Round to whole shares; leftover stays as cash and is carried in the report.
+5. Verify: `sum(buys) ≤ deposit + account's existing cash`. Output can be an inline table
+   (no document file) unless the user asks for one — deposits recur monthly and a file per
+   deposit is clutter.
 
 ## Failure modes to avoid
 
