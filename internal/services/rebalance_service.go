@@ -152,6 +152,32 @@ func (s *RebalanceService) BuildPlan(p BuildPlanParams) (models.RebalancePlan, e
 	}, nil
 }
 
+// CheckBands computes group band-state diagnostics from a summary + groups
+// alone — no accounts or per-account holdings needed. Used by the band-alert
+// scheduler to detect breaches without building a full plan.
+func (s *RebalanceService) CheckBands(summary models.PortfolioSummary, groups []models.Group) ([]models.GroupDiagnostic, error) {
+	total := summary.TotalAssets.Decimal
+	if summary.TotalAssets.IsZero() {
+		total = summary.TotalValue.Decimal
+	}
+	if !total.IsPositive() {
+		return []models.GroupDiagnostic{}, nil
+	}
+	targetByGroup := s.buildTargetByGroup(groups)
+	currentByGroup := map[string]decimal.Decimal{}
+	for _, name := range _groupOrder {
+		currentByGroup[name] = decimal.Zero
+	}
+	snaps, err := s.buildTickerSnapshots(summary)
+	if err != nil {
+		return nil, err
+	}
+	for _, snap := range snaps {
+		currentByGroup[snap.rebalanceGroup] = currentByGroup[snap.rebalanceGroup].Add(snap.totalValueKRW)
+	}
+	return s.buildGroupDiagnostics(currentByGroup, targetByGroup, total), nil
+}
+
 // --- internal types ---
 
 type tickerSnapshot struct {

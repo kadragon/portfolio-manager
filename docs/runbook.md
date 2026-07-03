@@ -17,6 +17,8 @@ go run ./cmd/portfolio-web # 웹만 (http://127.0.0.1:8000)
 make css-watch             # CSS만
 ```
 
+Optional env: `BAND_ALERT_WEBHOOK_URL` — when set, a daily background check posts a webhook (Slack `text` / Discord `content` JSON) whenever the rebalance band breach set changes.
+
 ## 코드 생성
 
 ```bash

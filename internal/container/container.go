@@ -44,6 +44,7 @@ type Container struct {
 	AccountSyncByKeyID  map[int64]*services.KisAccountSyncService // keyed by kis_api_key_id
 	TossAccountSync     *services.KisAccountSyncService           // nil if Toss not configured
 	PriceSync           *services.PriceSyncService                // nil if KIS not configured
+	BandAlert           *services.BandAlertService                // nil unless BAND_ALERT_WEBHOOK_URL is set
 	StockClassification *services.StockClassificationService      // backfills asset_class via KIS; Enabled()==false if KIS absent
 	KisCano             string
 	KisAcntPrdtCd       string
@@ -150,6 +151,11 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		priceSync = services.NewPriceSyncService(priceClient, stockPrices, stocks, deposits)
 	}
 
+	var bandAlert *services.BandAlertService
+	if url := strings.TrimSpace(os.Getenv("BAND_ALERT_WEBHOOK_URL")); setupKIS && url != "" {
+		bandAlert = services.NewBandAlertService(portfolio, groups, rebalance, url)
+	}
+
 	execRepo := &execRepoAdapter{r: orderExecutions}
 	rebalanceExecution := services.NewRebalanceExecutionService(orderClient, execRepo, rebalanceSync)
 	stockClassification := services.NewStockClassificationService(stocks, assetClassifier)
@@ -172,6 +178,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		AccountSyncByKeyID:  accountSyncByKeyID,
 		TossAccountSync:     tossAccountSync,
 		PriceSync:           priceSync,
+		BandAlert:           bandAlert,
 		StockClassification: stockClassification,
 		KisCano:             kisCano,
 		KisAcntPrdtCd:       kisAcntPrdtCd,
