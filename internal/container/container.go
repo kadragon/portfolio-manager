@@ -153,7 +153,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 
 	var bandAlert *services.BandAlertService
 	if url := strings.TrimSpace(os.Getenv("BAND_ALERT_WEBHOOK_URL")); setupKIS && url != "" {
-		bandAlert = services.NewBandAlertService(portfolio, groups, rebalance, url)
+		bandAlert = services.NewBandAlertService(portfolio, groups, url)
 	}
 
 	execRepo := &execRepoAdapter{r: orderExecutions}

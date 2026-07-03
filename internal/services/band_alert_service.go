@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/repositories"
+	"github.com/shopspring/decimal"
 )
 
 const bandAlertInterval = 24 * time.Hour
@@ -43,11 +45,10 @@ type BandAlertService struct {
 func NewBandAlertService(
 	portfolio *PortfolioService,
 	groups *repositories.GroupRepository,
-	rebalance *RebalanceService,
 	webhookURL string,
 ) *BandAlertService {
 	return &BandAlertService{
-		source:     &portfolioBandSource{portfolio: portfolio, groups: groups, rebalance: rebalance},
+		source:     &portfolioBandSource{portfolio: portfolio, groups: groups},
 		webhookURL: webhookURL,
 		client:     &http.Client{Timeout: 10 * time.Second},
 	}
@@ -155,11 +156,10 @@ func breachMessage(diags []models.GroupDiagnostic) string {
 	return b.String()
 }
 
-// portfolioBandSource assembles CheckBands inputs from live services.
+// portfolioBandSource assembles checkBands inputs from live services.
 type portfolioBandSource struct {
 	portfolio *PortfolioService
 	groups    *repositories.GroupRepository
-	rebalance *RebalanceService
 }
 
 func (p *portfolioBandSource) diagnostics(ctx context.Context) ([]models.GroupDiagnostic, error) {
@@ -171,5 +171,52 @@ func (p *portfolioBandSource) diagnostics(ctx context.Context) ([]models.GroupDi
 	if err != nil {
 		return nil, err
 	}
-	return p.rebalance.CheckBands(*summary, groups)
+	return checkBands(*summary, groups)
+}
+
+var (
+	_bandAbsCap  = decimal.NewFromInt(5)      // absolute cap: ±5%p
+	_bandRel     = decimal.NewFromFloat(0.25) // relative: 25% of target
+	_percentFull = decimal.NewFromInt(100)
+)
+
+// checkBands computes per-group band diagnostics from the summary's priced
+// holdings via the 5/25 rule (Swedroe): band = min(5%p absolute, 25% of the
+// target weight). Groups come from the DB list — nothing hardcoded — so the
+// alert keeps working as the user's group set evolves.
+func checkBands(summary models.PortfolioSummary, groups []models.Group) ([]models.GroupDiagnostic, error) {
+	total := summary.TotalAssets.Decimal
+	if summary.TotalAssets.IsZero() {
+		total = summary.TotalValue.Decimal
+	}
+	if !total.IsPositive() {
+		return []models.GroupDiagnostic{}, nil
+	}
+	valueByGroup := map[string]decimal.Decimal{}
+	for _, pair := range summary.Holdings {
+		if pair.Holding.ValueKRW == nil {
+			return nil, fmt.Errorf("%s: KRW value unavailable (missing exchange rate)", pair.Holding.Stock.Ticker)
+		}
+		valueByGroup[pair.Group.Name] = valueByGroup[pair.Group.Name].Add(pair.Holding.ValueKRW.Decimal)
+	}
+	diags := make([]models.GroupDiagnostic, 0, len(groups))
+	for _, g := range groups {
+		target := decimal.NewFromFloat(g.TargetPercentage)
+		band := decimal.Min(_bandAbsCap, target.Mul(_bandRel))
+		value := valueByGroup[g.Name]
+		current := value.Div(total).Mul(_percentFull)
+		lower, upper := target.Sub(band), target.Add(band)
+		diags = append(diags, models.GroupDiagnostic{
+			RebalanceGroupName: g.Name,
+			TargetPct:          numeric.Wrap(target),
+			BandPct:            numeric.Wrap(band),
+			LowerPct:           numeric.Wrap(lower),
+			UpperPct:           numeric.Wrap(upper),
+			CurrentPct:         numeric.Wrap(current),
+			CurrentValueKRW:    numeric.Wrap(value),
+			IsUpperBreached:    current.GreaterThan(upper),
+			IsLowerBreached:    current.LessThan(lower),
+		})
+	}
+	return diags, nil
 }
