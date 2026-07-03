@@ -28,7 +28,8 @@ type bandDiagSource interface {
 // BandAlertService periodically checks rebalance-band state and posts a webhook
 // notification when the breach set changes. Monitoring is what makes
 // threshold-based rebalancing work ("look often, trade rarely") — the user no
-// longer needs to remember to open the rebalance page.
+// longer needs to remember to run the quarterly check — the alert tells them
+// when to invoke the rebalance-plan skill off-cycle.
 type BandAlertService struct {
 	source     bandDiagSource
 	webhookURL string
@@ -152,7 +153,7 @@ func breachMessage(diags []models.GroupDiagnostic) string {
 		fmt.Fprintf(&b, "\n- %s: 현재 %.2f%% / 목표 %.2f%% (밴드 ±%.2f%%) — %s 이탈",
 			d.RebalanceGroupName, floatOf(d.CurrentPct.Decimal), floatOf(d.TargetPct.Decimal), floatOf(d.BandPct.Decimal), dir)
 	}
-	b.WriteString("\n/rebalance 에서 계획을 확인하세요.")
+	b.WriteString("\nClaude Code에서 '리밸런싱 계획'을 실행해 지시서를 생성하세요.")
 	return b.String()
 }
 
@@ -219,4 +220,10 @@ func checkBands(summary models.PortfolioSummary, groups []models.Group) ([]model
 		})
 	}
 	return diags, nil
+}
+
+// floatOf renders a decimal for display; precision loss is fine for messages.
+func floatOf(d decimal.Decimal) float64 {
+	f, _ := d.Float64()
+	return f
 }

@@ -180,7 +180,6 @@ var navItems = []navItem{
 	{"/groups", "groups", "그룹"},
 	{"/accounts", "accounts", "계좌"},
 	{"/deposits", "deposits", "입금"},
-	{"/rebalance", "rebalance", "리밸런싱"},
 }
 
 // navClass returns the nav link class string (base.html), active or not.

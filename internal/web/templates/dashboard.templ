@@ -9,9 +9,8 @@ import (
 // DashboardPage renders the dashboard (/).
 // summary: full price summary (nil when price service unavailable)
 // groupHoldings: fallback quantity-only data (non-nil when no price service)
-// accounts: deposit-suggestion form targets (empty hides the form)
 // errorMsg: optional error string
-templ DashboardPage(summary *models.PortfolioSummary, groupHoldings []models.GroupHoldings, accounts []models.Account, errorMsg string) {
+templ DashboardPage(summary *models.PortfolioSummary, groupHoldings []models.GroupHoldings, errorMsg string) {
 	@Base("대시보드 — 포트폴리오 매니저", "dashboard") {
 		<h1 class="text-lg font-semibold text-base-content mb-3">대시보드</h1>
 		<p id="dashboard-rate-periods" class="sr-only">1Y는 1년, 6M은 6개월, 1M은 1개월 수익률을 의미합니다.</p>
@@ -22,48 +21,12 @@ templ DashboardPage(summary *models.PortfolioSummary, groupHoldings []models.Gro
 		}
 		if summary != nil {
 			@dashboardSummary(summary)
-			if len(accounts) > 0 {
-				@depositSuggestionForm(accounts)
-			}
 		} else if len(groupHoldings) > 0 {
 			@dashboardFallback(groupHoldings)
 		} else {
 			@dashboardEmpty()
 		}
 	}
-}
-
-// depositSuggestionForm asks "where should this month's deposit go?" — it
-// posts to /rebalance/deposit-suggestion, which simulates the deposit and
-// swaps the buy allocation into #deposit-suggestion-result.
-templ depositSuggestionForm(accounts []models.Account) {
-	<section class="card bg-base-100 border border-base-300 mb-4" role="region" aria-label="예치금 배분 제안">
-		<div class="card-body p-4 sm:p-6">
-			<h2 class="text-sm font-semibold">이번 달 예치금 배분 제안</h2>
-			<p class="text-xs text-base-content/60 mb-2">입금할 계좌와 금액을 고르면 목표 비중이 부족한 그룹부터 채우는 매수안을 계산합니다 (매도 없음).</p>
-			<form
-				hx-post="/rebalance/deposit-suggestion"
-				hx-target="#deposit-suggestion-result"
-				hx-swap="outerHTML"
-				class="flex flex-wrap items-end gap-2"
-			>
-				<label class="form-control">
-					<span class="label-text text-xs">입금 계좌</span>
-					<select name="account_id" class="select select-bordered select-sm">
-						for _, a := range accounts {
-							<option value={ a.ID.String() }>{ a.Name }</option>
-						}
-					</select>
-				</label>
-				<label class="form-control">
-					<span class="label-text text-xs">예치금 (KRW)</span>
-					<input type="number" name="amount" value="1200000" min="1" step="1" class="input input-bordered input-sm w-36"/>
-				</label>
-				<button type="submit" class="btn btn-primary btn-sm">배분 제안 보기</button>
-			</form>
-			<div id="deposit-suggestion-result"></div>
-		</div>
-	</section>
 }
 
 templ dashboardSummary(summary *models.PortfolioSummary) {
