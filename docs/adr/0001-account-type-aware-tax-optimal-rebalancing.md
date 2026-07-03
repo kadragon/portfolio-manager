@@ -190,6 +190,34 @@ Change: `computeGroupNetActions` in `internal/services/rebalance_service.go` —
 Tests: `TestBuildPlanReinvestsSellProceedsIntoBelowTargetGroups`,
 `TestBuildPlanDeploysPreexistingIdleCash` (new, were RED before fix).
 
+## Revision (2026-07-03): 5/25 bands, half-band sell destination, monitoring over calendar
+
+Policy upgrade grounded in threshold-rebalancing research (Vanguard 2024
+"The Rebalancing Edge"; Daryanani 2007 "Opportunistic Rebalancing"; Swedroe
+5/25 rule). Three changes:
+
+1. **Bands are now relative-aware (5/25 rule).** Fixed per-group bands
+   (±5/3/5/2/3%p) ignored target size — a ±5%p band on a small-target group
+   allows huge relative drift while a tight absolute band on a large-target
+   group over-trades. Band = `min(5%p, 25% of target)` (`bandPctFor`).
+2. **Over-band groups sell to target + band/2, not to target.** Full
+   reversion maximizes turnover and realized tax per breach for no
+   risk-control benefit (Daryanani's 50% tolerance band). Buys are unchanged:
+   below-target groups still fill to target.
+3. **Monitoring is automated; the calendar cadence is retired.** Threshold
+   rebalancing works by "look often, trade rarely" — a quarterly manual visit
+   starves the band mechanism. `BandAlertService` checks daily and posts a
+   webhook (`BAND_ALERT_WEBHOOK_URL`) when the breach set changes; the
+   dashboard's deposit-suggestion form (`BuildDepositPlan`) routes monthly
+   contributions to under-target groups (cash-flow rebalancing, zero sells).
+
+Operating policy: monthly deposit → dashboard suggestion → buy; sells only on
+webhook-alerted band breach; annual review of targets themselves.
+
+Tests: `TestBandPctFor`, `TestBuildGroupAggregatesUses525Bands`,
+`TestComputeGroupNetActions` (sell 75 not 100), `TestBuildDepositPlan*`,
+`TestBandAlert*`, `TestCheckBands*`.
+
 ## References
 - Phase 1 + 2 implementation: `internal/db/db.go`, `internal/db/schema.sql`,
   `internal/services/rebalance_service.go` (`canHold`, `_placementScore`;
