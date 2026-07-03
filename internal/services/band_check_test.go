@@ -160,3 +160,13 @@ func TestBreachSignatureOrderIndependent(t *testing.T) {
 		t.Fatalf("signature depends on diagnostic order: %q vs %q", sig1, sig2)
 	}
 }
+
+// TestSetDefaultGroupName: newly discovered stocks land in the configured
+// group; the setter must override the default.
+func TestSetDefaultGroupName(t *testing.T) {
+	svc := NewKisAccountSyncService(nil, nil, nil, nil, nil, "")
+	svc.SetDefaultGroupName("Toss 자동동기화")
+	if svc.defaultGroupName != "Toss 자동동기화" {
+		t.Errorf("defaultGroupName = %q", svc.defaultGroupName)
+	}
+}

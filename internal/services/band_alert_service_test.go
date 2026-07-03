@@ -8,9 +8,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/kadragon/portfolio-manager/internal/db"
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
+	"github.com/kadragon/portfolio-manager/internal/repositories"
 	"github.com/shopspring/decimal"
 )
 
@@ -63,9 +66,11 @@ func TestBandAlertErrorOmitsWebhookURL(t *testing.T) {
 
 type stubDiagSource struct {
 	diags []models.GroupDiagnostic
+	calls int
 }
 
 func (s *stubDiagSource) diagnostics(ctx context.Context) ([]models.GroupDiagnostic, error) {
+	s.calls++
 	return s.diags, nil
 }
 
@@ -124,5 +129,69 @@ func TestBandAlertNotifiesOnceUntilBreachSetChanges(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Errorf("new breach after clear must notify, calls = %d", calls)
+	}
+}
+
+// TestNewBandAlertServiceWiresProductionSource: constructor must produce a
+// ready-to-run service (source + HTTP client set) from repositories alone.
+func TestNewBandAlertServiceWiresProductionSource(t *testing.T) {
+	svc := NewBandAlertService(nil, nil, "http://example.invalid/hook")
+	if svc.source == nil {
+		t.Fatal("source not wired")
+	}
+	if svc.client == nil || svc.webhookURL == "" {
+		t.Fatal("client/webhookURL not wired")
+	}
+}
+
+// TestStartChecksOnceAndStopsOnCancel: Start performs an immediate check and
+// exits promptly when the context is cancelled — the daily ticker must not
+// keep the goroutine alive past shutdown.
+func TestStartChecksOnceAndStopsOnCancel(t *testing.T) {
+	source := &stubDiagSource{diags: nil}
+	svc := &BandAlertService{source: source, client: http.DefaultClient}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan struct{})
+	go func() {
+		svc.Start(ctx)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after context cancel")
+	}
+	if source.calls == 0 {
+		t.Fatal("Start must run an immediate check before waiting on the ticker")
+	}
+}
+
+// TestPortfolioBandSourceDiagnostics: the production source composes
+// PortfolioService + GroupRepository; on an empty portfolio it must yield no
+// diagnostics and no error.
+func TestPortfolioBandSourceDiagnostics(t *testing.T) {
+	sqlDB, q, err := db.OpenMemory()
+	if err != nil {
+		t.Fatalf("open memory: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	groups := repositories.NewGroupRepository(q)
+	stocks := repositories.NewStockRepository(q)
+	holdings := repositories.NewHoldingRepository(q, sqlDB)
+	accounts := repositories.NewAccountRepository(q)
+	deposits := repositories.NewDepositRepository(q)
+	prices := NewPriceService(repositories.NewStockPriceRepository(q))
+	portfolio := NewPortfolioService(groups, stocks, holdings, accounts, deposits, prices, nil)
+	if _, err := groups.Create(context.Background(), "금", 10); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	src := &portfolioBandSource{portfolio: portfolio, groups: groups}
+	diags, err := src.diagnostics(context.Background())
+	if err != nil {
+		t.Fatalf("diagnostics: %v", err)
+	}
+	if len(diags) != 0 {
+		t.Fatalf("empty portfolio (total 0) must yield no diagnostics, got %d", len(diags))
 	}
 }
