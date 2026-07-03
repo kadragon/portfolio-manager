@@ -34,6 +34,9 @@ func main() {
 	if c.PriceSync != nil {
 		go c.PriceSync.Start(syncCtx)
 	}
+	if c.BandAlert != nil {
+		go c.BandAlert.Start(syncCtx)
+	}
 
 	go func() {
 		if err := e.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -66,7 +69,6 @@ func newServer(c *container.Container) *echo.Echo {
 	handlers.NewAccountHandler(c).Register(e)
 	handlers.NewHoldingHandler(c).Register(e)
 	handlers.NewDepositHandler(c).Register(e)
-	handlers.NewRebalanceHandler(c).Register(e)
 
 	return e
 }

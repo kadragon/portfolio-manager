@@ -116,3 +116,39 @@ func TestStockPriceUpsertPreservesName(t *testing.T) {
 		t.Errorf("price not updated: %v", updated.Price)
 	}
 }
+
+func TestStockPriceGetOnOrBeforeDate(t *testing.T) {
+	r := newStockPriceRepo(t)
+	ctx := context.Background()
+
+	d1, _ := datex.ParseDate("2026-01-10")
+	d2, _ := datex.ParseDate("2026-01-20")
+	p1, _ := numeric.FromString("100")
+	p2, _ := numeric.FromString("110")
+	if _, err := r.Save(ctx, "005930", d1, p1, "KRW", "삼성전자", sql.NullString{}); err != nil {
+		t.Fatalf("save d1: %v", err)
+	}
+	if _, err := r.Save(ctx, "005930", d2, p2, "KRW", "삼성전자", sql.NullString{}); err != nil {
+		t.Fatalf("save d2: %v", err)
+	}
+
+	// A date between the two rows must resolve to the earlier one.
+	mid, _ := datex.ParseDate("2026-01-15")
+	got, err := r.GetOnOrBeforeDate(ctx, "005930", mid)
+	if err != nil || got == nil {
+		t.Fatalf("get on-or-before: got=%v err=%v", got, err)
+	}
+	if got.PriceDate.Format("2006-01-02") != "2026-01-10" {
+		t.Errorf("price date = %v, want 2026-01-10", got.PriceDate)
+	}
+
+	// A date before all rows must return nil, not an error.
+	early, _ := datex.ParseDate("2026-01-01")
+	got, err = r.GetOnOrBeforeDate(ctx, "005930", early)
+	if err != nil {
+		t.Fatalf("early: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil before first price, got %+v", got)
+	}
+}

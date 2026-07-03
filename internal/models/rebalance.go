@@ -6,34 +6,9 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
-// RebalanceAction is "buy" or "sell".
-type RebalanceAction string
-
-const (
-	ActionBuy  RebalanceAction = "buy"
-	ActionSell RebalanceAction = "sell"
-)
-
-// RebalanceRecommendation is one sell or buy directive produced by RebalanceService.
-type RebalanceRecommendation struct {
-	Ticker             string
-	Action             RebalanceAction
-	Amount             numeric.Decimal
-	Priority           int
-	Currency           string
-	Quantity           *numeric.Decimal // nil when uncomputable
-	StockName          string
-	GroupName          string
-	AccountID          uuidx.UUID
-	AccountName        string
-	RebalanceGroupName string
-	Reason             string
-	TriggerType        string
-	AmountKRW          numeric.Decimal
-	AmountLocal        numeric.Decimal
-}
-
 // GroupDiagnostic holds current/target/band status for one rebalance group.
+// Produced by the band-alert service; plan generation itself lives in the
+// rebalance-plan agent skill, not in the app.
 type GroupDiagnostic struct {
 	RebalanceGroupName string
 	TargetPct          numeric.Decimal
@@ -44,40 +19,6 @@ type GroupDiagnostic struct {
 	CurrentValueKRW    numeric.Decimal
 	IsUpperBreached    bool
 	IsLowerBreached    bool
-}
-
-// RegionDiagnostic holds KR/US region split status.
-type RegionDiagnostic struct {
-	TargetKRPct  numeric.Decimal
-	TargetUSPct  numeric.Decimal
-	CurrentKRPct numeric.Decimal
-	CurrentUSPct numeric.Decimal
-	LowerKRPct   numeric.Decimal
-	UpperKRPct   numeric.Decimal
-	IsTriggered  bool
-}
-
-// AccountRebalanceSummary collects per-account cash flow and recommendation lists.
-type AccountRebalanceSummary struct {
-	AccountID       uuidx.UUID
-	AccountName     string
-	StartingCashKRW numeric.Decimal
-	SellCashKRW     numeric.Decimal
-	TotalBuyKRW     numeric.Decimal
-	UnusedCashKRW   numeric.Decimal
-	UnmetGroups     []string
-	SellRecs        []RebalanceRecommendation
-	BuyRecs         []RebalanceRecommendation
-}
-
-// RebalancePlan is the complete output of RebalanceService.BuildPlan.
-type RebalancePlan struct {
-	SellRecs         []RebalanceRecommendation
-	BuyRecs          []RebalanceRecommendation
-	GroupDiagnostics []GroupDiagnostic
-	RegionDiagnostic RegionDiagnostic
-	TotalAssetsKRW   numeric.Decimal
-	AccountSummaries []AccountRebalanceSummary
 }
 
 // OrderIntent is a standardized order request before sending to KIS.
@@ -91,23 +32,6 @@ type OrderIntent struct {
 	AccountID   uuidx.UUID
 	AccountName string
 	Amount      numeric.Decimal
-}
-
-// OrderExecutionResult is the result of executing one order.
-type OrderExecutionResult struct {
-	Intent      OrderIntent
-	Status      string // "success", "failed", "skipped", "deferred"
-	Message     string
-	RawResponse map[string]any
-}
-
-// RebalanceExecutionResult is the full result of executing rebalance orders.
-type RebalanceExecutionResult struct {
-	Intents     []OrderIntent
-	Skipped     []OrderIntent
-	Deferred    []OrderIntent
-	Executions  []OrderExecutionResult
-	SyncWarning string
 }
 
 // OrderExecutionRecord is the persisted form of a KIS order execution.

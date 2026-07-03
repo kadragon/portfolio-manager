@@ -5,7 +5,6 @@
 package container
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -14,12 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/kadragon/portfolio-manager/internal/db"
 	"github.com/kadragon/portfolio-manager/internal/db/sqlc"
 	"github.com/kadragon/portfolio-manager/internal/kis"
-	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/repositories"
 	"github.com/kadragon/portfolio-manager/internal/services"
@@ -35,15 +31,12 @@ type Container struct {
 	Holdings            *repositories.HoldingRepository
 	Deposits            *repositories.DepositRepository
 	StockPrices         *repositories.StockPriceRepository
-	OrderExecutions     *repositories.OrderExecutionRepository
 	Portfolio           *services.PortfolioService
-	Rebalance           *services.RebalanceService
-	RebalanceExecution  *services.RebalanceExecutionService
-	OrderClient         services.OrderClient                      // nil if no brokerage order client is configured
 	AccountSync         *services.KisAccountSyncService           // nil if KIS not configured; key-1 service
 	AccountSyncByKeyID  map[int64]*services.KisAccountSyncService // keyed by kis_api_key_id
 	TossAccountSync     *services.KisAccountSyncService           // nil if Toss not configured
 	PriceSync           *services.PriceSyncService                // nil if KIS not configured
+	BandAlert           *services.BandAlertService                // nil unless BAND_ALERT_WEBHOOK_URL is set
 	StockClassification *services.StockClassificationService      // backfills asset_class via KIS; Enabled()==false if KIS absent
 	KisCano             string
 	KisAcntPrdtCd       string
@@ -72,17 +65,13 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	holdings := repositories.NewHoldingRepository(q, sqlDB)
 	deposits := repositories.NewDepositRepository(q)
 	stockPrices := repositories.NewStockPriceRepository(q)
-	orderExecutions := repositories.NewOrderExecutionRepository(q)
 
 	var priceClient services.PriceClient
 	var exchangeRate *services.ExchangeRateService
-	var orderClient services.OrderClient
-	var kisOrderClient *kis.UnifiedOrderClient
 	var tossClient *toss.Client
 	var accountSync *services.KisAccountSyncService
 	accountSyncByKeyID := map[int64]*services.KisAccountSyncService{}
 	var tossAccountSync *services.KisAccountSyncService
-	var rebalanceSync services.SyncService
 	var assetClassifier services.AssetClassifier
 	kisCano := ""
 	kisAcntPrdtCd := ""
@@ -91,7 +80,6 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		kisAuth := buildKISAuth()
 		priceClient = buildKISClient(kisAuth)
 		exchangeRate = buildExchangeRate()
-		kisOrderClient = buildOrderClient(kisAuth)
 		assetClassifier = buildAssetClassifier(kisAuth)
 
 		kisCano, kisAcntPrdtCd = loadKISAccount()
@@ -112,16 +100,6 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 				}
 			}
 		}
-
-		if accountSync != nil || len(accountSyncByKeyID) > 0 {
-			rebalanceSync = &rebalanceSyncAdapter{
-				accounts:    accounts,
-				sync:        accountSync,
-				syncByKeyID: accountSyncByKeyID,
-				cano:        kisCano,
-				acntPrdtCd:  kisAcntPrdtCd,
-			}
-		}
 	}
 
 	if setupKIS {
@@ -132,26 +110,20 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		}
 	}
 
-	if kisOrderClient != nil || tossClient != nil {
-		orderClient = &accountOrderRouter{
-			accounts: accounts,
-			kis:      kisOrderClient,
-			toss:     tossClient,
-		}
-	}
-
 	priceService := services.NewPriceService(stockPrices)
 	_ = services.NewStockService(stocks, priceService)
 	portfolio := services.NewPortfolioService(groups, stocks, holdings, accounts, deposits, priceService, exchangeRate)
-	rebalance := services.NewRebalanceService()
 
 	var priceSync *services.PriceSyncService
 	if priceClient != nil {
 		priceSync = services.NewPriceSyncService(priceClient, stockPrices, stocks, deposits)
 	}
 
-	execRepo := &execRepoAdapter{r: orderExecutions}
-	rebalanceExecution := services.NewRebalanceExecutionService(orderClient, execRepo, rebalanceSync)
+	var bandAlert *services.BandAlertService
+	if url := strings.TrimSpace(os.Getenv("BAND_ALERT_WEBHOOK_URL")); setupKIS && url != "" {
+		bandAlert = services.NewBandAlertService(portfolio, groups, url)
+	}
+
 	stockClassification := services.NewStockClassificationService(stocks, assetClassifier)
 	stockClassification.SetCallDelay(200 * time.Millisecond)
 
@@ -163,15 +135,12 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		Holdings:            holdings,
 		Deposits:            deposits,
 		StockPrices:         stockPrices,
-		OrderExecutions:     orderExecutions,
 		Portfolio:           portfolio,
-		Rebalance:           rebalance,
-		RebalanceExecution:  rebalanceExecution,
-		OrderClient:         orderClient,
 		AccountSync:         accountSync,
 		AccountSyncByKeyID:  accountSyncByKeyID,
 		TossAccountSync:     tossAccountSync,
 		PriceSync:           priceSync,
+		BandAlert:           bandAlert,
 		StockClassification: stockClassification,
 		KisCano:             kisCano,
 		KisAcntPrdtCd:       kisAcntPrdtCd,
@@ -184,96 +153,6 @@ func (c *Container) Close() error {
 		return c.DB.Close()
 	}
 	return nil
-}
-
-// execRepoAdapter wraps OrderExecutionRepository to satisfy services.ExecutionRepo.
-type execRepoAdapter struct {
-	r *repositories.OrderExecutionRepository
-}
-
-func (a *execRepoAdapter) Create(
-	ctx context.Context,
-	ticker, side string,
-	quantity int,
-	currency, status, message, exchange string,
-	rawResponse map[string]any,
-) (models.OrderExecutionRecord, error) {
-	return a.r.Create(ctx, ticker, side, quantity, currency, status, message, exchange, rawResponse)
-}
-
-type rebalanceSyncAdapter struct {
-	accounts    *repositories.AccountRepository
-	sync        *services.KisAccountSyncService
-	syncByKeyID map[int64]*services.KisAccountSyncService
-	cano        string
-	acntPrdtCd  string
-}
-
-func (a *rebalanceSyncAdapter) SyncAccount() error {
-	ctx := context.Background()
-	accounts, err := a.accounts.ListAll(ctx)
-	if err != nil {
-		return err
-	}
-	for _, account := range accounts {
-		svc := resolveSyncService(a.sync, a.syncByKeyID, account.KisAPIKeyID)
-		if svc == nil {
-			continue
-		}
-
-		cano, acntPrdtCd := a.cano, a.acntPrdtCd
-		if account.KisAccountNo != nil && *account.KisAccountNo != "" {
-			parsedCano, parsedPrdtCd := parseKISAccountNo(*account.KisAccountNo)
-			if parsedCano == "" {
-				continue
-			}
-			cano, acntPrdtCd = parsedCano, parsedPrdtCd
-		}
-		if cano == "" {
-			continue
-		}
-		if _, err := svc.SyncAccount(ctx, account, cano, acntPrdtCd, false); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type kisOrderPlacer interface {
-	PlaceOrder(ticker, side string, quantity int, exchange string) (map[string]any, error)
-}
-
-type tossOrderPlacer interface {
-	PlaceOrder(accountSeq string, intent models.OrderIntent) (map[string]any, error)
-}
-
-type accountOrderRouter struct {
-	accounts *repositories.AccountRepository
-	kis      kisOrderPlacer
-	toss     tossOrderPlacer
-}
-
-func (r *accountOrderRouter) PlaceOrder(intent models.OrderIntent) (map[string]any, error) {
-	if intent.AccountID.UUID != uuid.Nil && r.accounts != nil {
-		account, err := r.accounts.GetByID(context.Background(), intent.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("load order account: %w", err)
-		}
-		if account == nil {
-			return nil, fmt.Errorf("load order account: account not found")
-		}
-		if account.TossAccountSeq != nil {
-			if r.toss == nil {
-				return nil, fmt.Errorf("toss order client not configured")
-			}
-			return r.toss.PlaceOrder(fmt.Sprintf("%d", *account.TossAccountSeq), intent)
-		}
-	}
-
-	if r.kis == nil {
-		return nil, fmt.Errorf("KIS order client not configured")
-	}
-	return r.kis.PlaceOrder(intent.Ticker, intent.Side, intent.Quantity, intent.Exchange)
 }
 
 // SyncServiceForKeyID returns the KisAccountSyncService for the given kis_api_key_id,
@@ -296,19 +175,6 @@ func resolveSyncService(
 		}
 	}
 	return defaultSync
-}
-
-func parseKISAccountNo(raw string) (cano, acntPrdtCd string) {
-	var digits strings.Builder
-	for _, ch := range raw {
-		if ch >= '0' && ch <= '9' {
-			digits.WriteRune(ch)
-		}
-	}
-	if d := digits.String(); len(d) == 10 {
-		return d[:8], d[8:]
-	}
-	return "", ""
 }
 
 type kisAuth struct {
@@ -460,37 +326,6 @@ func loadKISAccount() (cano, acntPrdtCd string) {
 		acntPrdtCd = "01"
 	}
 	return
-}
-
-// buildOrderClient returns a UnifiedOrderClient, or nil if keys/account are absent.
-func buildOrderClient(auth *kisAuth) *kis.UnifiedOrderClient {
-	if auth == nil || auth.cano == "" {
-		return nil
-	}
-
-	log.Printf("KIS order client initialized (env=%q)", auth.env) //nolint:gosec // env is operator-controlled, not user input
-	return &kis.UnifiedOrderClient{
-		Domestic: &kis.DomesticOrderClient{
-			HTTP:       auth.httpClient,
-			BaseURL:    auth.baseURL,
-			AppKey:     auth.appKey,
-			AppSecret:  auth.appSecret,
-			CANO:       auth.cano,
-			AcntPrdtCd: auth.acntPrdtCd,
-			CustType:   auth.custType,
-			Env:        auth.env,
-			Manager:    auth.tokenManager,
-		},
-		Overseas: &kis.OverseasOrderClient{
-			HTTP:      auth.httpClient,
-			BaseURL:   auth.baseURL,
-			AppKey:    auth.appKey,
-			AppSecret: auth.appSecret,
-			CustType:  auth.custType,
-			Env:       auth.env,
-			Manager:   auth.tokenManager,
-		},
-	}
 }
 
 // domesticInfoClassifier / overseasInfoClassifier are the slices of the KIS info

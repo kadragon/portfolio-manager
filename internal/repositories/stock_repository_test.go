@@ -240,3 +240,33 @@ func TestStockListInsertionOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestStockUpdateSecurityGroup(t *testing.T) {
+	groups, stocks := newStockRepos(t)
+	ctx := context.Background()
+	g, err := groups.Create(ctx, "국내성장", 20)
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	s, err := stocks.Create(ctx, "005930", g.ID)
+	if err != nil {
+		t.Fatalf("create stock: %v", err)
+	}
+
+	updated, err := stocks.UpdateSecurityGroup(ctx, s.ID, "ST")
+	if err != nil {
+		t.Fatalf("update security group: %v", err)
+	}
+	if updated.SecurityGroup == nil || *updated.SecurityGroup != "ST" {
+		t.Errorf("security group = %v, want ST", updated.SecurityGroup)
+	}
+
+	// Empty string clears the value (stored as NULL).
+	cleared, err := stocks.UpdateSecurityGroup(ctx, s.ID, "")
+	if err != nil {
+		t.Fatalf("clear security group: %v", err)
+	}
+	if cleared.SecurityGroup != nil {
+		t.Errorf("security group = %v, want nil", cleared.SecurityGroup)
+	}
+}

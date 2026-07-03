@@ -1,6 +1,6 @@
 # 0001: Account-type-aware, tax-optimal rebalancing
 
-**Status:** Accepted (decision 4 revised 2026-06-04 — see Revision)
+**Status:** Superseded in part 2026-07-03 — plan generation moved out of the app (see final Revision)
 **Date:** 2026-06-03
 
 ## Context
@@ -189,6 +189,58 @@ Change: `computeGroupNetActions` in `internal/services/rebalance_service.go` —
 `case a.isLowerBreached` replaced by fall-through after `if a.isUpperBreached { ... continue }`.
 Tests: `TestBuildPlanReinvestsSellProceedsIntoBelowTargetGroups`,
 `TestBuildPlanDeploysPreexistingIdleCash` (new, were RED before fix).
+
+## Revision (2026-07-03): 5/25 bands, half-band sell destination, monitoring over calendar
+
+Policy upgrade grounded in threshold-rebalancing research (Vanguard 2024
+"The Rebalancing Edge"; Daryanani 2007 "Opportunistic Rebalancing"; Swedroe
+5/25 rule). Three changes:
+
+1. **Bands are now relative-aware (5/25 rule).** Fixed per-group bands
+   (±5/3/5/2/3%p) ignored target size — a ±5%p band on a small-target group
+   allows huge relative drift while a tight absolute band on a large-target
+   group over-trades. Band = `min(5%p, 25% of target)` (`bandPctFor`).
+2. **Over-band groups sell to target + band/2, not to target.** Full
+   reversion maximizes turnover and realized tax per breach for no
+   risk-control benefit (Daryanani's 50% tolerance band). Buys are unchanged:
+   below-target groups still fill to target.
+3. **Monitoring is automated; the calendar cadence is retired.** Threshold
+   rebalancing works by "look often, trade rarely" — a quarterly manual visit
+   starves the band mechanism. `BandAlertService` checks daily and posts a
+   webhook (`BAND_ALERT_WEBHOOK_URL`) when the breach set changes; the
+   dashboard's deposit-suggestion form (`BuildDepositPlan`) routes monthly
+   contributions to under-target groups (cash-flow rebalancing, zero sells).
+
+Operating policy: monthly deposit → dashboard suggestion → buy; sells only on
+webhook-alerted band breach; annual review of targets themselves.
+
+Tests: `TestBandPctFor`, `TestBuildGroupAggregatesUses525Bands`,
+`TestComputeGroupNetActions` (sell 75 not 100), `TestBuildDepositPlan*`,
+`TestBandAlert*`, `TestCheckBands*`.
+
+## Revision (2026-07-03): plan generation moved to the rebalance-plan agent skill
+
+The in-app planner (RebalanceService), KIS auto-order execution
+(RebalanceExecutionService), the /rebalance UI, and the dashboard
+deposit-suggestion form were removed. Planning now happens in the
+`.claude/skills/rebalance-plan` skill: it reads the DB read-only
+(`scripts/snapshot.py`), applies the user-owned policy file
+(`.data/rebalance-policy.md`, gitignored), and emits a per-account trade
+instruction document. Orders are executed manually at the brokerage.
+
+Why: the 2026-07 policy revision moved to 8 groups (adding 글로벌 ex-US, 금,
+채권) with per-account tax placement that the engine's hardcoded five-group
+model could not express, and evolving the Go planner for every policy change
+cost more than letting the agent plan against a plain-text policy. Tax
+reasoning (양도세 vs 배당소득 vs 종합과세 trade-offs per account) is judgment,
+not arithmetic — a better fit for the agent layer; the deterministic parts
+(valuation snapshot, balance verification) stay scripted.
+
+Kept in-app: the band-alert webhook (now computes 5/25 bands standalone from
+the portfolio summary with DB-driven groups — `checkBands` in
+`band_alert_service.go`) as the off-cycle trigger to run the skill, and the
+KIS order clients / OrderExecution repository as unreferenced library code
+for a possible future execution path.
 
 ## References
 - Phase 1 + 2 implementation: `internal/db/db.go`, `internal/db/schema.sql`,
