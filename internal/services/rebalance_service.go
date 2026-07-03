@@ -185,11 +185,15 @@ type accountPosition struct {
 type groupAgg struct {
 	currentValueKRW decimal.Decimal
 	targetValueKRW  decimal.Decimal
-	currentPct      decimal.Decimal
-	targetPct       decimal.Decimal
-	bandPct         decimal.Decimal
-	isUpperBreached bool
-	isLowerBreached bool
+	// sellDestValueKRW is where an over-band sell stops: target + band/2
+	// (half-band destination) rather than full reversion to target — less
+	// turnover and realized tax per breach (Daryanani's 50% tolerance band).
+	sellDestValueKRW decimal.Decimal
+	currentPct       decimal.Decimal
+	targetPct        decimal.Decimal
+	bandPct          decimal.Decimal
+	isUpperBreached  bool
+	isLowerBreached  bool
 }
 
 type buyCandidate struct {
@@ -418,23 +422,28 @@ func buildGroupAggregates(currentByGroup, targetByGroup map[string]decimal.Decim
 		band := bandPctFor(targetPct)
 		currentPct := toPercent(currentVal, total)
 		targetVal := targetPct.Div(_percentBase).Mul(total)
+		two := decimal.NewFromInt(2)
+		sellDestVal := targetPct.Add(band.Div(two)).Div(_percentBase).Mul(total)
 		agg[g] = groupAgg{
-			currentValueKRW: currentVal,
-			targetValueKRW:  targetVal,
-			currentPct:      currentPct,
-			targetPct:       targetPct,
-			bandPct:         band,
-			isUpperBreached: currentPct.GreaterThan(targetPct.Add(band)),
-			isLowerBreached: currentPct.LessThan(targetPct.Sub(band)),
+			currentValueKRW:  currentVal,
+			targetValueKRW:   targetVal,
+			sellDestValueKRW: sellDestVal,
+			currentPct:       currentPct,
+			targetPct:        targetPct,
+			bandPct:          band,
+			isUpperBreached:  currentPct.GreaterThan(targetPct.Add(band)),
+			isLowerBreached:  currentPct.LessThan(targetPct.Sub(band)),
 		}
 	}
 	return agg
 }
 
 // computeGroupNetActions turns aggregate band breaches into portfolio-level net
-// trade amounts (KRW): an over-band group is sold down to TARGET; every other
-// group that is below its target absorbs available cash (sell proceeds + idle)
-// up to TARGET. Sells are still gated on upper-band breach; buys are gated on
+// trade amounts (KRW): an over-band group is sold down to TARGET + BAND/2 (the
+// half-band destination — full reversion to target maximizes turnover and
+// realized tax per breach for no risk-control benefit); every other group that
+// is below its target absorbs available cash (sell proceeds + idle) up to
+// TARGET. Sells are still gated on upper-band breach; buys are gated on
 // below-target, not below-band — so forced sell proceeds are always redeployed
 // rather than stranded as idle cash.
 func computeGroupNetActions(agg map[string]groupAgg) (sellNeed, buyNeed map[string]decimal.Decimal) {
@@ -443,7 +452,7 @@ func computeGroupNetActions(agg map[string]groupAgg) (sellNeed, buyNeed map[stri
 	for _, g := range _groupOrder {
 		a := agg[g]
 		if a.isUpperBreached {
-			if d := a.currentValueKRW.Sub(a.targetValueKRW); d.IsPositive() {
+			if d := a.currentValueKRW.Sub(a.sellDestValueKRW); d.IsPositive() {
 				sellNeed[g] = d
 			}
 			continue

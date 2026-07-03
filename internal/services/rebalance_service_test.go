@@ -258,13 +258,14 @@ func TestBuildPlanRegionTrigger(t *testing.T) {
 	}
 }
 
-// TestBuildPlanSellsOverBandGroupToTarget: an over-band group is sold down to its
-// TARGET (not a half-rule midpoint). With both holders taxable (brokerage) and
-// equal placement score, the larger holding is drained first.
-func TestBuildPlanSellsOverBandGroupToTarget(t *testing.T) {
+// TestBuildPlanSellsOverBandGroupToHalfBandDestination: an over-band group is
+// sold down to TARGET + BAND/2 (half-band destination), not fully to target.
+// With both holders taxable (brokerage) and equal placement score, the larger
+// holding is drained first.
+func TestBuildPlanSellsOverBandGroupToHalfBandDestination(t *testing.T) {
 	groups := makeStandardGroups()
 	stocks := makeStandardStocks(groups)
-	// total 990; 국내성장 500 = 50.5% (> upper 40) → sell to target 35% (346.5) = 153.5.
+	// total 990; 국내성장 500 = 50.5% (> upper 40) → sell to dest 37.5% (371.25) = 128.75.
 	summary := makeSummary(groups, stocks, map[string]numeric.Decimal{
 		"국내성장": mustN("500"),
 		"국내배당": mustN("100"),
@@ -298,13 +299,13 @@ func TestBuildPlanSellsOverBandGroupToTarget(t *testing.T) {
 			byAccount[rec.AccountName] = numeric.Wrap(byAccount[rec.AccountName].Add(rec.AmountKRW.Decimal))
 		}
 	}
-	if !numericEq(totalGrowthSell, "153.5") {
-		t.Errorf("국내성장 total sell = %v, want 153.5 (sell to target)", totalGrowthSell)
+	if !numericEq(totalGrowthSell, "128.75") {
+		t.Errorf("국내성장 total sell = %v, want 128.75 (sell to target+band/2)", totalGrowthSell)
 	}
 	// A holds 300, B holds 200 — both brokerage; larger holder (A) drained first,
-	// and 153.5 < 300 so B is untouched.
-	if !numericEq(byAccount["A"], "153.5") {
-		t.Errorf("A 국내성장 sell = %v, want 153.5", byAccount["A"])
+	// and 128.75 < 300 so B is untouched.
+	if !numericEq(byAccount["A"], "128.75") {
+		t.Errorf("A 국내성장 sell = %v, want 128.75", byAccount["A"])
 	}
 	if !byAccount["B"].IsZero() {
 		t.Errorf("B 국내성장 sell = %v, want 0", byAccount["B"])
@@ -380,16 +381,16 @@ func TestBuildPlanSellAllocationFixedDenominator(t *testing.T) {
 	for _, rec := range growthSells {
 		byTicker[rec.Ticker] = rec.AmountKRW
 	}
-	// 국내성장 500 = 50% over → sell to target 35% (350) = 150, split across the
-	// three holdings by fixed denominator 250:150:100 → 75:45:30.
-	if !numericEq(byTicker["100001"], "75") {
-		t.Errorf("100001: want 75, got %v", byTicker["100001"])
+	// 국내성장 500 = 50% over → sell to dest 37.5% (375) = 125, split across the
+	// three holdings by fixed denominator 250:150:100 → 62.5:37.5:25.
+	if !numericEq(byTicker["100001"], "62.5") {
+		t.Errorf("100001: want 62.5, got %v", byTicker["100001"])
 	}
-	if !numericEq(byTicker["100002"], "45") {
-		t.Errorf("100002: want 45, got %v", byTicker["100002"])
+	if !numericEq(byTicker["100002"], "37.5") {
+		t.Errorf("100002: want 37.5, got %v", byTicker["100002"])
 	}
-	if !numericEq(byTicker["100003"], "30") {
-		t.Errorf("100003: want 30, got %v", byTicker["100003"])
+	if !numericEq(byTicker["100003"], "25") {
+		t.Errorf("100003: want 25, got %v", byTicker["100003"])
 	}
 }
 
@@ -978,15 +979,15 @@ func findAccountSummary(plan models.RebalancePlan, id uuidx.UUID) models.Account
 }
 
 // TestBuildPlanReinvestsSellProceedsIntoBelowTargetGroups: one group breaches the
-// upper band and is sold down to target; the proceeds must be reinvested into
-// groups that are below their target (even if those groups are within band).
-// Before the fix, buyNeed was gated on lower-BAND breach, so the proceeds
-// stranded as unused cash. After the fix, buyNeed is gated on below-TARGET, so
-// proceeds are fully redeployed.
+// upper band and is sold down to its half-band destination; the proceeds must be
+// reinvested into groups that are below their target (even if those groups are
+// within band). Before the fix, buyNeed was gated on lower-BAND breach, so the
+// proceeds stranded as unused cash. After the fix, buyNeed is gated on
+// below-TARGET, so proceeds are fully redeployed.
 //
-// Setup: total 1000, 국내성장 420 (42% > 40 upper → sell 70 to 35% = 350).
+// Setup: total 1000, 국내성장 420 (42% > 40 upper → sell 45 to dest 37.5% = 375).
 // Remaining groups are within band but below target (140/15% < 15%; 230/23% <
-// 25%; 90/9% < 10%; 120/12% < 15%). No starting cash. Assert: all 70 reinvested
+// 25%; 90/9% < 10%; 120/12% < 15%). No starting cash. Assert: all 45 reinvested
 // as buys, UnusedCashKRW == 0.
 func TestBuildPlanReinvestsSellProceedsIntoBelowTargetGroups(t *testing.T) {
 	groups := makeStandardGroups()
@@ -1019,16 +1020,16 @@ func TestBuildPlanReinvestsSellProceedsIntoBelowTargetGroups(t *testing.T) {
 	for _, r := range plan.SellRecs {
 		totalSell = numeric.Wrap(totalSell.Add(r.AmountKRW.Decimal))
 	}
-	if !numericEq(totalSell, "70") {
-		t.Errorf("total sell = %v, want 70", totalSell)
+	if !numericEq(totalSell, "45") {
+		t.Errorf("total sell = %v, want 45", totalSell)
 	}
 
 	totalBuy := numeric.Zero
 	for _, r := range plan.BuyRecs {
 		totalBuy = numeric.Wrap(totalBuy.Add(r.AmountKRW.Decimal))
 	}
-	if !numericEq(totalBuy, "70") {
-		t.Errorf("total buy = %v, want 70 (sell proceeds fully reinvested)", totalBuy)
+	if !numericEq(totalBuy, "45") {
+		t.Errorf("total buy = %v, want 45 (sell proceeds fully reinvested)", totalBuy)
 	}
 
 	sum := findAccountSummary(plan, account.ID)

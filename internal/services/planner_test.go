@@ -65,21 +65,22 @@ func TestBuildGroupAggregatesUses525Bands(t *testing.T) {
 }
 
 // TestComputeGroupNetActions: only aggregate band breaches produce trade needs —
-// over-band sells down to target, under-band buys up to target, in-band nothing.
+// an over-band group sells down to target + band/2 (half-band destination, not
+// full reversion), under-target groups buy up to target, in-band nothing.
 func TestComputeGroupNetActions(t *testing.T) {
 	total := decimal.NewFromInt(1000)
 	current := map[string]decimal.Decimal{
-		"국내성장": decimal.NewFromInt(450), // 45% > 40 upper → sell 100 (to 350)
+		"국내성장": decimal.NewFromInt(450), // 45% > 40 upper → sell 75 (to 37.5% dest)
 		"국내배당": decimal.NewFromInt(150), // 15% in band → nothing
 		"해외성장": decimal.NewFromInt(250), // 25% in band → nothing
 		"해외안정": decimal.NewFromInt(100), // 10% in band → nothing
-		"해외배당": decimal.NewFromInt(50),  // 5% < 12 lower → buy 100 (to 150)
+		"해외배당": decimal.NewFromInt(50),  // 5% < 11.25 lower → buy 100 (to 150)
 	}
 	agg := buildGroupAggregates(current, standardTargets(), total)
 	sellNeed, buyNeed := computeGroupNetActions(agg)
 
-	if got := sellNeed["국내성장"]; !got.Equal(decimal.NewFromInt(100)) {
-		t.Errorf("국내성장 sellNeed = %s, want 100", got.String())
+	if got := sellNeed["국내성장"]; !got.Equal(decimal.NewFromInt(75)) {
+		t.Errorf("국내성장 sellNeed = %s, want 75 (sell to target+band/2 = 37.5%%)", got.String())
 	}
 	if got := buyNeed["해외배당"]; !got.Equal(decimal.NewFromInt(100)) {
 		t.Errorf("해외배당 buyNeed = %s, want 100", got.String())
