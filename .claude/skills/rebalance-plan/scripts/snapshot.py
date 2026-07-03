@@ -44,11 +44,14 @@ def main() -> None:
             "holdings": [],
         }
 
-    group_totals = {}
     db_targets = {
         r["name"]: r["target_percentage"]
         for r in con.execute("SELECT name, target_percentage FROM groups")
     }
+    # Seed every DB group at 0 so target-only groups (no holdings yet, e.g. a
+    # newly added 금/채권 allocation) still appear in the output — otherwise the
+    # planning agent can't see their underweight at all.
+    group_totals = {name: 0.0 for name in db_targets}
 
     rows = con.execute("""
         SELECT h.account_id, s.ticker, s.name AS stock_name, s.exchange,
@@ -101,7 +104,7 @@ def main() -> None:
                 "name": g,
                 "db_target_pct": db_targets.get(g),
                 "value_krw": round(v),
-                "weight_pct": round(100 * v / total, 2),
+                "weight_pct": round(100 * v / total, 2) if total > 0 else None,
             }
             for g, v in sorted(group_totals.items(), key=lambda kv: -kv[1])
         ],
