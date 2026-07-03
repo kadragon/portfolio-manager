@@ -1,6 +1,6 @@
 # 0001: Account-type-aware, tax-optimal rebalancing
 
-**Status:** Accepted (decision 4 revised 2026-06-04 — see Revision)
+**Status:** Superseded in part 2026-07-03 — plan generation moved out of the app (see final Revision)
 **Date:** 2026-06-03
 
 ## Context
@@ -217,6 +217,30 @@ webhook-alerted band breach; annual review of targets themselves.
 Tests: `TestBandPctFor`, `TestBuildGroupAggregatesUses525Bands`,
 `TestComputeGroupNetActions` (sell 75 not 100), `TestBuildDepositPlan*`,
 `TestBandAlert*`, `TestCheckBands*`.
+
+## Revision (2026-07-03): plan generation moved to the rebalance-plan agent skill
+
+The in-app planner (RebalanceService), KIS auto-order execution
+(RebalanceExecutionService), the /rebalance UI, and the dashboard
+deposit-suggestion form were removed. Planning now happens in the
+`.claude/skills/rebalance-plan` skill: it reads the DB read-only
+(`scripts/snapshot.py`), applies the user-owned policy file
+(`.data/rebalance-policy.md`, gitignored), and emits a per-account trade
+instruction document. Orders are executed manually at the brokerage.
+
+Why: the 2026-07 policy revision moved to 8 groups (adding 글로벌 ex-US, 금,
+채권) with per-account tax placement that the engine's hardcoded five-group
+model could not express, and evolving the Go planner for every policy change
+cost more than letting the agent plan against a plain-text policy. Tax
+reasoning (양도세 vs 배당소득 vs 종합과세 trade-offs per account) is judgment,
+not arithmetic — a better fit for the agent layer; the deterministic parts
+(valuation snapshot, balance verification) stay scripted.
+
+Kept in-app: the band-alert webhook (now computes 5/25 bands standalone from
+the portfolio summary with DB-driven groups — `checkBands` in
+`band_alert_service.go`) as the off-cycle trigger to run the skill, and the
+KIS order clients / OrderExecution repository as unreferenced library code
+for a possible future execution path.
 
 ## References
 - Phase 1 + 2 implementation: `internal/db/db.go`, `internal/db/schema.sql`,
