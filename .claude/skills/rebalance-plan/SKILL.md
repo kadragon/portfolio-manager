@@ -121,11 +121,17 @@ policy to guarding its history:
    the invariant, its original reason (source portfolio + numbers), and what the change gives up.
    Then ask the user to confirm knowing that. A proposal touching no invariant needs no ceremony.
 3. Sanity-check the resulting policy as a whole: targets sum to 100%, every group has an account
-   placement, equity/defensive split recomputed and stated (does it still honor the 15% defensive cap?).
+   placement, equity/defensive split recomputed and stated against the cap recorded in
+   §Design Rationale (currently 15% defensive — read it from the policy, don't assume).
 4. On a confirmed change, update the policy file in both places: the rule itself AND the
    rationale table (new value + new reason), plus a dated entry in §Revision changelog.
    A rule changed without its rationale updated means the next revision inherits a stale "why".
-5. Normal plan runs and deposit runs never write the policy file — only revision mode does.
+5. The DB is not updated by this skill (snapshot reads groups/targets from the app DB, read-only).
+   After a target change — and especially after adding/removing a group, which the step-1
+   discrepancy check cannot detect because a markdown-only group has no DB row at all —
+   tell the user to mirror the change in the app's group settings, then verify with a fresh
+   snapshot that `db_target_pct` agrees.
+6. Normal plan runs and deposit runs never write the policy file — only revision mode does.
 
 ## Failure modes to avoid
 
