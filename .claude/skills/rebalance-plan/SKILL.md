@@ -1,6 +1,6 @@
 ---
 name: rebalance-plan
-description: Produce a quarterly (Feb/May/Aug/Nov) portfolio rebalancing trade-instruction document from the portfolio-manager DB, applying the user's allocation targets and Korean tax placement rules from .data/rebalance-policy.md. Use whenever the user asks for a rebalancing plan, trade instructions, portfolio drift check, or says "리밸런싱", "리밸런스 계획", "지시서", "포트폴리오 점검", "분기 리밸런싱", or mentions rebalancing in February, May, August, or November — even without naming the skill. Also use for off-cycle checks like "지금 비중 얼마나 틀어졌어?" and for deposit allocation — when the user says new money arrived or asks what to buy with a deposit ("예치금 들어왔어", "500만원 입금했는데 뭐 살까", "이번 달 적립금 배분").
+description: Produce a quarterly (Feb/May/Aug/Nov) portfolio rebalancing trade-instruction document from the portfolio-manager DB, applying the user's allocation targets and Korean tax placement rules from .data/rebalance-policy.md. Use whenever the user asks for a rebalancing plan, trade instructions, portfolio drift check, or says "리밸런싱", "리밸런스 계획", "지시서", "포트폴리오 점검", "분기 리밸런싱", or mentions rebalancing in February, May, August, or November — even without naming the skill. Also use for off-cycle checks like "지금 비중 얼마나 틀어졌어?" and for deposit allocation — when the user says new money arrived or asks what to buy with a deposit ("예치금 들어왔어", "500만원 입금했는데 뭐 살까", "이번 달 적립금 배분"). Also use when the user wants to change the allocation policy itself — new targets, band changes, adding/removing groups ("목표 비중 바꾸자", "리밸런싱 기준 수정", "금 비중 줄일까?") — revision mode checks proposals against the recorded design rationale before anything changes.
 ---
 
 # Rebalance Plan
@@ -28,7 +28,9 @@ python3 .claude/skills/rebalance-plan/scripts/snapshot.py --fx <rate>
 
 ### 2. Compute deviations
 
-Per group: `deviation = weight_pct − policy target`. Apply the policy band (default ±1.5%p):
+Per group: `deviation = weight_pct − policy target`. `weight_pct` is computed against total
+portfolio value including cash — use it as-is, don't recompute against holdings only.
+Apply each group's band from policy §Trading Rules (per-group; never assume a default):
 groups inside the band get **no trades**. Two triggers override the band:
 
 - KOSPI exit rule (국내성장 ≥ 30%) → mandatory mechanical trim; it also overrides the
@@ -44,7 +46,9 @@ If nothing breaches the band and no override fires, write no document — report
 Work account by account. Hard constraints from policy §Tax Placement Rules — the important ones:
 
 - Cash cannot move between accounts: each account's buys ≤ its sells + existing cash.
-- 연금저축 holds defensive only; ISA holds KR-listed overseas; TOSS holds US-listed + domestic-equity.
+- 연금저축 holds defensive only; ISA prefers KR-listed overseas (domestic-equity also allowed);
+  TOSS holds US-listed + domestic-equity. "Prefers" is not a violation — only policy's banned
+  combos count as placement violations.
 - Never plan US-listed sells without flagging the estimated gain (양도세 22%) and asking.
 - KR-listed overseas ETF sells in the taxable account are taxable — flag the amount; prefer ISA/연금 sells.
 - 여유금: no trades. Prefer covering underweights with scheduled new contributions over selling.
@@ -61,7 +65,8 @@ run has real prices. Never present a share count derived from a stale web quote 
 
 Run a Python check (inline, Bash) proving:
 
-1. Per account: `sum(buys) ≤ sum(sells) + cash` and unused remainder < 1% of account value.
+1. Per account: `sum(buys) ≤ sum(sells) + cash` and unused remainder < 1% of account value
+   (or explained — e.g. cash parked for a planned US-listed buy).
 2. Post-trade group weights within band of targets (or explained, e.g. absorbed remainder).
 3. Post-trade totals ≈ pre-trade total (no money invented).
 
@@ -102,6 +107,25 @@ underweights without tax events, which is why the policy prefers it over selling
 5. Verify: `sum(buys) ≤ deposit + account's existing cash`. Output can be an inline table
    (no document file) unless the user asks for one — deposits recur monthly and a file per
    deposit is clutter.
+
+## Policy revision mode (changing the criteria themselves)
+
+When the user proposes changing targets, bands, placement rules, or drafting new criteria
+("목표 비중 바꾸자", "리밸런싱 기준 수정", "금 비중 줄일까?"), the job shifts from executing the
+policy to guarding its history:
+
+1. Read policy §Design Rationale first. It records *why* each rule exists (the 2026-07
+   five-portfolio review). The policy file is the user's — nothing is forbidden — but no rule
+   may be dropped because its reason was forgotten.
+2. Diff the proposal against each invariant in that table. For every conflict, present:
+   the invariant, its original reason (source portfolio + numbers), and what the change gives up.
+   Then ask the user to confirm knowing that. A proposal touching no invariant needs no ceremony.
+3. Sanity-check the resulting policy as a whole: targets sum to 100%, every group has an account
+   placement, equity/defensive split recomputed and stated (does it still honor the 15% defensive cap?).
+4. On a confirmed change, update the policy file in both places: the rule itself AND the
+   rationale table (new value + new reason), plus a dated entry in §Revision changelog.
+   A rule changed without its rationale updated means the next revision inherits a stale "why".
+5. Normal plan runs and deposit runs never write the policy file — only revision mode does.
 
 ## Failure modes to avoid
 
