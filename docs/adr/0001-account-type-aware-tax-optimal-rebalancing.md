@@ -242,6 +242,26 @@ the portfolio summary with DB-driven groups — `checkBands` in
 KIS order clients / OrderExecution repository as unreferenced library code
 for a possible future execution path.
 
+## Revision (2026-07-05): TOSS/ISA order execution re-wired as an agent-skill-driven path
+
+The "possible future execution path" anticipated above is now built: `internal/services/order_execution_service.go`
+routes a single named-account order to KIS (`Container.BuildKISOrderClient`, one fresh
+`kis.UnifiedOrderClient` per call with that account's own CANO) or Toss (`Container.TossClient`),
+and persists the outcome via `OrderExecutionRepository` regardless of success or failure. It's
+invoked one order at a time by `cmd/rebalance-order`, a thin CLI (`go run ./cmd/rebalance-order
+-account ... -ticker ... -side ... -qty ...`) that defaults to a dry-run preview and only places
+a live order with an explicit `-yes` flag. The `.claude/skills/execute-rebalance-plan` skill
+drives it: it reads a verified `rebalance-plan` document, shows each order and the resolved
+`KIS_ENV` to the user, and requires a separate explicit confirmation per order before adding
+`-yes` — no batch "실행해" covers more than the order it was said for.
+
+This is deliberately **not** a reversal of "orders are executed manually at the brokerage" above
+— it's scoped narrowly to the two accounts a human can already trade programmatically without
+a broker's own automation ban (TOSS via Toss's OAuth2 order API, ISA via KIS): 연금저축 and any
+other account remain manual, and the skill refuses to run against them. Market orders only (no
+limit price — matches the underlying KIS/Toss client capability); no unattended/scheduled
+execution — a human confirms every single order in conversation before it's placed.
+
 ## References
 - Phase 1 + 2 implementation: `internal/db/db.go`, `internal/db/schema.sql`,
   `internal/services/rebalance_service.go` (`canHold`, `_placementScore`;
