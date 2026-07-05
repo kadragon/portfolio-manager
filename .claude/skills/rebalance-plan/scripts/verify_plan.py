@@ -20,6 +20,11 @@ Input: JSON on stdin or --file, shaped as:
 trade_krw is net (buy positive, sell negative) at the group level.
 effective_target_pct / band_pct: use the interim target and its band if
 the group is mid §Transition Schedule — see SKILL.md step 2.
+
+Post-trade group weight is checked against total portfolio value including
+post-trade cash (accounts[].cash_krw + sells_krw - buys_krw), matching
+SKILL.md's "weight_pct against total portfolio value including cash" rule
+— not holdings-only, which would inflate every group's post_pct.
 """
 
 import argparse
@@ -45,10 +50,19 @@ def main() -> None:
     raw = open(args.file).read() if args.file else sys.stdin.read()
     data = json.loads(raw)
 
+    accounts = data.get("accounts")
+    groups = data.get("groups")
+    if not accounts or not groups:
+        raise SystemExit(
+            "input missing non-empty 'accounts'/'groups' arrays — "
+            "a plan with nothing to check is not a verified plan"
+        )
+
     failures = []
 
     # 1. per-account cash constraint
-    for a in data.get("accounts", []):
+    post_cash_total = D(0)
+    for a in accounts:
         cash, buys, sells = D(a["cash_krw"]), D(a["buys_krw"]), D(a["sells_krw"])
         pre_value = D(a["pre_value_krw"])
         available = sells + cash
@@ -57,6 +71,7 @@ def main() -> None:
                 f"[account:{a['name']}] buys {buys} exceed sells+cash {available}"
             )
         remainder = available - buys
+        post_cash_total += remainder
         limit = pre_value * D(args.remainder_pct) / D(100)
         if pre_value > 0 and remainder > limit:
             failures.append(
@@ -65,10 +80,11 @@ def main() -> None:
             )
 
     # 2. post-trade group weights within band of effective target
-    groups = data.get("groups", [])
+    # Denominator includes post-trade cash — SKILL.md computes weight_pct against
+    # total portfolio value including cash, not holdings only.
     pre_total = sum(D(g["pre_value_krw"]) for g in groups)
     trade_total = sum(D(g["trade_krw"]) for g in groups)
-    post_total = pre_total + trade_total
+    post_total = pre_total + trade_total + post_cash_total
     if post_total > 0:
         for g in groups:
             post_value = D(g["pre_value_krw"]) + D(g["trade_krw"])
@@ -83,7 +99,7 @@ def main() -> None:
                 )
 
     # 3. no money invented: sum of account deltas == sum of group deltas
-    account_delta = sum(D(a["buys_krw"]) - D(a["sells_krw"]) for a in data.get("accounts", []))
+    account_delta = sum(D(a["buys_krw"]) - D(a["sells_krw"]) for a in accounts)
     if account_delta != trade_total:
         failures.append(
             f"account-level net trade {account_delta} != group-level net trade {trade_total} "

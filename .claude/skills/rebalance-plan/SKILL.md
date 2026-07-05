@@ -177,11 +177,14 @@ target, so the trade size and tax hit stay in the same range as an ordinary reba
    trade under the old target either). A different step is fine; note the tradeoff — bigger
    steps finish sooner but produce bigger per-quarter trades and taxable events.
 2. Write the FINAL value to §Target Allocation (that stays the north star). Add a row to
-   §Transition Schedule: group, interim target (starts at the old value), final target, step
-   %p/quarter, Started (this run's YYYY-MM), Last advanced (leave blank — nothing has advanced
-   yet). Log the decision (old → final, step size, reason) in §Revision changelog. If this
-   change is one half of a compensating pair (e.g. 금 up / 채권 down to hold 85/15), schedule
-   both rows together with the same step cadence — see point 7 below.
+   §Transition Schedule: group, interim target (starts at the **old value advanced one step
+   toward final**, clamped — not the bare old value; the schedule exists to move the target,
+   so the first quarter after the decision should already trade toward it, not repeat the old
+   target for a full extra cycle), final target, step %p/quarter, Started (this run's YYYY-MM),
+   Last advanced (this run's YYYY-MM — it just advanced). Log the decision (old → final, step
+   size, reason) in §Revision changelog. If this change is one half of a compensating pair
+   (e.g. 금 up / 채권 down to hold 85/15), schedule both rows together with the same step
+   cadence — see point 7 below.
 3. Every run after that (see step 1/2 of the main workflow), a group in §Transition Schedule
    uses its interim value — not §Target Allocation — for deviation math and deposit
    allocation. Tell the user plainly: "X군 목표 전환 중 — 이번 분기 기준 Y%, 최종 목표 Z%".
