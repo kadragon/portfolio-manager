@@ -67,6 +67,12 @@ def main() -> None:
         if p is None:
             warnings.append(f"no price for {r['ticker']} — value set to 0")
             price, currency, value = 0.0, "KRW", 0.0
+        elif float(p["price"]) <= 0:
+            warnings.append(
+                f"non-positive price {p['price']} for {r['ticker']} ({p['price_date'][:10]}) "
+                "— likely bad data, value set to 0, do not trust this group's weight"
+            )
+            price, currency, value = 0.0, p["currency"], 0.0
         else:
             price, currency = float(p["price"]), p["currency"]
             age = (today - date.fromisoformat(p["price_date"][:10])).days
