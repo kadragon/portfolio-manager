@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
 // KISOrderClient places a single market order through KIS (domestic or overseas).
@@ -49,31 +50,28 @@ type orderExecutionRecorder interface {
 // execution — this service is the "future execution path" it anticipated,
 // invoked from the execute-rebalance-plan skill rather than a web handler.
 type OrderExecutionService struct {
-	accounts          orderAccountLister
-	executions        orderExecutionRecorder
-	kisFactory        KISOrderClientFactory
-	toss              TossOrderClient
-	defaultCano       string
-	defaultAcntPrdtCd string
+	accounts   orderAccountLister
+	executions orderExecutionRecorder
+	kisFactory KISOrderClientFactory
+	toss       TossOrderClient
 }
 
 // NewOrderExecutionService builds the service. toss may be nil if Toss isn't
-// configured; defaultCano/defaultAcntPrdtCd are the env-configured primary
-// account, used as a fallback for KIS-linked accounts with no KisAccountNo.
+// configured. There is deliberately no "default account" fallback: an account
+// with neither KisAccountNo nor TossAccountSeq set always errors rather than
+// silently routing through some other KIS account, since models.Account has
+// no way to distinguish "unlinked" from "meant to use a shared default".
 func NewOrderExecutionService(
 	accounts orderAccountLister,
 	executions orderExecutionRecorder,
 	kisFactory KISOrderClientFactory,
 	toss TossOrderClient,
-	defaultCano, defaultAcntPrdtCd string,
 ) *OrderExecutionService {
 	return &OrderExecutionService{
-		accounts:          accounts,
-		executions:        executions,
-		kisFactory:        kisFactory,
-		toss:              toss,
-		defaultCano:       defaultCano,
-		defaultAcntPrdtCd: defaultAcntPrdtCd,
+		accounts:   accounts,
+		executions: executions,
+		kisFactory: kisFactory,
+		toss:       toss,
 	}
 }
 
@@ -126,13 +124,6 @@ func (s *OrderExecutionService) PlaceOrder(
 		}
 		raw, placeErr = client.PlaceOrder(ticker, side, quantity, exchange)
 
-	case s.defaultCano != "":
-		client, ferr := s.kisFactory(account.KisAPIKeyID, s.defaultCano, s.defaultAcntPrdtCd)
-		if ferr != nil {
-			return models.OrderExecutionRecord{}, ferr
-		}
-		raw, placeErr = client.PlaceOrder(ticker, side, quantity, exchange)
-
 	default:
 		return models.OrderExecutionRecord{}, fmt.Errorf("account %q is not linked to KIS or Toss", account.Name)
 	}
@@ -140,7 +131,18 @@ func (s *OrderExecutionService) PlaceOrder(
 	status, message := classifyOrderResult(raw, placeErr)
 	record, cerr := s.executions.Create(ctx, ticker, side, quantity, currency, status, message, exchange, raw)
 	if cerr != nil {
-		return models.OrderExecutionRecord{}, fmt.Errorf("order attempted (status=%s message=%s) but failed to persist the execution record: %w", status, message, cerr)
+		// The order attempt itself (status/message) already happened and must not
+		// be lost or mistaken for "never attempted" — a caller that saw a bare
+		// error here could retry and double-submit an order that actually
+		// succeeded. Surface the real outcome with a synthetic, unpersisted
+		// record instead, and no error, so it's reported exactly like any other
+		// result.
+		return models.OrderExecutionRecord{
+			ID: uuidx.New(), Ticker: ticker, Side: side, Quantity: quantity,
+			Currency: currency, Exchange: exchange, Status: status,
+			Message:     fmt.Sprintf("%s (WARNING: execution record was NOT persisted: %v)", message, cerr),
+			RawResponse: raw,
+		}, nil
 	}
 	return record, nil
 }
@@ -155,6 +157,9 @@ func (s *OrderExecutionService) findAccount(ctx context.Context, name string) (m
 	}
 
 	name = strings.TrimSpace(name)
+	if name == "" {
+		return models.Account{}, fmt.Errorf("account name must not be empty")
+	}
 	for _, a := range accounts {
 		if strings.EqualFold(a.Name, name) {
 			return a, nil

@@ -119,6 +119,9 @@ func TestBuildKISOrderClient(t *testing.T) {
 	if client.Domestic.CANO != "87654321" || client.Domestic.AcntPrdtCd != "01" {
 		t.Errorf("Domestic CANO/AcntPrdtCd = %q/%q, want 87654321/01", client.Domestic.CANO, client.Domestic.AcntPrdtCd)
 	}
+	if client.Overseas.CANO != "87654321" || client.Overseas.AcntPrdtCd != "01" {
+		t.Errorf("Overseas CANO/AcntPrdtCd = %q/%q, want 87654321/01", client.Overseas.CANO, client.Overseas.AcntPrdtCd)
+	}
 	if client.Domestic.AppKey != auth.appKey || client.Overseas.AppKey != auth.appKey {
 		t.Error("order client did not inherit auth's AppKey")
 	}

@@ -8,13 +8,15 @@ import (
 
 // OverseasOrderClient places buy/sell orders on overseas exchanges via KIS.
 type OverseasOrderClient struct {
-	HTTP      *http.Client
-	BaseURL   string
-	AppKey    string
-	AppSecret string
-	CustType  string
-	Env       string
-	Manager   *TokenManager
+	HTTP       *http.Client
+	BaseURL    string
+	AppKey     string
+	AppSecret  string
+	CANO       string // account number (8 digits)
+	AcntPrdtCd string // account product code (2 digits)
+	CustType   string
+	Env        string
+	Manager    *TokenManager
 }
 
 // PlaceOrder places an overseas order and returns the raw KIS response.
@@ -31,6 +33,8 @@ func (c *OverseasOrderClient) PlaceOrder(ticker, side string, quantity int, exch
 	}
 
 	payload := map[string]string{
+		"CANO":          c.CANO,
+		"ACNT_PRDT_CD":  c.AcntPrdtCd,
 		"OVRS_EXCG_CD":  exchange,
 		"PDNO":          ticker,
 		"ORD_QTY":       fmt.Sprintf("%d", quantity),

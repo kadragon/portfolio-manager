@@ -182,13 +182,15 @@ func (c *Container) BuildKISOrderClient(keyID *int64, cano, acntPrdtCd string) (
 			Manager:    auth.tokenManager,
 		},
 		Overseas: &kis.OverseasOrderClient{
-			HTTP:      auth.httpClient,
-			BaseURL:   auth.baseURL,
-			AppKey:    auth.appKey,
-			AppSecret: auth.appSecret,
-			CustType:  auth.custType,
-			Env:       auth.env,
-			Manager:   auth.tokenManager,
+			HTTP:       auth.httpClient,
+			BaseURL:    auth.baseURL,
+			AppKey:     auth.appKey,
+			AppSecret:  auth.appSecret,
+			CANO:       cano,
+			AcntPrdtCd: acntPrdtCd,
+			CustType:   auth.custType,
+			Env:        auth.env,
+			Manager:    auth.tokenManager,
 		},
 	}, nil
 }

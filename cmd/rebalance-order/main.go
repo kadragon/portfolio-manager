@@ -30,7 +30,8 @@ func main() {
 	yes := flag.Bool("yes", false, "actually place the order; without this flag, only prints a dry-run preview")
 	flag.Parse()
 
-	if *account == "" || *ticker == "" || *side == "" || *qty <= 0 {
+	normSide := strings.ToLower(strings.TrimSpace(*side))
+	if *account == "" || *ticker == "" || *qty <= 0 || (normSide != "buy" && normSide != "sell") {
 		fmt.Fprintln(os.Stderr, "usage: rebalance-order -account NAME -ticker TICKER -side buy|sell -qty N [-exchange NASD] [-currency KRW] [-yes]")
 		os.Exit(2)
 	}
@@ -65,8 +66,6 @@ func main() {
 			return c.BuildKISOrderClient(keyID, cano, acntPrdtCd)
 		},
 		tossClient,
-		c.KisCano,
-		c.KisAcntPrdtCd,
 	)
 
 	record, err := svc.PlaceOrder(context.Background(), *account, *ticker, *side, *qty, *exchange, *currency)
