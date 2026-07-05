@@ -64,6 +64,70 @@ func TestResolveSyncService(t *testing.T) {
 	}
 }
 
+func TestResolveKisAuth(t *testing.T) {
+	defaultAuth := &kisAuth{appKey: "key-1"}
+	key2 := &kisAuth{appKey: "key-2"}
+	byKeyID := map[int64]*kisAuth{1: defaultAuth, 2: key2}
+
+	cases := []struct {
+		name    string
+		keyID   *int64
+		want    *kisAuth
+		wantLog bool
+	}{
+		{"nil keyID falls back to key 1", nil, defaultAuth, false},
+		{"keyID found returns mapped auth", ptrInt64(2), key2, false},
+		{"keyID 1 not found falls back silently", ptrInt64(1), defaultAuth, false},
+		{"keyID not 1 and not found warns", ptrInt64(3), defaultAuth, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			origOut, origFlags := log.Writer(), log.Flags()
+			log.SetOutput(&buf)
+			log.SetFlags(0)
+			t.Cleanup(func() {
+				log.SetOutput(origOut)
+				log.SetFlags(origFlags)
+			})
+
+			got := resolveKisAuth(byKeyID, tc.keyID)
+			if got != tc.want {
+				t.Errorf("resolveKisAuth = %+v, want %+v", got, tc.want)
+			}
+			logged := strings.Contains(buf.String(), "no KIS auth for requested KIS key")
+			if logged != tc.wantLog {
+				t.Errorf("warning logged = %v (%q), want %v", logged, buf.String(), tc.wantLog)
+			}
+		})
+	}
+}
+
+func TestBuildKISOrderClient(t *testing.T) {
+	setKISEnv(t)
+	auth := buildKISAuth()
+	if auth == nil {
+		t.Fatal("expected KIS auth config")
+	}
+	c := &Container{kisAuthByKeyID: map[int64]*kisAuth{1: auth}}
+
+	client, err := c.BuildKISOrderClient(nil, "87654321", "01")
+	if err != nil {
+		t.Fatalf("BuildKISOrderClient error: %v", err)
+	}
+	if client.Domestic.CANO != "87654321" || client.Domestic.AcntPrdtCd != "01" {
+		t.Errorf("Domestic CANO/AcntPrdtCd = %q/%q, want 87654321/01", client.Domestic.CANO, client.Domestic.AcntPrdtCd)
+	}
+	if client.Domestic.AppKey != auth.appKey || client.Overseas.AppKey != auth.appKey {
+		t.Error("order client did not inherit auth's AppKey")
+	}
+
+	if _, err := (&Container{kisAuthByKeyID: map[int64]*kisAuth{}}).BuildKISOrderClient(nil, "1", "2"); err == nil {
+		t.Error("expected error when KIS is not configured at all")
+	}
+}
+
 func setKISEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("KIS_APP_KEY", "app-key")

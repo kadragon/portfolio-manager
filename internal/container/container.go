@@ -40,6 +40,10 @@ type Container struct {
 	StockClassification *services.StockClassificationService      // backfills asset_class via KIS; Enabled()==false if KIS absent
 	KisCano             string
 	KisAcntPrdtCd       string
+	TossClient          *toss.Client // nil if Toss not configured
+	OrderExecutions     *repositories.OrderExecutionRepository
+
+	kisAuthByKeyID map[int64]*kisAuth // keyed by kis_api_key_id; used by BuildKISOrderClient
 }
 
 // New opens the database at path (empty = default location) and builds the
@@ -65,12 +69,14 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 	holdings := repositories.NewHoldingRepository(q, sqlDB)
 	deposits := repositories.NewDepositRepository(q)
 	stockPrices := repositories.NewStockPriceRepository(q)
+	orderExecutions := repositories.NewOrderExecutionRepository(q)
 
 	var priceClient services.PriceClient
 	var exchangeRate *services.ExchangeRateService
 	var tossClient *toss.Client
 	var accountSync *services.KisAccountSyncService
 	accountSyncByKeyID := map[int64]*services.KisAccountSyncService{}
+	kisAuthByKeyID := map[int64]*kisAuth{}
 	var tossAccountSync *services.KisAccountSyncService
 	var assetClassifier services.AssetClassifier
 	kisCano := ""
@@ -83,6 +89,9 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		assetClassifier = buildAssetClassifier(kisAuth)
 
 		kisCano, kisAcntPrdtCd = loadKISAccount()
+		if kisAuth != nil {
+			kisAuthByKeyID[1] = kisAuth
+		}
 		if balanceClient := buildBalanceClient(kisAuth); balanceClient != nil {
 			accountSync = services.NewKisAccountSyncService(accounts, holdings, stocks, groups, balanceClient, ".data/kis_sync.log")
 			accountSync.SetClassifier(assetClassifier)
@@ -92,6 +101,7 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		if kisAuth != nil {
 			for id := 2; id <= 9; id++ {
 				if auth := buildKISAuthExtra(id, kisAuth); auth != nil {
+					kisAuthByKeyID[int64(id)] = auth
 					bc := buildBalanceClientFromAuth(auth)
 					svc := services.NewKisAccountSyncService(accounts, holdings, stocks, groups, bc,
 						fmt.Sprintf(".data/kis_sync_%d.log", id))
@@ -144,7 +154,57 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		StockClassification: stockClassification,
 		KisCano:             kisCano,
 		KisAcntPrdtCd:       kisAcntPrdtCd,
+		TossClient:          tossClient,
+		OrderExecutions:     orderExecutions,
+		kisAuthByKeyID:      kisAuthByKeyID,
 	}
+}
+
+// BuildKISOrderClient builds a fresh UnifiedOrderClient for the given
+// kis_api_key_id (nil or unknown falls back to key 1's auth), with CANO and
+// AcntPrdtCd set for the specific account being ordered for. Returns an error
+// if KIS is not configured at all (no APP_KEY/APP_SECRET for any key set).
+func (c *Container) BuildKISOrderClient(keyID *int64, cano, acntPrdtCd string) (*kis.UnifiedOrderClient, error) {
+	auth := resolveKisAuth(c.kisAuthByKeyID, keyID)
+	if auth == nil {
+		return nil, fmt.Errorf("KIS is not configured (missing KIS_APP_KEY/KIS_APP_SECRET)")
+	}
+	return &kis.UnifiedOrderClient{
+		Domestic: &kis.DomesticOrderClient{
+			HTTP:       auth.httpClient,
+			BaseURL:    auth.baseURL,
+			AppKey:     auth.appKey,
+			AppSecret:  auth.appSecret,
+			CANO:       cano,
+			AcntPrdtCd: acntPrdtCd,
+			CustType:   auth.custType,
+			Env:        auth.env,
+			Manager:    auth.tokenManager,
+		},
+		Overseas: &kis.OverseasOrderClient{
+			HTTP:      auth.httpClient,
+			BaseURL:   auth.baseURL,
+			AppKey:    auth.appKey,
+			AppSecret: auth.appSecret,
+			CustType:  auth.custType,
+			Env:       auth.env,
+			Manager:   auth.tokenManager,
+		},
+	}, nil
+}
+
+// resolveKisAuth mirrors resolveSyncService's fallback-to-key-1 behaviour for
+// the per-key kisAuth bundles used by order clients.
+func resolveKisAuth(byKeyID map[int64]*kisAuth, keyID *int64) *kisAuth {
+	if keyID != nil {
+		if a, ok := byKeyID[*keyID]; ok {
+			return a
+		}
+		if *keyID != 1 {
+			log.Printf("warn: no KIS auth for requested KIS key, falling back to key-1")
+		}
+	}
+	return byKeyID[1]
 }
 
 // Close releases the database connection.

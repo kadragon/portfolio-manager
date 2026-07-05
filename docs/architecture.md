@@ -30,7 +30,7 @@ internal/db/sqlc/         생성된 쿼리 (modernc.org/sqlite, pure Go)
 | `internal/container` | 합성 루트 (composition root). DB 위에 repository/service/KIS 클라이언트 조립 |
 | `internal/models` | 도메인 구조체 |
 | `internal/{uuidx,numeric,datex,ktime}` | Peewee 호환 SQLite 타입 (UUID hex, NUMERIC affinity, KST datetime) |
-| `internal/kis` | KIS API 클라이언트 (auth/token/price/balance/order, 통합 클라이언트) |
+| `internal/kis` | KIS API 클라이언트 (auth/token/price/balance/order, 통합 클라이언트) — **주의:** `DomesticOrderClient`/`OverseasOrderClient`는 CANO/AcntPrdtCd를 struct 필드로 굽는다(계좌별로 매번 새 client 필요). `DomesticBalanceClient.FetchAccountSnapshot(cano, acntPrdtCd string)`처럼 메서드 인자로 받지 않으니 재사용하면 다른 계좌 주문이 잘못된 계좌로 나간다 — 계좌마다 `container.BuildKISOrderClient(keyID, cano, acntPrdtCd)`로 새로 만들 것 (`internal/services/order_execution_service.go` 참고) |
 | `internal/web/templates` | templ 템플릿 + 헬퍼 |
 | `internal/web/format` | Jinja 필터 대응 포매터 |
 

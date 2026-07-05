@@ -8,7 +8,7 @@ Echo + HTMX 기반 포트폴리오 관리 웹 애플리케이션. 한국투자�
 - **그룹/종목 관리** — 그룹별 목표 비중 설정, 종목 추가/이동/삭제
 - **계좌 관리** — 복수 계좌 예수금 관리, KIS 계좌 자동 동기화
 - **입금 내역** — 일자별 투자원금 기록
-- **리밸런싱** — 그룹/지역 비중 진단, 매매 추천, KIS API 주문 실행
+- **리밸런싱** — 계획 수립은 `rebalance-plan` 에이전트 스킬(앱 밖), TOSS/ISA 주문 실행은 `execute-rebalance-plan` 스킬 + `cmd/rebalance-order`(KIS/Toss 주문 API)가 담당
 - **시세 캐싱** — 일별 가격 DB 캐시 + 세션 내 메모리 캐시
 
 ## 기술 스택
@@ -72,6 +72,7 @@ make css-build  # 프로덕션 CSS (minified)
 
 ```
 cmd/portfolio-web/      엔트리포인트 (Echo 서버)
+cmd/rebalance-order/    리밸런싱 주문 실행 CLI (execute-rebalance-plan 스킬이 호출)
 internal/
   web/handlers/         Echo 핸들러 (HTMX 뷰)
   web/templates/        templ 템플릿
