@@ -49,6 +49,7 @@ See `docs/delegation.md` — hard stops, spawn contract, routing table.
 - **KIS 토큰 발급은 분당 1회 제한** — live auth 검증 루프 반복 금지.
 - `KIS_ENV`: `real` / `demo` / `vps` / `paper`. 잘못된 값은 조용히 production URL로 라우팅됨.
 - 가격 동기화·계좌 동기화는 자동 실행되지 않음 (백그라운드 작업 없음) — `cmd/pm price-sync`/`sync`를 필요할 때 직접 호출.
+- **CLI 우회 감지 시 `pm` 확장 우선** — 사용자 요청에 답하려고 `sqlite3 .data/portfolio.db` 직접 쿼리나 즉석 스크립트(python 등)로 `pm` 출력을 가공했다면, 일회성으로 넘기지 말고 그 자리에서 `cmd/pm`에 read/sort 서브커맨드나 플래그를 추가해라 — 같은 우회가 다음에도 반복된다.
 
 ## Agent skills
 

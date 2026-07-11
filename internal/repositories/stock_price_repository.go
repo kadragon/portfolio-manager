@@ -70,6 +70,25 @@ func (r *StockPriceRepository) GetLatestByTicker(ctx context.Context, ticker str
 	return &sp, nil
 }
 
+// ListByTickerRange returns cached prices for ticker within [from, to] (inclusive),
+// newest first, capped at limit rows.
+func (r *StockPriceRepository) ListByTickerRange(ctx context.Context, ticker string, from, to datex.Date, limit int64) ([]models.StockPrice, error) {
+	rows, err := r.q.ListStockPricesByTickerRange(ctx, sqlc.ListStockPricesByTickerRangeParams{
+		Ticker:   ticker,
+		FromDate: from,
+		ToDate:   to,
+		RowLimit: limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	prices := make([]models.StockPrice, len(rows))
+	for i, row := range rows {
+		prices[i] = toStockPrice(row)
+	}
+	return prices, nil
+}
+
 // Save upserts a price entry. If a row already exists for (ticker, date),
 // it updates price/currency/exchange/updated_at and preserves the existing name
 // when the new name is empty (matches Python behaviour).

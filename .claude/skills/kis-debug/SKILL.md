@@ -136,6 +136,16 @@ sqlite3 .data/portfolio.db "select ticker, price_date, price, exchange from stoc
 sqlite3 .data/portfolio.db "select ticker, exchange from stocks where ticker='<TICKER>';"   # short-form value here means (a) above, elsewhere
 ```
 
+### 8. `1d` change rate shows exactly `0` for domestic (KRW) tickers, but not for overseas ones
+
+Not a bug — a weekend/holiday sync artifact. `GetStockChangeRates` (`internal/services/price_service.go:104`) compares today's stored price to the price on `prevBizDay(today - 1)`. When `price-sync` runs on a day KRX is closed, the KIS quote endpoint returns the last traded (Friday) price unchanged, and it gets saved under *today's* date — an exact duplicate of the prior trading day's row. Since `1d`'s lookback target also resolves to that same prior trading day, current == past → rate is exactly `0`. Overseas tickers usually don't show this because their stored `price_date` reflects the US trading/timezone calendar, so today's row is a genuinely different session from the KST-side lookback target.
+
+Confirm by diffing the last two stored rows — an exact match confirms the duplicate-carry-forward theory:
+```bash
+sqlite3 .data/portfolio.db "select ticker, price_date, price from stock_prices where ticker='<TICKER>' order by price_date desc limit 2;"
+```
+If the two rows are identical, the `0%` is expected; re-run `price-sync` on the next KRX trading day to get a real `1d` value.
+
 ## Output contract
 
 Always close a diagnosis with **(a) the named root cause** and **(b) a concrete next step** — a check command to confirm or the exact fix. Don't stop at "it's probably the env"; state which env value, what it should be, and the command to verify. If live verification is needed, use the `KIS_LIVE=1` test — never loop auth.
