@@ -8,14 +8,6 @@ Schema / lifecycle:
 
 ## Review Backlog
 
-### PR #113 — [FEAT] tax-aware rebalancing (2026-06-03)
-
-- [x] [debt] target allocation per-account split uses `accountAUM.Div(typeCap)` with no remainder absorption — sub-won FP drift when AUM ratios don't divide evenly. Conservation tests (`TestPlannerTaxLocation`) pass with exact `.Equal`, so drift is below material scale; deferred. Fix = assign remainder to final account (order-dependent absorber, weigh trade-off) (source: agy) — `internal/services/rebalance_service.go:508` — **obsolete: `accountAUM.Div(typeCap)` per-account AUM split removed in PR #117 (commit `d31e028`); engine now allocates per group via `allocateSells`/`buildBuyRecs`, no AUM split remains.**
-- [x] [debt] negative account AUM (huge negative cash) yields negative target values; clamp AUM to zero before splitting. Defensive against theoretical state, no failing test (source: agy) — `internal/services/rebalance_service.go:494` — **obsolete: same per-account AUM split removed in PR #117 (commit `d31e028`); no AUM-derived target values remain to clamp.**
-- [x] [test] no guard that every `_groupOrder` entry has a `_placementScore` key — silent default-0 score if a group is added without updating the score map (source: pr-review-toolkit:review-pr) — `internal/services/rebalance_service.go:379` — **resolved: `TestPlacementScoreCoversAllGroups` in `planner_test.go` asserts every `_groupOrder` entry has a `_placementScore` row.**
-- [ ] [refactor] `assetClassEquals` two-line helper used once — inline for parity with `accounts.go` (source: pr-review-toolkit:review-pr) — `internal/web/handlers/stocks.go:24`
-- [x] [refactor] add `models.ValidAssetClass(s)` mirroring `ValidAccountType` to centralize "etf"/"stock" vocabulary (source: pr-review-toolkit:review-pr) — `internal/models/account.go` — **resolved: `ValidAssetClass` + `AssetClassETF`/`AssetClassStock` consts added to `internal/models/stock.go`; call sites in `web/handlers/stocks.go` + `services/stock_classification.go` swapped to it; `TestValidAssetClass` table test added.**
-
 ### PR #114 — KIS ETF classification + tax-location rebalance reasoning (2026-06-03)
 
 - [ ] [debt] ETN (scty_grp_id_cd "EN") classified as "stock" blocks IRP/연금 buys; verify KR ETN eligibility for 연금/IRP and model if eligible (source: pr-review-toolkit:review-pr) — internal/kis/domestic_info.go:34, internal/services/rebalance_service.go canHold
