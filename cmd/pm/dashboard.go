@@ -34,6 +34,9 @@ func runDashboard(ctx context.Context, c *container.Container, args []string) er
 	if *sortKey != "" && *sortKey != "value" && *noChangeRates {
 		return fmt.Errorf("-sort %q requires change rates: drop -no-change-rates", *sortKey)
 	}
+	if *asc && *sortKey == "" {
+		return fmt.Errorf("-asc requires -sort to be specified")
+	}
 
 	if c.Portfolio == nil {
 		return fmt.Errorf("portfolio service not configured")
@@ -52,6 +55,12 @@ func runDashboard(ctx context.Context, c *container.Container, args []string) er
 		}
 	}
 
+	// The per-group fallback below carries no ValueKRW/ChangeRates fields, so
+	// -sort has nothing to operate on — fail loudly instead of silently ignoring it.
+	if *sortKey != "" {
+		return fmt.Errorf("-sort %q requires priced dashboard data (no price service configured)", *sortKey)
+	}
+
 	groupHoldings, err := c.Portfolio.GetHoldingsByGroup(ctx)
 	if err != nil {
 		return fmt.Errorf("holdings by group: %w", err)
@@ -61,7 +70,10 @@ func runDashboard(ctx context.Context, c *container.Container, args []string) er
 
 // sortDashboardHoldings orders holdings in place by sortKey, best-first unless
 // asc is set. Rows missing the requested value (nil ValueKRW, absent change-rate
-// period) sort last regardless of direction.
+// period) sort last regardless of direction. Note: GetStockChangeRates reports a
+// literal 0 (not a missing key) when a stock has no cached price far enough back
+// for the period — e.g. a ticker held less than a year shows "1y": 0 — so those
+// rows are indistinguishable here from a genuine flat return and will not sort last.
 func sortDashboardHoldings(holdings []models.GroupHoldingPair, sortKey string, asc bool) {
 	keyOf := func(h models.GroupHoldingPair) (numeric.Decimal, bool) {
 		if sortKey == "value" {

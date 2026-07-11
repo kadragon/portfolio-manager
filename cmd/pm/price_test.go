@@ -56,3 +56,13 @@ func TestPriceListUnknownVerb(t *testing.T) {
 		t.Fatal("expected error for unknown verb")
 	}
 }
+
+func TestPriceListRejectsFromAfterTo(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+
+	err := runPrice(ctx, c, []string{"list", "-ticker", "005930", "-from", "2026-02-01", "-to", "2026-01-01"})
+	if err == nil {
+		t.Fatal("expected error when -from is after -to")
+	}
+}

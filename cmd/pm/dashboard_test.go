@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
+	"github.com/kadragon/portfolio-manager/internal/services"
 )
 
 func pairWithChangeRate(t *testing.T, ticker, oneMonth string) models.GroupHoldingPair {
@@ -64,5 +66,30 @@ func TestSortDashboardHoldingsMissingKeySortsLast(t *testing.T) {
 	}
 	if holdings[1].Holding.Stock.Ticker != "NODATA" {
 		t.Fatalf("expected row missing 1m to sort last, got %s", holdings[1].Holding.Stock.Ticker)
+	}
+}
+
+func TestRunDashboardRejectsAscWithoutSort(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+
+	if err := runDashboard(ctx, c, []string{"-asc"}); err == nil {
+		t.Fatal("expected error when -asc is passed without -sort")
+	}
+}
+
+func TestRunDashboardRejectsSortWithoutPriceService(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+	// container.New/NewWithQueries always wire a DB-backed PriceService regardless
+	// of KIS config, so simulate the no-price-service fallback (GetHoldingsByGroup
+	// path) directly, matching how PortfolioService documents priceService as optional.
+	c.Portfolio = services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, nil, nil)
+
+	if c.Portfolio.HasPriceService() {
+		t.Fatal("expected no price service wired")
+	}
+	if err := runDashboard(ctx, c, []string{"-sort", "value"}); err == nil {
+		t.Fatal("expected error when -sort is used without a price service")
 	}
 }

@@ -62,6 +62,10 @@ func priceList(ctx context.Context, c *container.Container, args []string) error
 		toDate = d
 	}
 
+	if fromDate.Time.After(toDate.Time) {
+		return fmt.Errorf("-from %s is after -to %s", fromDate.ISO(), toDate.ISO())
+	}
+
 	prices, err := c.StockPrices.ListByTickerRange(ctx, tick, fromDate, toDate, *limit)
 	if err != nil {
 		return fmt.Errorf("list stock prices: %w", err)
