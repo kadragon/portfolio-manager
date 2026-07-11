@@ -38,11 +38,13 @@
 ## 코드 생성
 
 - DB 쿼리: `query/queries.sql` → `make go-gen` → `internal/db/sqlc/` (committed)
-- 템플릿: `*.templ` → `make go-gen` → `*_templ.go` (gitignored)
-- 변경 후 `sqlc diff` / `templ generate --check` 통과 확인 (pre-commit/CI에서 검사)
+- 변경 후 `sqlc diff` 통과 확인 (pre-commit/CI에서 검사)
 
-## HTMX 패턴
+## CLI 패턴 (`cmd/pm`)
 
-- `HX-Request` 헤더로 partial/full 분기
-- 템플릿: templ, DaisyUI 컴포넌트
-- `internal/web/handlers/render.go` — 본문 출력 전 상태 코드 설정
+- 서브커맨드: `pm <resource> <verb> [flags]` — 리소스별 파일(`account.go`, `group.go`, ...)에
+  `func run<Resource>(ctx, c *container.Container, args []string) error` 하나씩
+- 매 verb는 자체 `flag.NewFlagSet` 사용, 파싱은 공용 `parseFlags` 헬퍼(`output.go`) 경유
+- 출력은 `printJSON`으로 들여쓴 JSON을 stdout에 — 사람이 읽는 포맷팅은 호출하는 스킬의 몫
+- `update` verb는 `fs.Visit`으로 실제 전달된 플래그만 반영(부분 업데이트), 나머지 필드는 기존 값 유지
+- 저장소/서비스 호출 에러는 항상 `fmt.Errorf("<동작>: %w", err)`로 래핑 (wrapcheck 강제)

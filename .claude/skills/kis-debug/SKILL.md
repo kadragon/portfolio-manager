@@ -5,7 +5,7 @@ description: >-
   auth/token errors (EGW00123, 500), wrong-environment routing, overseas price
   returning empty/zero, account-sync errors (OPSQ2000 INVALID_CHECK_ACNO),
   multi-API-key sets (KIS_APP_KEY_2) not taking effect, and missing FX/exchange
-  rates. Use this whenever a KIS sync button fails, prices don't render, a
+  rates. Use this whenever a `pm sync` call fails, prices don't render, a
   KIS-related error code or stack trace appears, exchange rates look wrong, or
   the user reports "동기화 실패", "가격 조회 안됨", "해외 주식", "환율", or pastes a
   koreainvestment.com / koreaexim.go.kr error — even if they don't name KIS
@@ -33,7 +33,7 @@ Source: `internal/kis/overseas_price_live_test.go:24` (skips unless `KIS_LIVE=1`
 - Token cache files: `.data/kis_token_{n}.json` (n = key-set id). RFC3339 expiry.
 - Error format raised app-side: `KIS API error {msg_cd}: {msg1}` (`internal/kis/domestic_balance.go:146`).
 
-When a fix changes env or keys, the running server must be restarted to re-read `.env` and re-init the container.
+Env/key changes take effect on the very next `pm` invocation — each call boots a fresh container, no restart needed.
 
 ## Symptom → cause → action
 
@@ -87,19 +87,24 @@ Common causes: pasting the full 10-digit string into `KIS_CANO`, swapping CANO/P
 ```bash
 grep -E '^KIS_(CANO|ACNT_PRDT_CD)=' .env   # CANO must be 8 digits, PRDT 2 digits
 ```
-Restart the server after fixing.
+Each `pm` invocation is a fresh process, so a `.env` fix takes effect on the very next call — no
+restart needed.
 
 ### 5. Multi-key set (`KIS_APP_KEY_2`) not taking effect
 
 Key sets 2–9 come from `KIS_APP_KEY_{id}` / `KIS_APP_SECRET_{id}` (`container.go:454` `buildKISAuthExtra`); they inherit env/custType/baseURL/tokenManager from key-1. An account routes to its key set via `account.KisAPIKeyID` → `resolveSyncService` (`container.go:216`), which **falls back to key-1 if the id is unmapped**. So "key 2 not applying" is usually one of:
 
-- Account row's `KisAPIKeyID` not set to 2 → silently uses key-1. Check the account's API-key setting in the UI / DB.
+- Account row's `KisAPIKeyID` not set to 2 → silently uses key-1. Check it via the portfolio-data
+  skill (`pm account list`) or the DB directly.
 - `KIS_APP_KEY_2`/`KIS_APP_SECRET_2` missing or blank in `.env` → key set 2 never built → fallback to key-1.
-- **Cold-start skip**: log line `KIS key set 2: skipping cold-start initialization to avoid 1-req/min rate-limit conflict with key set 1. Restart after ~60s to activate key set 2.` Key 2 only activates on a restart spaced **>60s** after key-1's token issuance. Fix: wait ~60s, restart server once.
+- **Cold-start skip**: log line `KIS key set 2: skipping cold-start initialization to avoid 1-req/min rate-limit conflict with key set 1. Restart after ~60s to activate key set 2.` printed to stderr on
+  `pm` startup. Since each `pm` call is a fresh process, key 2 only activates on a call made
+  **>60s** after key-1's token issuance in an earlier call — fix: wait ~60s, run the `pm`/`sync`
+  command again.
 
 ```bash
 grep -E '^KIS_APP_(KEY|SECRET)_[0-9]=' .env
-docker compose logs web | grep -i 'key set'   # spot the cold-start-skip line
+go run ./cmd/pm sync -account "<name>" 2>&1 | grep -i 'key set'   # spot the cold-start-skip line
 ```
 
 ### 6. FX / exchange rate missing or wrong (overseas value shows ₩0)

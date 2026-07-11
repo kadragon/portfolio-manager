@@ -25,11 +25,12 @@ python3 .claude/skills/rebalance-plan/scripts/snapshot.py --fx <rate>
 ```
 
 - Surface every `warnings` entry (stale prices, missing prices, non-positive prices) to the
-  user before planning. A stale price on a ticker the plan will trade → stop, ask the user to
-  run the app's KIS sync, then re-run the snapshot. Stale price on an untraded ticker → proceed
-  and note it. A **non-positive price** warning always stops regardless of whether that ticker
-  trades this run — the snapshot silently zeroes the holding's value, which understates the
-  whole group and can manufacture a phantom underweight elsewhere in the plan.
+  user before planning. A stale price on a ticker the plan will trade → stop, run
+  `go run ./cmd/pm price-sync` (or invoke the portfolio-sync skill) yourself, then re-run the
+  snapshot. Stale price on an untraded ticker → proceed and note it. A **non-positive price**
+  warning always stops regardless of whether that ticker trades this run — the snapshot
+  silently zeroes the holding's value, which understates the whole group and can manufacture a
+  phantom underweight elsewhere in the plan.
 - If snapshot `db_target_pct` disagrees with policy targets, policy wins — but report the
   discrepancy so the user updates the app's group settings.
 
@@ -68,8 +69,9 @@ step. Skipping a sub-1-share buy is fine — say so.
 
 **New positions** (ticker absent from DB): the snapshot has no price for them. State those trades
 as KRW amounts, not share counts — a web quote is provisional at best, so mark quantities
-"주문 시점 재계산" and tell the user to register the ticker in the app + run KIS sync so the next
-run has real prices. Never present a share count derived from a stale web quote as executable.
+"주문 시점 재계산" and tell the user to register the ticker (`pm stock add`, via the portfolio-data
+skill) and run `pm price-sync` so the next run has real prices. Never present a share count
+derived from a stale web quote as executable.
 
 ### 4. Verify before writing (required)
 
