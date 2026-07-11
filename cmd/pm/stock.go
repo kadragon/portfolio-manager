@@ -103,6 +103,9 @@ func stockUpdate(ctx context.Context, c *container.Container, args []string) err
 
 	if seen["ticker"] {
 		tick := strings.ToUpper(strings.TrimSpace(*ticker))
+		if tick == "" {
+			return fmt.Errorf("-ticker cannot be empty")
+		}
 		if _, err := c.Stocks.UpdateTicker(ctx, id, tick); err != nil {
 			return fmt.Errorf("update stock ticker: %w", err)
 		}

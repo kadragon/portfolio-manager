@@ -162,6 +162,27 @@ func TestStockUpdateMultipleFields(t *testing.T) {
 	}
 }
 
+func TestStockUpdateEmptyTickerRejected(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+	g := mustGroup(t, ctx, c, "Test Group")
+	s, err := c.Stocks.Create(ctx, "AAPL", g.ID)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := runStock(ctx, c, []string{"update", "-id", s.ID.String(), "-ticker", "  "}); err == nil {
+		t.Fatal("expected error when -ticker is empty/whitespace")
+	}
+	got, err := c.Stocks.GetByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.Ticker != "AAPL" {
+		t.Fatalf("ticker should be unchanged after rejected update, got %q", got.Ticker)
+	}
+}
+
 func TestStockUpdateNoFields(t *testing.T) {
 	ctx := context.Background()
 	c := newStockContainer(t)

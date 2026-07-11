@@ -30,7 +30,6 @@ func main() {
 	if err != nil {
 		fatal("init container: %v", err)
 	}
-	defer func() { _ = c.Close() }()
 
 	ctx := context.Background()
 
@@ -57,12 +56,15 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "unknown resource %q\n\n", resource)
 		usage()
+		_ = c.Close()
 		os.Exit(2)
 	}
 
 	if runErr != nil {
+		_ = c.Close()
 		fatal("%v", runErr)
 	}
+	_ = c.Close()
 }
 
 func usage() {
