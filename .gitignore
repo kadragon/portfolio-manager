@@ -29,6 +29,7 @@ src/portfolio_manager/web/tailwind/daisyui.css
 
 # Go
 /portfolio-web
+/pm
 coverage*.out
 coverage.txt
 *_templ.go
