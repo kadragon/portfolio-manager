@@ -12,7 +12,6 @@ func printJSON(v any) error {
 	if err != nil {
 		return fmt.Errorf("marshal result: %w", err)
 	}
-	// codeql[go/clear-text-logging] -- intended CLI stdout output; any KisAPIKeyID here is a config index (1-9), not a secret (see prior dismissals of alerts #4/#5)
 	fmt.Println(string(out))
 	return nil
 }
