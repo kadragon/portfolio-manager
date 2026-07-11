@@ -6,12 +6,52 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/container"
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
+
+// accountOutput is the CLI's JSON view of an account. It deliberately has no
+// field derived from models.Account.KisAPIKeyID: CodeQL's clear-text-logging
+// query treats any struct reaching json.Marshal as exposing all of its
+// fields, so a `json:"-"` tag on the source struct doesn't stop the alert —
+// only never putting that field on the type that gets marshaled does. The
+// value (a small index selecting a .env KIS_APP_KEY_N set) isn't otherwise
+// needed in CLI output.
+type accountOutput struct {
+	ID             uuidx.UUID
+	Name           string
+	CashBalance    numeric.Decimal
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	KisAccountNo   *string
+	AccountType    *string
+	TossAccountSeq *int64
+}
+
+func toAccountOutput(a models.Account) accountOutput {
+	return accountOutput{
+		ID:             a.ID,
+		Name:           a.Name,
+		CashBalance:    a.CashBalance,
+		CreatedAt:      a.CreatedAt,
+		UpdatedAt:      a.UpdatedAt,
+		KisAccountNo:   a.KisAccountNo,
+		AccountType:    a.AccountType,
+		TossAccountSeq: a.TossAccountSeq,
+	}
+}
+
+func toAccountOutputs(accounts []models.Account) []accountOutput {
+	out := make([]accountOutput, len(accounts))
+	for i, a := range accounts {
+		out[i] = toAccountOutput(a)
+	}
+	return out
+}
 
 func runAccount(ctx context.Context, c *container.Container, args []string) error {
 	if len(args) == 0 {
@@ -39,7 +79,7 @@ func accountList(ctx context.Context, c *container.Container) error {
 	if err != nil {
 		return fmt.Errorf("list accounts: %w", err)
 	}
-	return printJSON(accounts)
+	return printJSON(toAccountOutputs(accounts))
 }
 
 func accountAdd(ctx context.Context, c *container.Container, args []string) error {
@@ -60,7 +100,7 @@ func accountAdd(ctx context.Context, c *container.Container, args []string) erro
 	if err != nil {
 		return fmt.Errorf("create account: %w", err)
 	}
-	return printJSON(account)
+	return printJSON(toAccountOutput(account))
 }
 
 // accountUpdate applies only the flags the caller explicitly passed
@@ -151,7 +191,7 @@ func accountUpdate(ctx context.Context, c *container.Container, args []string) e
 	if err != nil {
 		return fmt.Errorf("update account: %w", err)
 	}
-	return printJSON(updated)
+	return printJSON(toAccountOutput(updated))
 }
 
 func accountDelete(ctx context.Context, c *container.Container, args []string) error {
@@ -196,5 +236,5 @@ func accountSetCash(ctx context.Context, c *container.Container, args []string) 
 	if err != nil {
 		return fmt.Errorf("update account cash: %w", err)
 	}
-	return printJSON(updated)
+	return printJSON(toAccountOutput(updated))
 }

@@ -32,12 +32,7 @@ type Account struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	KisAccountNo *string
-	// KisAPIKeyID selects which .env KIS_APP_KEY_N credential set to use (not
-	// a secret itself), but CodeQL's clear-text-logging query flags any
-	// "...KeyID" field reaching a print/log call; omit from CLI JSON output
-	// to keep the required CodeQL check green rather than dismiss the alert
-	// per PR.
-	KisAPIKeyID *int64 `json:"-"`
+	KisAPIKeyID  *int64
 	// AccountType is the tax/eligibility class: "brokerage", "irp", "pension"
 	// (연금저축), or "isa". nil = unclassified (treated strictly: buys blocked).
 	AccountType    *string
