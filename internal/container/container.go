@@ -1,7 +1,6 @@
-// Package container wires the repositories (and, in later phases, services and
-// external clients) over an open database, the Go counterpart of
-// core/container.py's ServiceContainer. As the composition root it may depend on
-// both the db and repository layers.
+// Package container wires the repositories, services, and external clients
+// over an open database — the composition root for cmd/pm and
+// cmd/rebalance-order. It may depend on both the db and repository layers.
 package container
 
 import (
@@ -22,7 +21,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/toss"
 )
 
-// Container holds shared dependencies for the web layer.
+// Container holds shared dependencies for cmd/ binaries.
 type Container struct {
 	DB                  *sql.DB
 	Groups              *repositories.GroupRepository
@@ -36,7 +35,6 @@ type Container struct {
 	AccountSyncByKeyID  map[int64]*services.KisAccountSyncService // keyed by kis_api_key_id
 	TossAccountSync     *services.KisAccountSyncService           // nil if Toss not configured
 	PriceSync           *services.PriceSyncService                // nil if KIS not configured
-	BandAlert           *services.BandAlertService                // nil unless BAND_ALERT_WEBHOOK_URL is set
 	StockClassification *services.StockClassificationService      // backfills asset_class via KIS; Enabled()==false if KIS absent
 	KisCano             string
 	KisAcntPrdtCd       string
@@ -49,11 +47,48 @@ type Container struct {
 // New opens the database at path (empty = default location) and builds the
 // repositories. The caller is responsible for Close.
 func New(path string) (*Container, error) {
+	loadDotEnv()
 	sqlDB, q, err := db.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	return newWithQueries(sqlDB, q, true), nil
+}
+
+// loadDotEnv reads KEY=VALUE pairs from ./.env and sets them as process env
+// vars, skipping any key already set — so real env vars (CI, an explicit
+// export) always win over the file. A no-op if .env doesn't exist. This
+// replaces the docker-compose `env_file: .env` loading that existed before
+// the web app (and its Docker deployment) was removed in favor of cmd/
+// binaries invoked directly from a shell.
+func loadDotEnv() {
+	loadDotEnvFile(".env")
+}
+
+func loadDotEnvFile(path string) {
+	data, err := os.ReadFile(path) //nolint:gosec // path is ".env" (or a test-controlled temp path), never user input
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		_ = os.Setenv(key, value)
+	}
 }
 
 // NewWithQueries builds a Container over an already-open database and queries
@@ -129,11 +164,6 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		priceSync = services.NewPriceSyncService(priceClient, stockPrices, stocks, deposits)
 	}
 
-	var bandAlert *services.BandAlertService
-	if url := strings.TrimSpace(os.Getenv("BAND_ALERT_WEBHOOK_URL")); setupKIS && url != "" {
-		bandAlert = services.NewBandAlertService(portfolio, groups, url)
-	}
-
 	stockClassification := services.NewStockClassificationService(stocks, assetClassifier)
 	stockClassification.SetCallDelay(200 * time.Millisecond)
 
@@ -150,7 +180,6 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		AccountSyncByKeyID:  accountSyncByKeyID,
 		TossAccountSync:     tossAccountSync,
 		PriceSync:           priceSync,
-		BandAlert:           bandAlert,
 		StockClassification: stockClassification,
 		KisCano:             kisCano,
 		KisAcntPrdtCd:       kisAcntPrdtCd,

@@ -14,13 +14,12 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/repositories"
 )
 
-const (
-	syncInterval  = 15 * time.Minute
-	syncCallDelay = 200 * time.Millisecond
-)
+const syncCallDelay = 200 * time.Millisecond
 
-// PriceSyncService fetches prices for all stocks in the background and saves them to DB.
-// It is the only component that calls PriceClient. PriceService reads from DB only.
+// PriceSyncService fetches prices for all stocks and saves them to DB, one
+// pass per SyncOnce call (invoked on demand via `pm price-sync`, not on a
+// background schedule). It is the only component that calls PriceClient.
+// PriceService reads from DB only.
 type PriceSyncService struct {
 	client      PriceClient
 	stockPrices *repositories.StockPriceRepository
@@ -40,22 +39,6 @@ func NewPriceSyncService(
 		stockPrices: stockPrices,
 		stocks:      stocks,
 		deposits:    deposits,
-	}
-}
-
-// Start calls SyncOnce immediately, then repeats on a 15-minute interval
-// until ctx is cancelled.
-func (s *PriceSyncService) Start(ctx context.Context) {
-	s.SyncOnce(ctx)
-	t := time.NewTicker(syncInterval)
-	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-			s.SyncOnce(ctx)
-		case <-ctx.Done():
-			return
-		}
 	}
 }
 

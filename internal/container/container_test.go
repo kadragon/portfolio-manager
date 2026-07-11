@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -246,5 +248,60 @@ func TestKisAssetClassifierUnknownExchangeAllFailReturnsLastErr(t *testing.T) {
 	}
 	if len(fake.calls) != 3 {
 		t.Errorf("calls = %v, want all 3 exchanges tried", fake.calls)
+	}
+}
+
+func TestLoadDotEnvFileSetsUnsetVars(t *testing.T) {
+	const key = "PM_TEST_LOADDOTENV_UNSET"
+	os.Unsetenv(key)
+	t.Cleanup(func() { os.Unsetenv(key) })
+
+	path := filepath.Join(t.TempDir(), ".env")
+	content := "# comment\n\n" + key + "=hello world\nMALFORMED_LINE\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	loadDotEnvFile(path)
+
+	if got := os.Getenv(key); got != "hello world" {
+		t.Errorf("%s = %q, want %q", key, got, "hello world")
+	}
+}
+
+func TestLoadDotEnvFileDoesNotOverrideExistingVar(t *testing.T) {
+	const key = "PM_TEST_LOADDOTENV_PRESET"
+	t.Setenv(key, "already-set")
+
+	path := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(path, []byte(key+"=from-file\n"), 0o600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	loadDotEnvFile(path)
+
+	if got := os.Getenv(key); got != "already-set" {
+		t.Errorf("%s = %q, want existing value preserved (%q)", key, got, "already-set")
+	}
+}
+
+func TestLoadDotEnvFileMissingFileIsNoop(t *testing.T) {
+	loadDotEnvFile(filepath.Join(t.TempDir(), "does-not-exist.env"))
+}
+
+func TestLoadDotEnvFileStripsQuotes(t *testing.T) {
+	const key = "PM_TEST_LOADDOTENV_QUOTED"
+	os.Unsetenv(key)
+	t.Cleanup(func() { os.Unsetenv(key) })
+
+	path := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(path, []byte(key+`="quoted value"`+"\n"), 0o600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	loadDotEnvFile(path)
+
+	if got := os.Getenv(key); got != "quoted value" {
+		t.Errorf("%s = %q, want %q", key, got, "quoted value")
 	}
 }

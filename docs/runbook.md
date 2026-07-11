@@ -1,35 +1,37 @@
 # Runbook
 
-빌드/테스트/실행/배포 명령어 모음.
+빌드/테스트/실행 명령어 모음. 웹 UI/Docker는 없음 — `cmd/pm` CLI를 Claude Code 스킬
+(portfolio-data, portfolio-sync)이나 직접 `go run`으로 호출.
 
 ## 설치
 
 ```bash
-make go-tools              # sqlc + templ 설치 (go install)
-make setup                 # Tailwind + DaisyUI standalone CLI
+make go-tools              # sqlc 설치 (go install)
 ```
 
-## 개발
+## 사용
 
 ```bash
-make dev                   # 웹 + CSS watch
-go run ./cmd/portfolio-web # 웹만 (http://127.0.0.1:8000)
-make css-watch             # CSS만
+go run ./cmd/pm help                    # 서브커맨드 목록
+go run ./cmd/pm account list            # 예: 계좌 목록
+go run ./cmd/pm dashboard               # 포트폴리오 요약
 ```
 
-Optional env: `BAND_ALERT_WEBHOOK_URL` — when set, a daily background check posts a webhook (Slack `text` / Discord `content` JSON) whenever the rebalance band breach set changes.
+`cmd/pm`의 전체 리소스/verb 표는 `go run ./cmd/pm help` 출력 또는
+`.claude/skills/portfolio-data/SKILL.md` 참고. 가격 동기화·계좌 동기화는 더 이상
+백그라운드로 자동 실행되지 않음 — `pm price-sync`/`pm sync`를 필요할 때 직접 호출.
 
 ## 코드 생성
 
 ```bash
-make go-gen                # sqlc generate + templ generate
+make go-gen                # sqlc generate
 ```
 
 ## 빌드
 
 ```bash
 make go-build              # go build ./...
-go build -trimpath -ldflags="-s -w" -o portfolio-web ./cmd/portfolio-web
+go build -o pm ./cmd/pm    # pm 바이너리만
 ```
 
 ## 테스트
@@ -63,20 +65,10 @@ The live test calls only read endpoints: OAuth token issuance, accounts, holding
 
 ```bash
 make go-vet                # go vet ./...
-make go-lint               # golangci-lint run
-templ generate --check     # 템플릿 생성물 최신 여부
-sqlc diff                  # sqlc 생성물 최신 여부
-make go-check              # build + vet + lint + test 일괄
+make go-lint                # golangci-lint run
+sqlc diff                   # sqlc 생성물 최신 여부
+make go-check                # generate + build + vet + lint + test 일괄
 ```
-
-## Docker
-
-(docs/docker.md 참조)
-
-## 배포
-
-멀티스테이지 빌드 (`Dockerfile`): `golang:alpine`에서 `CGO_ENABLED=0` 정적 바이너리 →
-`alpine` 런타임 (ca-certificates, tzdata). `.data` 볼륨에 SQLite DB 영속.
 
 ## 디버깅
 

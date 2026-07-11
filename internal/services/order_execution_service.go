@@ -204,9 +204,9 @@ func classifyOrderResult(raw map[string]any, err error) (status, message string)
 
 // normalizeKisAccountNo extracts the 8-digit CANO and 2-digit account-product
 // code from a KIS account number string (e.g. "12345678-01" or "1234567801").
-// Duplicated from internal/web/handlers.normalizeKisAccountNo (unexported
-// there) rather than shared, matching this codebase's existing convention of
-// small local re-derivations (see container.go's loadKISAccount).
+// Duplicated in cmd/pm (unexported here and there) rather than shared,
+// matching this codebase's existing convention of small local re-derivations
+// (see container.go's loadKISAccount).
 func normalizeKisAccountNo(s string) (cano, acntPrdtCd string, err error) {
 	var digits strings.Builder
 	for _, ch := range s {

@@ -1,16 +1,16 @@
 # Portfolio Manager Agent Rules
 
-Go (Echo + HTMX) 포트폴리오 관리 앱. SQLite (modernc pure-Go) + sqlc, KIS Open Trading API 연동.
+Go CLI(`cmd/pm`) + Claude Code 스킬로 제어하는 포트폴리오 관리 도구. 웹 UI/Docker 없음. SQLite
+(modernc pure-Go) + sqlc, KIS Open Trading API/Toss Invest API 연동.
 
 ## Docs Index (read on demand)
 
 | File | When to read |
 |------|-------------|
 | `docs/architecture.md` | 소스 구조 수정, 새 모듈 추가, 레이어 경계 관련 작업 전 |
-| `docs/conventions.md` | 새 파일 작성, 라우트 추가, 커밋 메시지 작성 전 |
-| `docs/runbook.md` | 빌드/테스트/배포 명령어, live API smoke, 실패 디버깅 시 |
+| `docs/conventions.md` | 새 파일 작성, CLI 서브커맨드 추가, 커밋 메시지 작성 전 |
+| `docs/runbook.md` | 빌드/테스트 명령어, live API smoke, 실패 디버깅 시 |
 | `docs/workflows.md` | 구현 사이클 시작 시, 컨텍스트 관리 전략 필요 시 |
-| `docs/docker.md` | Docker 실행/트러블슈팅 시 |
 | `docs/delegation.md` | 서브에이전트 위임 패턴, spawn 계약, 라우팅 테이블 |
 | `docs/eval-criteria.md` | 평가 기준, Sprint Contract, 완료 정의 |
 
@@ -18,17 +18,17 @@ Go (Echo + HTMX) 포트폴리오 관리 앱. SQLite (modernc pure-Go) + sqlc, KI
 
 Invariants. (1)(3) enforced by `internal/arch/arch_test.go`. (4) by golangci-lint (gosec) in pre-commit + CI. (2)(5) convention only.
 
-1. **Repository layer owns all DB access** — `web/` and `services/` must not import `internal/db` (or `internal/db/sqlc`). All DB access goes through `*Repository` fields on `container.Container` (`Accounts`, `Stocks`, `Holdings`, …). Enforced by `TestWebHasNoDirectDBAccess` / `TestServicesHaveNoDirectDBAccess` in `internal/arch/arch_test.go`.
+1. **Repository layer owns all DB access** — `cmd/` (outside `internal/container`) and `services/` must not import `internal/db` (or `internal/db/sqlc`). All DB access goes through `*Repository` fields on `container.Container` (`Accounts`, `Stocks`, `Holdings`, …). Enforced by `TestCmdHasNoDirectDBAccess` / `TestServicesHaveNoDirectDBAccess` in `internal/arch/arch_test.go`.
    ```go
    // correct — repository injected via container
    account, err := c.Accounts.GetByID(ctx, id)
-   // violation — blocked by arch test (web/ or services/ importing the DB layer)
+   // violation — blocked by arch test (cmd/ or services/ importing the DB layer)
    import "github.com/kadragon/portfolio-manager/internal/db/sqlc"
    ```
 
 2. **KIS live tests guard with `KIS_LIVE=1`** — e.g. `internal/kis/overseas_price_live_test.go`. The test calls `t.Skip` unless `KIS_LIVE=1` is set; CI never sets it. Token issuance rate-limited to 1/min.
 
-3. **Layer dependency direction** — `internal/web → internal/services → internal/repositories → internal/db`. Reverse imports are violations. Enforced by `TestServicesDoNotImportWeb`, `TestRepositoriesDoNotImportWeb`, `TestRepositoriesDoNotImportServices` in `internal/arch/arch_test.go`.
+3. **Layer dependency direction** — `cmd → internal/services → internal/repositories → internal/db`, via `internal/container` as composition root. Reverse imports are violations. Enforced by `TestRepositoriesDoNotImportServices` in `internal/arch/arch_test.go`.
 
 4. **Secrets via `.env` only** — No hardcoded credentials, keys, or tokens in source. Enforced by gosec (via golangci-lint) in pre-commit + CI.
 
@@ -48,8 +48,7 @@ See `docs/delegation.md` — hard stops, spawn contract, routing table.
 
 - **KIS 토큰 발급은 분당 1회 제한** — live auth 검증 루프 반복 금지.
 - `KIS_ENV`: `real` / `demo` / `vps` / `paper`. 잘못된 값은 조용히 production URL로 라우팅됨.
-- HTMX 라우트는 `HX-Request` 헤더로 partial/full 응답 분기. 일관성 유지.
-- Tailwind CSS는 standalone CLI (`bin/tailwindcss`). Node.js 불필요. `make css-watch`로 개발.
+- 가격 동기화·계좌 동기화는 자동 실행되지 않음 (백그라운드 작업 없음) — `cmd/pm price-sync`/`sync`를 필요할 때 직접 호출.
 
 ## Agent skills
 

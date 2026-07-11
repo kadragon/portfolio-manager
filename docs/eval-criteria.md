@@ -37,7 +37,7 @@ For each criterion, score 1, 3, or 5 (odd only — even values are undefined):
 How to test: `go test ./...` green; manually verify the new behavior in the running app.
 
 ### 2. Layer safety (weight: 3)
-- Score 5: `go test ./internal/arch/` passes; no direct DB imports in `web/` or `services/`
+- Score 5: `go test ./internal/arch/` passes; no direct DB imports in `cmd/` or `services/`
 - Score 3: Same as 5 (this is binary — arch tests either pass or fail)
 - Score 1: Arch tests fail
 
