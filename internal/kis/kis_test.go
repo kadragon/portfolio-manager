@@ -1665,6 +1665,107 @@ func TestUnifiedPriceClientGetHistoricalCloseOverseas(t *testing.T) {
 	}
 }
 
+func TestUnifiedPriceClientGetHistoricalRangeDomestic(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"output2":[{"stck_bsop_date":"20240102","stck_clpr":"74500"},{"stck_bsop_date":"20240101","stck_clpr":"74000"}]}`)
+	}))
+	mgr := makeManager(t, "tok")
+	domestic := &DomesticPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	upc := &UnifiedPriceClient{Domestic: domestic}
+	points, err := upc.GetHistoricalRange("005930", datex.New(2024, 1, 1), datex.New(2024, 1, 2), "")
+	if err != nil {
+		t.Fatalf("GetHistoricalRange domestic: %v", err)
+	}
+	if len(points) != 2 {
+		t.Fatalf("len(points) = %d, want 2", len(points))
+	}
+}
+
+func TestUnifiedPriceClientGetHistoricalRangeDomesticPropagatesError(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"rt_cd":"1","msg_cd":"ERR01","msg1":"invalid ticker"}`)
+	}))
+	mgr := makeManager(t, "tok")
+	domestic := &DomesticPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	upc := &UnifiedPriceClient{Domestic: domestic}
+	_, err := upc.GetHistoricalRange("000000", datex.New(2024, 1, 1), datex.New(2024, 1, 2), "")
+	if err == nil {
+		t.Fatal("GetHistoricalRange domestic: want error, got nil")
+	}
+}
+
+func TestUnifiedPriceClientGetHistoricalRangeOverseas(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"output2":[{"xymd":"20240102","clos":"195.50"},{"xymd":"20240101","clos":"195.00"}]}`)
+	}))
+	mgr := makeManager(t, "tok")
+	overseas := &OverseasPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	upc := &UnifiedPriceClient{Overseas: overseas}
+	points, err := upc.GetHistoricalRange("AAPL", datex.New(2024, 1, 1), datex.New(2024, 1, 2), "NASD")
+	if err != nil {
+		t.Fatalf("GetHistoricalRange overseas: %v", err)
+	}
+	if len(points) != 2 {
+		t.Fatalf("len(points) = %d, want 2", len(points))
+	}
+}
+
+// TestUnifiedPriceClientGetHistoricalRangeOverseasFallsThroughOnEmpty verifies
+// getOverseasHistoricalRange tries the next exchange when the preferred one returns
+// no points (not an error), and only returns an error once every exchange has failed.
+func TestUnifiedPriceClientGetHistoricalRangeOverseasFallsThroughOnEmpty(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("EXCD") == "NAS" {
+			fmt.Fprintf(w, `{"output2":[]}`)
+			return
+		}
+		fmt.Fprintf(w, `{"output2":[{"xymd":"20240101","clos":"10.00"}]}`)
+	}))
+	mgr := makeManager(t, "tok")
+	overseas := &OverseasPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	upc := &UnifiedPriceClient{Overseas: overseas}
+	points, err := upc.GetHistoricalRange("SPY", datex.New(2024, 1, 1), datex.New(2024, 1, 1), "NASD")
+	if err != nil {
+		t.Fatalf("GetHistoricalRange overseas fall-through: %v", err)
+	}
+	if len(points) != 1 {
+		t.Fatalf("len(points) = %d, want 1 (from fallback exchange)", len(points))
+	}
+}
+
+func TestUnifiedPriceClientGetHistoricalRangeOverseasPropagatesErrorWhenAllExchangesFail(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"rt_cd":"1","msg_cd":"ERR01","msg1":"invalid ticker"}`)
+	}))
+	mgr := makeManager(t, "tok")
+	overseas := &OverseasPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	upc := &UnifiedPriceClient{Overseas: overseas}
+	_, err := upc.GetHistoricalRange("BADTICKER", datex.New(2024, 1, 1), datex.New(2024, 1, 1), "NASD")
+	if err == nil {
+		t.Fatal("GetHistoricalRange overseas: want error when every exchange fails, got nil")
+	}
+}
+
 func TestUnifiedPriceClientGetDomesticPriceNameEnrichment(t *testing.T) {
 	// price endpoint returns no name, info endpoint provides it
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
