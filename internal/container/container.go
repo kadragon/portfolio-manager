@@ -47,11 +47,48 @@ type Container struct {
 // New opens the database at path (empty = default location) and builds the
 // repositories. The caller is responsible for Close.
 func New(path string) (*Container, error) {
+	loadDotEnv()
 	sqlDB, q, err := db.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	return newWithQueries(sqlDB, q, true), nil
+}
+
+// loadDotEnv reads KEY=VALUE pairs from ./.env and sets them as process env
+// vars, skipping any key already set — so real env vars (CI, an explicit
+// export) always win over the file. A no-op if .env doesn't exist. This
+// replaces the docker-compose `env_file: .env` loading that existed before
+// the web app (and its Docker deployment) was removed in favor of cmd/
+// binaries invoked directly from a shell.
+func loadDotEnv() {
+	loadDotEnvFile(".env")
+}
+
+func loadDotEnvFile(path string) {
+	data, err := os.ReadFile(path) //nolint:gosec // path is ".env" (or a test-controlled temp path), never user input
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		_ = os.Setenv(key, value)
+	}
 }
 
 // NewWithQueries builds a Container over an already-open database and queries
