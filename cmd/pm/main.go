@@ -51,6 +51,8 @@ func main() {
 		runErr = runClassifyStocks(ctx, c, args)
 	case "dashboard":
 		runErr = runDashboard(ctx, c, args)
+	case "price":
+		runErr = runPrice(ctx, c, args)
 	case "price-sync":
 		runErr = runPriceSync(ctx, c, args)
 	case "price-backfill":
@@ -80,7 +82,8 @@ resources:
   holding          list -account | add -account -stock -qty | add-by-ticker -account -ticker -qty | bulk -account -updates | update -id -qty | delete -id
   sync             -account NAME [-confirm-empty]   (KIS/Toss account sync, routed by account link)
   classify-stocks  backfill asset_class via KIS
-  dashboard        [-no-change-rates]   (portfolio summary)
+  dashboard        [-no-change-rates] [-sort {value,1d,1m,6m,1y}] [-asc]   (portfolio summary)
+  price            list -ticker T [-from YYYY-MM-DD] [-to YYYY-MM-DD] [-limit N]   (read cached daily closes)
   price-sync       refresh stock prices once
   price-backfill   -ticker T -from YYYY-MM-DD -to YYYY-MM-DD   (backfill historical closes for one ticker)
 

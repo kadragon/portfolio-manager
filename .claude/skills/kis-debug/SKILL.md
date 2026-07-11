@@ -136,6 +136,16 @@ sqlite3 .data/portfolio.db "select ticker, price_date, price, exchange from stoc
 sqlite3 .data/portfolio.db "select ticker, exchange from stocks where ticker='<TICKER>';"   # short-form value here means (a) above, elsewhere
 ```
 
+### 8. `1d` change rate shows exactly `0` for domestic (KRW) tickers, but not for overseas ones
+
+Usually not a bug — a weekend/holiday sync artifact. `GetStockChangeRates` (`internal/services/price_service.go:104`) compares today's stored price to the price on `prevBizDay(today - 1)`. `SyncOnce` (`internal/services/price_sync_service.go:56,93`) saves every ticker — domestic and overseas alike — under the *same* KST calendar date, so this isn't a price_date/timezone discrepancy between markets. The actual difference is what the KIS quote endpoint returns on that call: when KRX is closed, the domestic endpoint returns the last traded (Friday) price completely unchanged, which lands in the DB as an exact duplicate of the prior trading day's row — and since `1d`'s lookback target resolves to that same prior day, current == past → rate is exactly `0`. Overseas tickers usually don't show this because the KIS overseas endpoint tends to keep returning a moving quote (the NYSE/NASDAQ session can still be active or freshly closed within the same KST calendar day) even when it's a KST weekend.
+
+Identical back-to-back rows are **consistent with** this artifact but don't prove it on their own — two real trading sessions can coincidentally close at the same price. Treat an identical pair as corroborating evidence, and if in doubt confirm against the actual market calendar (was KRX/the relevant exchange open on that date) rather than treating equality alone as proof:
+```bash
+sqlite3 .data/portfolio.db "select ticker, price_date, price from stock_prices where ticker='<TICKER>' order by price_date desc limit 2;"
+```
+If the two rows are identical and the earlier date was a non-trading day for that ticker's market, the `0%` is expected; re-run `price-sync` on the next trading day to get a real `1d` value.
+
 ## Output contract
 
 Always close a diagnosis with **(a) the named root cause** and **(b) a concrete next step** — a check command to confirm or the exact fix. Don't stop at "it's probably the env"; state which env value, what it should be, and the command to verify. If live verification is needed, use the `KIS_LIVE=1` test — never loop auth.

@@ -159,6 +159,14 @@ SELECT * FROM stock_prices WHERE ticker = ? ORDER BY price_date DESC LIMIT 1;
 -- name: GetStockPriceOnOrBeforeDate :one
 SELECT * FROM stock_prices WHERE ticker = ? AND price_date <= ? ORDER BY price_date DESC LIMIT 1;
 
+-- name: ListStockPricesByTickerRange :many
+SELECT * FROM stock_prices
+WHERE ticker = sqlc.arg(ticker)
+  AND price_date >= sqlc.arg(from_date)
+  AND price_date <= sqlc.arg(to_date)
+ORDER BY price_date DESC
+LIMIT sqlc.arg(row_limit);
+
 -- name: UpsertStockPrice :one
 INSERT INTO stock_prices (id, ticker, price, currency, name, exchange, price_date, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

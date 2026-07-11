@@ -152,3 +152,43 @@ func TestStockPriceGetOnOrBeforeDate(t *testing.T) {
 		t.Fatalf("expected nil before first price, got %+v", got)
 	}
 }
+
+func TestStockPriceListByTickerRange(t *testing.T) {
+	r := newStockPriceRepo(t)
+	ctx := context.Background()
+
+	dates := []string{"2026-01-10", "2026-01-15", "2026-01-20", "2026-01-25"}
+	for _, ds := range dates {
+		d, _ := datex.ParseDate(ds)
+		p, _ := numeric.FromString("100")
+		if _, err := r.Save(ctx, "005930", d, p, "KRW", "삼성전자", sql.NullString{}); err != nil {
+			t.Fatalf("save %s: %v", ds, err)
+		}
+	}
+
+	from, _ := datex.ParseDate("2026-01-12")
+	to, _ := datex.ParseDate("2026-01-22")
+	got, err := r.ListByTickerRange(ctx, "005930", from, to, 10)
+	if err != nil {
+		t.Fatalf("list by range: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 rows within range, got %d", len(got))
+	}
+	if got[0].PriceDate.Format("2006-01-02") != "2026-01-20" {
+		t.Errorf("row 0 date = %v, want newest-first 2026-01-20", got[0].PriceDate)
+	}
+	if got[1].PriceDate.Format("2006-01-02") != "2026-01-15" {
+		t.Errorf("row 1 date = %v, want 2026-01-15", got[1].PriceDate)
+	}
+
+	// limit caps the result even when more rows are in range.
+	wide, _ := datex.ParseDate("2026-01-01")
+	got, err = r.ListByTickerRange(ctx, "005930", wide, to, 1)
+	if err != nil {
+		t.Fatalf("list with limit: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected limit=1 to cap result, got %d rows", len(got))
+	}
+}

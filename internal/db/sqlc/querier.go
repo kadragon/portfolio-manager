@@ -49,6 +49,7 @@ type Querier interface {
 	ListGroups(ctx context.Context) ([]Group, error)
 	ListHoldingsByAccount(ctx context.Context, accountID uuidx.UUID) ([]Holding, error)
 	ListRecentOrderExecutions(ctx context.Context, limit int64) ([]OrderExecution, error)
+	ListStockPricesByTickerRange(ctx context.Context, arg ListStockPricesByTickerRangeParams) ([]StockPrice, error)
 	ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]Stock, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
 	UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNameCashParams) (Account, error)

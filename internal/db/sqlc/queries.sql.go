@@ -783,6 +783,60 @@ func (q *Queries) ListRecentOrderExecutions(ctx context.Context, limit int64) ([
 	return items, nil
 }
 
+const listStockPricesByTickerRange = `-- name: ListStockPricesByTickerRange :many
+SELECT id, ticker, price, currency, name, exchange, price_date, created_at, updated_at FROM stock_prices
+WHERE ticker = ?1
+  AND price_date >= ?2
+  AND price_date <= ?3
+ORDER BY price_date DESC
+LIMIT ?4
+`
+
+type ListStockPricesByTickerRangeParams struct {
+	Ticker   string
+	FromDate datex.Date
+	ToDate   datex.Date
+	RowLimit int64
+}
+
+func (q *Queries) ListStockPricesByTickerRange(ctx context.Context, arg ListStockPricesByTickerRangeParams) ([]StockPrice, error) {
+	rows, err := q.db.QueryContext(ctx, listStockPricesByTickerRange,
+		arg.Ticker,
+		arg.FromDate,
+		arg.ToDate,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StockPrice{}
+	for rows.Next() {
+		var i StockPrice
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ticker,
+			&i.Price,
+			&i.Currency,
+			&i.Name,
+			&i.Exchange,
+			&i.PriceDate,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStocksByGroup = `-- name: ListStocksByGroup :many
 SELECT id, ticker, group_id, exchange, created_at, updated_at, name, asset_class, security_group FROM stocks WHERE group_id = ?
 `
