@@ -53,6 +53,8 @@ func main() {
 		runErr = runDashboard(ctx, c, args)
 	case "price-sync":
 		runErr = runPriceSync(ctx, c, args)
+	case "price-backfill":
+		runErr = runPriceBackfill(ctx, c, args)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown resource %q\n\n", resource)
 		usage()
@@ -80,6 +82,7 @@ resources:
   classify-stocks  backfill asset_class via KIS
   dashboard        [-no-change-rates]   (portfolio summary)
   price-sync       refresh stock prices once
+  price-backfill   -ticker T -from YYYY-MM-DD -to YYYY-MM-DD   (backfill historical closes for one ticker)
 
 Every subcommand prints indented JSON to stdout and exits non-zero on error.`)
 }
