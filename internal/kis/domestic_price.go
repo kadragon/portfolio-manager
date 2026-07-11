@@ -2,6 +2,7 @@ package kis
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -107,6 +108,9 @@ func (c *DomesticPriceClient) FetchHistoricalRange(ticker string, startDate, end
 	)
 	if err != nil {
 		return nil, err
+	}
+	if rtCd, msgCd, msg1 := ParseKISStatus(body); rtCd != "" && rtCd != "0" {
+		return nil, fmt.Errorf("KIS domestic dailyprice [%s] rt_cd=%s %s: %s", ticker, rtCd, msgCd, msg1)
 	}
 	return parseDomesticHistoricalRange(body), nil
 }

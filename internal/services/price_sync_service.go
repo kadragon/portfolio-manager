@@ -174,12 +174,8 @@ func (s *PriceSyncService) BackfillRange(ctx context.Context, ticker string, sta
 	}
 
 	windowStart := start
-	first := true
 	for windowStart.ISO() <= end.ISO() {
-		if !first {
-			delay(ctx)
-		}
-		first = false
+		delay(ctx)
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
@@ -191,7 +187,7 @@ func (s *PriceSyncService) BackfillRange(ctx context.Context, ticker string, sta
 
 		points, rangeErr := s.client.GetHistoricalRange(ticker, windowStart, windowEnd, preferredExchange)
 		if rangeErr != nil {
-			log.Printf("price backfill: range %s %s..%s: %v", ticker, windowStart.ISO(), windowEnd.ISO(), rangeErr)
+			return result, fmt.Errorf("backfill range %s %s..%s: %w", ticker, windowStart.ISO(), windowEnd.ISO(), rangeErr)
 		}
 		result.Requested += len(points)
 

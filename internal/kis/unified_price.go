@@ -1,6 +1,7 @@
 package kis
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/kadragon/portfolio-manager/internal/datex"
@@ -155,8 +156,7 @@ func (c *UnifiedPriceClient) GetHistoricalRange(ticker string, start, end datex.
 	if IsDomesticTicker(ticker) {
 		points, err := c.Domestic.FetchHistoricalRange(ticker, start, end)
 		if err != nil {
-			log.Printf("KIS: domestic historical range %s: %v", ticker, err)
-			return nil, nil
+			return nil, fmt.Errorf("KIS domestic historical range %s: %w", ticker, err)
 		}
 		return toHistoricalPricePoints(points), nil
 	}
@@ -165,15 +165,19 @@ func (c *UnifiedPriceClient) GetHistoricalRange(ticker string, start, end datex.
 
 func (c *UnifiedPriceClient) getOverseasHistoricalRange(ticker string, start, end datex.Date, preferredExchange string) ([]services.HistoricalPricePoint, error) {
 	exchanges := prioritizedExchanges(preferredExchange)
+	var lastErr error
 	for _, excd := range exchanges {
 		points, err := c.Overseas.FetchHistoricalRange(excd, ticker, start, end)
 		if err != nil {
-			log.Printf("KIS: overseas historical range %s@%s: %v", ticker, excd, err)
+			lastErr = err
 			continue
 		}
 		if len(points) > 0 {
 			return toHistoricalPricePoints(points), nil
 		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("KIS overseas historical range %s: %w", ticker, lastErr)
 	}
 	return nil, nil
 }

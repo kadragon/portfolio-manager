@@ -678,6 +678,68 @@ func TestParseDomesticHistoricalEmpty(t *testing.T) {
 	}
 }
 
+func TestParseDomesticHistoricalRange(t *testing.T) {
+	data := []byte(`{"output2":[{"stck_bsop_date":"20240103","stck_clpr":"75000"},{"stck_bsop_date":"20240102","stck_clpr":"74500"},{"stck_bsop_date":"20240101","stck_clpr":"74000"}]}`)
+	points := parseDomesticHistoricalRange(data)
+	if len(points) != 3 {
+		t.Fatalf("len(points) = %d, want 3", len(points))
+	}
+	if points[0].Date.ISO() != "2024-01-03" || points[0].Price != 75000 {
+		t.Errorf("points[0] = %+v, want date 2024-01-03 price 75000", points[0])
+	}
+}
+
+func TestParseDomesticHistoricalRangeFallsBackToOutput(t *testing.T) {
+	data := []byte(`{"output":[{"stck_bsop_date":"20240101","stck_clpr":"74000"}]}`)
+	points := parseDomesticHistoricalRange(data)
+	if len(points) != 1 || points[0].Price != 74000 {
+		t.Errorf("points = %+v, want single 74000 point", points)
+	}
+}
+
+func TestParseDomesticHistoricalRangeEmpty(t *testing.T) {
+	data := []byte(`{"output2":[]}`)
+	points := parseDomesticHistoricalRange(data)
+	if len(points) != 0 {
+		t.Errorf("len(points) = %d, want 0", len(points))
+	}
+}
+
+func TestDomesticPriceClientFetchHistoricalRange(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"output2":[{"stck_bsop_date":"20240102","stck_clpr":"74500"},{"stck_bsop_date":"20240101","stck_clpr":"74000"}]}`)
+	}))
+	mgr := makeManager(t, "test_tok")
+	pc := &DomesticPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	points, err := pc.FetchHistoricalRange("005930", datex.New(2024, 1, 1), datex.New(2024, 1, 2))
+	if err != nil {
+		t.Fatalf("FetchHistoricalRange: %v", err)
+	}
+	if len(points) != 2 {
+		t.Fatalf("len(points) = %d, want 2", len(points))
+	}
+}
+
+func TestDomesticPriceClientFetchHistoricalRangeReturnsErrorOnRtCdNonZero(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"rt_cd":"1","msg_cd":"ERR01","msg1":"invalid ticker"}`)
+	}))
+	mgr := makeManager(t, "test_tok")
+	pc := &DomesticPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	_, err := pc.FetchHistoricalRange("BADTICKER", datex.New(2024, 1, 1), datex.New(2024, 1, 2))
+	if err == nil {
+		t.Fatal("FetchHistoricalRange: want error on rt_cd != 0, got nil")
+	}
+}
+
 // ---------- domestic_balance.go ----------
 
 func TestRaiseBizError(t *testing.T) {
@@ -1246,6 +1308,84 @@ func TestParseOverseasHistoricalEmpty(t *testing.T) {
 	price := parseOverseasHistorical(data, "20240101")
 	if price != 0 {
 		t.Errorf("price = %v, want 0", price)
+	}
+}
+
+func TestParseOverseasHistoricalRange(t *testing.T) {
+	data := []byte(`{"output2":[{"xymd":"20240103","clos":"196.00"},{"xymd":"20240102","clos":"195.50"},{"xymd":"20240101","clos":"195.00"}]}`)
+	points := parseOverseasHistoricalRange(data)
+	if len(points) != 3 {
+		t.Fatalf("len(points) = %d, want 3", len(points))
+	}
+	if points[0].Date.ISO() != "2024-01-03" || points[0].Price != 196.0 {
+		t.Errorf("points[0] = %+v, want date 2024-01-03 price 196.0", points[0])
+	}
+}
+
+func TestParseOverseasHistoricalRangeEmpty(t *testing.T) {
+	data := []byte(`{"output2":[]}`)
+	points := parseOverseasHistoricalRange(data)
+	if len(points) != 0 {
+		t.Errorf("len(points) = %d, want 0", len(points))
+	}
+}
+
+// TestOverseasPriceClientFetchHistoricalRangeBuffersBYMDAndFilters verifies FetchHistoricalRange
+// requests BYMD past endDate (same buffer FetchHistoricalClose uses, so endDate itself is included
+// in the walk-backward response) and then filters the response back down to [startDate, endDate].
+func TestOverseasPriceClientFetchHistoricalRangeBuffersBYMDAndFilters(t *testing.T) {
+	var gotBYMD string
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBYMD = r.URL.Query().Get("BYMD")
+		fmt.Fprintf(w, `{"output2":[
+			{"xymd":"20240108","clos":"199.00"},
+			{"xymd":"20240102","clos":"195.50"},
+			{"xymd":"20240101","clos":"195.00"},
+			{"xymd":"20231231","clos":"194.00"}
+		]}`)
+	}))
+	mgr := makeManager(t, "tok")
+	pc := &OverseasPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	start, end := datex.New(2024, 1, 1), datex.New(2024, 1, 2)
+	points, err := pc.FetchHistoricalRange("NASD", "AAPL", start, end)
+	if err != nil {
+		t.Fatalf("FetchHistoricalRange: %v", err)
+	}
+
+	wantBYMD := end.Time.AddDate(0, 0, overseasDateBufferDays).Format("20060102")
+	if gotBYMD != wantBYMD {
+		t.Errorf("BYMD = %q, want %q (endDate + overseasDateBufferDays)", gotBYMD, wantBYMD)
+	}
+
+	// Response includes rows before startDate (2023-12-31) and after endDate (2024-01-08,
+	// from the buffer) — both must be filtered out, leaving only 01-01 and 01-02.
+	if len(points) != 2 {
+		t.Fatalf("len(points) = %d, want 2 (rows outside [start,end] filtered): %+v", len(points), points)
+	}
+	for _, p := range points {
+		if p.Date.ISO() < start.ISO() || p.Date.ISO() > end.ISO() {
+			t.Errorf("point %+v outside requested range [%s, %s]", p, start.ISO(), end.ISO())
+		}
+	}
+}
+
+func TestOverseasPriceClientFetchHistoricalRangeReturnsErrorOnRtCdNonZero(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"rt_cd":"1","msg_cd":"ERR01","msg1":"invalid ticker"}`)
+	}))
+	mgr := makeManager(t, "tok")
+	pc := &OverseasPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	_, err := pc.FetchHistoricalRange("NASD", "BADTICKER", datex.New(2024, 1, 1), datex.New(2024, 1, 2))
+	if err == nil {
+		t.Fatal("FetchHistoricalRange: want error on rt_cd != 0, got nil")
 	}
 }
 

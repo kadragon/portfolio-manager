@@ -101,6 +101,8 @@ func (c *OverseasPriceClient) FetchHistoricalRange(excd, ticker string, startDat
 	if err != nil {
 		return nil, err
 	}
+	// Set BYMD after endDate so endDate itself falls within the returned range, same as FetchHistoricalClose.
+	bymd := endDate.Time.AddDate(0, 0, overseasDateBufferDays)
 	body, err := GetWithRetry(
 		c.HTTP,
 		c.BaseURL+"/uapi/overseas-price/v1/quotations/dailyprice",
@@ -109,7 +111,7 @@ func (c *OverseasPriceClient) FetchHistoricalRange(excd, ticker string, startDat
 			"EXCD": shortExchangeCode(excd),
 			"SYMB": ticker,
 			"GUBN": "0",
-			"BYMD": endDate.Time.Format("20060102"),
+			"BYMD": bymd.Format("20060102"),
 			"MODP": "0",
 		},
 		BuildHeaders(token, c.AppKey, c.AppSecret, trID, c.CustType),
@@ -124,7 +126,7 @@ func (c *OverseasPriceClient) FetchHistoricalRange(excd, ticker string, startDat
 	points := parseOverseasHistoricalRange(body)
 	filtered := make([]HistoricalPoint, 0, len(points))
 	for _, p := range points {
-		if p.Date.ISO() < startDate.ISO() {
+		if p.Date.ISO() < startDate.ISO() || p.Date.ISO() > endDate.ISO() {
 			continue
 		}
 		filtered = append(filtered, p)
