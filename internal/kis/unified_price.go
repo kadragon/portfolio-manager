@@ -19,6 +19,12 @@ func prioritizedExchanges(preferred string) []string {
 	if preferred == "" {
 		return all
 	}
+	// Normalize legacy short-form codes (NAS/NYS/AMS) — pre-migration data stored the
+	// price-endpoint's 3-letter form directly in stocks.exchange, which never matches
+	// the canonical set below and silently falls back to NASD-first for every ticker.
+	if mapped, ok := orderExchangeMap[preferred]; ok {
+		preferred = mapped
+	}
 	for _, e := range all {
 		if e == preferred {
 			result := []string{preferred}
@@ -112,7 +118,10 @@ func (c *UnifiedPriceClient) getOverseasPrice(ticker, preferredExchange string) 
 		if best.Price == 0 && quote.Price > 0 {
 			best = &quote
 		}
-		if preferredExchange != "" {
+		// Stop early only once the preferred exchange actually yields a usable price —
+		// a success-but-empty response (ticker not listed there) must fall through to
+		// the other exchanges rather than being accepted as the final answer.
+		if preferredExchange != "" && quote.Price > 0 {
 			break
 		}
 	}
@@ -139,6 +148,42 @@ func (c *UnifiedPriceClient) getOverseasPrice(ticker, preferredExchange string) 
 		Currency: best.Currency,
 		Exchange: best.Exchange,
 	}, nil
+}
+
+// GetHistoricalRange returns every daily close available for ticker within [start, end].
+func (c *UnifiedPriceClient) GetHistoricalRange(ticker string, start, end datex.Date, preferredExchange string) ([]services.HistoricalPricePoint, error) {
+	if IsDomesticTicker(ticker) {
+		points, err := c.Domestic.FetchHistoricalRange(ticker, start, end)
+		if err != nil {
+			log.Printf("KIS: domestic historical range %s: %v", ticker, err)
+			return nil, nil
+		}
+		return toHistoricalPricePoints(points), nil
+	}
+	return c.getOverseasHistoricalRange(ticker, start, end, preferredExchange)
+}
+
+func (c *UnifiedPriceClient) getOverseasHistoricalRange(ticker string, start, end datex.Date, preferredExchange string) ([]services.HistoricalPricePoint, error) {
+	exchanges := prioritizedExchanges(preferredExchange)
+	for _, excd := range exchanges {
+		points, err := c.Overseas.FetchHistoricalRange(excd, ticker, start, end)
+		if err != nil {
+			log.Printf("KIS: overseas historical range %s@%s: %v", ticker, excd, err)
+			continue
+		}
+		if len(points) > 0 {
+			return toHistoricalPricePoints(points), nil
+		}
+	}
+	return nil, nil
+}
+
+func toHistoricalPricePoints(points []HistoricalPoint) []services.HistoricalPricePoint {
+	out := make([]services.HistoricalPricePoint, 0, len(points))
+	for _, p := range points {
+		out = append(out, services.HistoricalPricePoint{Date: p.Date, Price: p.Price})
+	}
+	return out
 }
 
 func (c *UnifiedPriceClient) getOverseasHistorical(ticker string, date datex.Date, preferredExchange string) (float64, error) {

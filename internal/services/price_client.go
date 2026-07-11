@@ -12,6 +12,12 @@ type PriceQuote struct {
 	Exchange string // may be empty
 }
 
+// HistoricalPricePoint is one day's close from a period/range price fetch.
+type HistoricalPricePoint struct {
+	Date  datex.Date
+	Price float64
+}
+
 // PriceClient fetches live stock prices from an external source (e.g. KIS API).
 // Implemented by KIS clients in Phase 6 continuation / Phase 8.
 type PriceClient interface {
@@ -20,4 +26,8 @@ type PriceClient interface {
 	GetPrice(ticker string, preferredExchange string) (PriceQuote, error)
 	// GetHistoricalClose returns the closing price for a past date.
 	GetHistoricalClose(ticker string, date datex.Date, preferredExchange string) (float64, error)
+	// GetHistoricalRange returns every daily close available for ticker within [start, end].
+	// Implementations may return fewer points than requested (source-side row caps); callers
+	// should chunk large ranges into multiple calls rather than assume full coverage.
+	GetHistoricalRange(ticker string, start, end datex.Date, preferredExchange string) ([]HistoricalPricePoint, error)
 }

@@ -79,6 +79,70 @@ func (c *DomesticPriceClient) FetchHistoricalClose(ticker string, targetDate dat
 	return parseDomesticHistorical(body, targetDate.Time.Format("20060102")), nil
 }
 
+// FetchHistoricalRange calls FHKST03010100 for [startDate, endDate] and returns every
+// daily close KIS reports in that window. KIS caps this endpoint at ~100 rows per call,
+// so callers backfilling a long span should chunk into multiple calls.
+func (c *DomesticPriceClient) FetchHistoricalRange(ticker string, startDate, endDate datex.Date) ([]HistoricalPoint, error) {
+	trID, err := TrIDForEnv(c.Env, "FHKST03010100", "FHKST03010100")
+	if err != nil {
+		return nil, err
+	}
+	token, err := c.Manager.GetToken()
+	if err != nil {
+		return nil, err
+	}
+	body, err := GetWithRetry(
+		c.HTTP,
+		c.BaseURL+"/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
+		map[string]string{
+			"FID_COND_MRKT_DIV_CODE": "J",
+			"FID_INPUT_ISCD":         ticker,
+			"FID_INPUT_DATE_1":       startDate.Time.Format("20060102"),
+			"FID_INPUT_DATE_2":       endDate.Time.Format("20060102"),
+			"FID_PERIOD_DIV_CODE":    "D",
+			"FID_ORG_ADJ_PRC":        "1",
+		},
+		BuildHeaders(token, c.AppKey, c.AppSecret, trID, c.CustType),
+		nil, c.AppKey, c.AppSecret, trID, c.CustType,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return parseDomesticHistoricalRange(body), nil
+}
+
+func parseDomesticHistoricalRange(data []byte) []HistoricalPoint {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return nil
+	}
+
+	var items []map[string]string
+	for _, key := range []string{"output2", "output"} {
+		blob, ok := raw[key]
+		if !ok {
+			continue
+		}
+		if json.Unmarshal(blob, &items) == nil && len(items) > 0 {
+			break
+		}
+	}
+
+	points := make([]HistoricalPoint, 0, len(items))
+	for _, item := range items {
+		d, err := parseKISDate(item["stck_bsop_date"])
+		if err != nil {
+			continue
+		}
+		price := parseDomesticClose(item)
+		if price <= 0 {
+			continue
+		}
+		points = append(points, HistoricalPoint{Date: d, Price: price})
+	}
+	return points
+}
+
 func parseDomesticHistorical(data []byte, targetStr string) float64 {
 	var raw map[string]json.RawMessage
 	if json.Unmarshal(data, &raw) != nil {

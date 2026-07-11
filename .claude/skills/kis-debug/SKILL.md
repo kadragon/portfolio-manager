@@ -117,6 +117,25 @@ So overseas holdings showing ₩0 with correct quantity/price often means **no F
 grep -E '^(USD_KRW_RATE|EXIM_AUTH_KEY)=' .env   # at least one must be set for FX
 ```
 
+### 7. One ticker permanently or intermittently missing after `price-sync`
+
+Two related failure modes, both fixed as of 2026-07-11 — if you still see this, check `git log` for these fixes rather than re-diagnosing from scratch:
+
+**(a) Permanent — legacy short-form exchange code in `stocks.exchange`.** Pre-migration data (and any manually-edited row) can hold the 3-letter price-endpoint form (`NAS`/`NYS`/`AMS`) instead of the canonical 4-letter order-form (`NASD`/`NYSE`/`AMEX`) that `prioritizedExchanges` expects. A mismatch silently falls back to the NASD-first default order for every fetch. If the ticker isn't NASDAQ-listed, that first attempt returns a success-but-empty response — and (before the fix below) the loop accepted it as final, so the price could never update. `prioritizedExchanges` (`internal/kis/unified_price.go:17`) now normalizes via `orderExchangeMap` before matching, so this self-heals on the next sync (`UpdateExchange` writes the canonical form back once a fetch finally succeeds). Confirm no stock still holds a short-form value:
+```bash
+sqlite3 .data/portfolio.db "select ticker, exchange from stocks where exchange in ('NAS','NYS','AMS');"
+```
+
+**(b) Transient — one empty response with no retry.** `UnifiedPriceClient.getOverseasPrice` used to `break` after the first non-error response even when it parsed to a zero/empty quote, never trying the other two exchanges. Fixed: it now only stops early once `quote.Price > 0` (`internal/kis/unified_price.go:112-118`, regression test `TestUnifiedPriceClientGetOverseasPriceFallsBackWhenPreferredExchangeEmpty`). Separately, `PriceSyncService.SyncOnce` had no retry at all for a failed/empty `GetPrice` call — one glitch meant that ticker was stuck on its prior price for the whole sync pass. Fixed: one bounded retry after `syncCallDelay` (`internal/services/price_sync_service.go:69-75`, regression test `TestPriceSyncServiceRetriesTransientFailure`).
+
+Diagnosis for a *new* case of "ticker didn't update": confirm the ticker fetches fine right now and check whether today's row is actually missing/stale in the DB.
+
+```bash
+KIS_LIVE=1 go test ./internal/kis/ -run TestLiveOverseasPriceRaw -v   # add the ticker/exchange to the `cases` table if not QQQ/SPY
+sqlite3 .data/portfolio.db "select ticker, price_date, price, exchange from stock_prices where ticker='<TICKER>' order by price_date desc limit 5;"
+sqlite3 .data/portfolio.db "select ticker, exchange from stocks where ticker='<TICKER>';"   # short-form value here means (a) above, elsewhere
+```
+
 ## Output contract
 
 Always close a diagnosis with **(a) the named root cause** and **(b) a concrete next step** — a check command to confirm or the exact fix. Don't stop at "it's probably the env"; state which env value, what it should be, and the command to verify. If live verification is needed, use the `KIS_LIVE=1` test — never loop auth.

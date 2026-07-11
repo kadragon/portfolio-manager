@@ -65,6 +65,42 @@ kis-debug question (price client / exchange routing), not something to retry bli
 There is no longer a background job doing this every 15 minutes — if the user or another skill
 (e.g. rebalance-plan) needs current prices, run this explicitly first.
 
+## Backfill a date range for one ticker
+
+```bash
+go run ./cmd/pm price-backfill -ticker <TICKER> -from YYYY-MM-DD -to YYYY-MM-DD
+```
+
+Fetches every daily close KIS has for that ticker in `[from, to]` and saves whatever isn't
+already cached in `stock_prices` — use this when a ticker's history has a gap (stale since a
+past date, e.g. an exchange-routing bug that silently stopped updating it) or when a "how did
+this move over period X" question needs days `price-sync`'s fixed 1y/6m/1m/1d checkpoints don't
+cover. Returns `{"Ticker", "Requested", "Saved", "Skipped"}` — `Skipped` counts dates already
+cached (existing rows are never overwritten; past data is immutable). Internally chunks ranges
+over ~90 days into multiple KIS calls (its period-endpoint caps around 100 rows per call), with
+the same `syncCallDelay` pacing as `price-sync`.
+
+Only takes one ticker at a time — for many tickers, loop the command per ticker (same
+KIS-rate-limit caution as everywhere else in this file: don't fire them back-to-back with no
+delay). If `Saved` comes back 0 with `Requested` also 0, KIS returned nothing for that ticker/
+range — hand off to kis-debug rather than assuming the range was simply already complete.
+
+## Ad-hoc historical price lookups ("이번 주 얼마나 올랐어?")
+
+`stock_prices` (`internal/db/schema.sql`) keeps one row per `(ticker, price_date)` and
+accumulates real daily closes over time — it is not overwritten across dates. For a quick read
+of what's already cached (no KIS call), read `.data/portfolio.db` directly:
+
+```bash
+sqlite3 -separator '|' .data/portfolio.db \
+  "SELECT ticker, price_date, price FROM stock_prices WHERE price_date >= date('now','-10 day') ORDER BY ticker, price_date;"
+```
+
+If a ticker is missing the dates you need, run `price-backfill` for it first (above), then
+re-query. Weight per-ticker % changes by current `ValueKRW` (from `dashboard`) for a
+portfolio-level estimate; call out that it's an approximation if quantities may have changed
+over the window or USD/KRW moved.
+
 ## Backfill asset-class classification
 
 ```bash

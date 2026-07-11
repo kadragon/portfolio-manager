@@ -204,6 +204,11 @@ func TestPrioritizedExchanges(t *testing.T) {
 		{"AMEX", "AMEX"},
 		{"", "NASD"},
 		{"UNKNOWN", "NASD"}, // fallback to default order
+		// Legacy short-form codes (pre-migration stocks.exchange values) must normalize
+		// to canonical before matching, not fall through to the NASD default.
+		{"AMS", "AMEX"},
+		{"NAS", "NASD"},
+		{"NYS", "NYSE"},
 	}
 	for _, tc := range cases {
 		got := prioritizedExchanges(tc.preferred)
@@ -1575,6 +1580,33 @@ func TestUnifiedPriceClientGetOverseasPriceNoValidResponse(t *testing.T) {
 	}
 	if q.Currency != "USD" {
 		t.Errorf("Currency = %q, want USD", q.Currency)
+	}
+}
+
+// TestUnifiedPriceClientGetOverseasPriceFallsBackWhenPreferredExchangeEmpty reproduces the
+// VYM bug: a preferred exchange that responds successfully (rt_cd=0) but with no listing data
+// for the ticker must fall through to the other exchanges instead of being accepted as final.
+func TestUnifiedPriceClientGetOverseasPriceFallsBackWhenPreferredExchangeEmpty(t *testing.T) {
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("EXCD") == "NAS" {
+			fmt.Fprintf(w, `{"output":{}}`) // success, but ticker not listed on this exchange
+			return
+		}
+		fmt.Fprintf(w, `{"output":{"symbol":"VYM","name":"Vanguard High Dividend Yield","last":"118.50"}}`)
+	}))
+	mgr := makeManager(t, "tok")
+	overseas := &OverseasPriceClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s", CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	upc := &UnifiedPriceClient{Overseas: overseas}
+	q, err := upc.GetPrice("VYM", "NASD")
+	if err != nil {
+		t.Fatalf("GetPrice: %v", err)
+	}
+	if q.Price != 118.50 {
+		t.Errorf("Price = %v, want 118.50 (should fall back past the empty preferred-exchange response)", q.Price)
 	}
 }
 

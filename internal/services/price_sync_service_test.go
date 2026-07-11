@@ -19,8 +19,10 @@ type trackingClient struct {
 	mu                sync.Mutex
 	priceCalls        []string
 	histCalls         []string
+	rangeCalls        []string
 	quotesByTicker    map[string]services.PriceQuote
 	histPriceByTicker map[string]float64
+	rangeByTicker     map[string][]services.HistoricalPricePoint
 }
 
 func (c *trackingClient) GetPrice(ticker, _ string) (services.PriceQuote, error) {
@@ -41,6 +43,13 @@ func (c *trackingClient) GetHistoricalClose(ticker string, _ datex.Date, _ strin
 		return p, nil
 	}
 	return 50.0, nil
+}
+
+func (c *trackingClient) GetHistoricalRange(ticker string, _, _ datex.Date, _ string) ([]services.HistoricalPricePoint, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.rangeCalls = append(c.rangeCalls, ticker)
+	return c.rangeByTicker[ticker], nil
 }
 
 func newSyncRepos(t *testing.T) (*repositories.StockPriceRepository, *repositories.StockRepository, *repositories.GroupRepository, *repositories.DepositRepository) {
@@ -201,6 +210,63 @@ func TestPriceSyncServiceSkipsZeroPrice(t *testing.T) {
 	}
 }
 
+// flakyClient fails the first GetPrice call for each ticker, then returns a real quote.
+type flakyClient struct {
+	mu       sync.Mutex
+	failed   map[string]bool
+	callsFor map[string]int
+	quote    services.PriceQuote
+}
+
+func (c *flakyClient) GetPrice(ticker, _ string) (services.PriceQuote, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.failed == nil {
+		c.failed = map[string]bool{}
+		c.callsFor = map[string]int{}
+	}
+	c.callsFor[ticker]++
+	if !c.failed[ticker] {
+		c.failed[ticker] = true
+		return services.PriceQuote{}, sql.ErrNoRows
+	}
+	return c.quote, nil
+}
+
+func (c *flakyClient) GetHistoricalClose(_ string, _ datex.Date, _ string) (float64, error) {
+	return 50.0, nil
+}
+
+func (c *flakyClient) GetHistoricalRange(_ string, _, _ datex.Date, _ string) ([]services.HistoricalPricePoint, error) {
+	return nil, nil
+}
+
+func TestPriceSyncServiceRetriesTransientFailure(t *testing.T) {
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	g, _ := groupRepo.Create(ctx, "test", 0)
+	_, _ = stockRepo.Create(ctx, "VYM", g.ID)
+
+	client := &flakyClient{quote: services.PriceQuote{Symbol: "VYM", Price: 118.5, Currency: "USD", Exchange: "AMEX"}}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	client.mu.Lock()
+	vymCalls := client.callsFor["VYM"]
+	client.mu.Unlock()
+	if vymCalls != 2 {
+		t.Errorf("GetPrice(VYM) calls = %d, want 2 (initial failure + one retry)", vymCalls)
+	}
+	sp, err := priceRepo.GetLatestByTicker(ctx, "VYM")
+	if err != nil {
+		t.Fatalf("get latest: %v", err)
+	}
+	if sp == nil || !sp.Price.IsPositive() {
+		t.Fatalf("want saved price after retry, got %v", sp)
+	}
+}
+
 func TestPriceSyncServiceEmptyStockListStillSyncsBenchmarks(t *testing.T) {
 	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
 	ctx := context.Background()
@@ -214,5 +280,117 @@ func TestPriceSyncServiceEmptyStockListStillSyncsBenchmarks(t *testing.T) {
 	client.mu.Unlock()
 	if calls != 3 {
 		t.Errorf("want 3 benchmark calls with empty stock list, got %d", calls)
+	}
+}
+
+func TestPriceSyncServiceBackfillRangeSavesEveryPoint(t *testing.T) {
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	g, _ := groupRepo.Create(ctx, "test", 0)
+	_, _ = stockRepo.Create(ctx, "005930", g.ID)
+
+	start := datex.New(2026, 6, 1)
+	end := datex.New(2026, 6, 3)
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"005930": {Symbol: "005930", Currency: "KRW", Price: 70000},
+		},
+		rangeByTicker: map[string][]services.HistoricalPricePoint{
+			"005930": {
+				{Date: datex.New(2026, 6, 1), Price: 69000},
+				{Date: datex.New(2026, 6, 2), Price: 69500},
+				{Date: datex.New(2026, 6, 3), Price: 70000},
+			},
+		},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+
+	result, err := svc.BackfillRange(ctx, "005930", start, end)
+	if err != nil {
+		t.Fatalf("BackfillRange: %v", err)
+	}
+	if result.Saved != 3 {
+		t.Errorf("Saved = %d, want 3", result.Saved)
+	}
+
+	for _, d := range []datex.Date{start, datex.New(2026, 6, 2), end} {
+		sp, err := priceRepo.GetByTickerAndDate(ctx, "005930", d)
+		if err != nil || sp == nil {
+			t.Fatalf("expected saved price for %s, got %v (err %v)", d.ISO(), sp, err)
+		}
+	}
+}
+
+func TestPriceSyncServiceBackfillRangeSkipsAlreadyCached(t *testing.T) {
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	g, _ := groupRepo.Create(ctx, "test", 0)
+	_, _ = stockRepo.Create(ctx, "005930", g.ID)
+
+	day := datex.New(2026, 6, 1)
+	price, _ := numeric.FromString("69000")
+	if _, err := priceRepo.Save(ctx, "005930", day, price, "KRW", "Samsung", sql.NullString{}); err != nil {
+		t.Fatalf("seed price: %v", err)
+	}
+
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"005930": {Symbol: "005930", Currency: "KRW", Price: 70000},
+		},
+		rangeByTicker: map[string][]services.HistoricalPricePoint{
+			"005930": {{Date: day, Price: 69000}},
+		},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+
+	result, err := svc.BackfillRange(ctx, "005930", day, day)
+	if err != nil {
+		t.Fatalf("BackfillRange: %v", err)
+	}
+	if result.Saved != 0 || result.Skipped != 1 {
+		t.Errorf("Saved/Skipped = %d/%d, want 0/1", result.Saved, result.Skipped)
+	}
+}
+
+func TestPriceSyncServiceBackfillRangeRejectsInvertedRange(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	client := &trackingClient{}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+
+	_, err := svc.BackfillRange(ctx, "005930", datex.New(2026, 6, 3), datex.New(2026, 6, 1))
+	if err == nil {
+		t.Fatal("want error for end before start")
+	}
+}
+
+func TestPriceSyncServiceBackfillRangeChunksLongSpans(t *testing.T) {
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	g, _ := groupRepo.Create(ctx, "test", 0)
+	_, _ = stockRepo.Create(ctx, "005930", g.ID)
+
+	start := datex.New(2026, 1, 1)
+	end := datex.New(2026, 6, 1) // > 90 days, forces a second window
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"005930": {Symbol: "005930", Currency: "KRW", Price: 70000},
+		},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+
+	if _, err := svc.BackfillRange(ctx, "005930", start, end); err != nil {
+		t.Fatalf("BackfillRange: %v", err)
+	}
+
+	client.mu.Lock()
+	rangeCalls := len(client.rangeCalls)
+	client.mu.Unlock()
+	if rangeCalls < 2 {
+		t.Errorf("rangeCalls = %d, want >= 2 for a >90-day span", rangeCalls)
 	}
 }
