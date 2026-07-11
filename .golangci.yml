@@ -22,16 +22,12 @@ linters:
           files:
             - "**/internal/services/**"
           deny:
-            - pkg: "github.com/kadragon/portfolio-manager/internal/web"
-              desc: "GP-3: services must not import web"
             - pkg: "github.com/kadragon/portfolio-manager/internal/db"
               desc: "GP-1: only repositories access the database"
         repositories:
           files:
             - "**/internal/repositories/**"
           deny:
-            - pkg: "github.com/kadragon/portfolio-manager/internal/web"
-              desc: "GP-3: repositories must not import web"
             - pkg: "github.com/kadragon/portfolio-manager/internal/services"
               desc: "GP-3: repositories must not import services"
     errcheck:
@@ -72,7 +68,7 @@ linters:
           - gosec
       # wrapcheck: internal-to-internal calls add no value; stdlib I/O in KIS
       # clients will be addressed in the noctx refactor (Wave C).
-      - path: internal/(repositories|services|web|db|kis|container|arch)/
+      - path: internal/(repositories|services|db|kis|container|arch)/
         linters:
           - wrapcheck
 

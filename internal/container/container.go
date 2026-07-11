@@ -1,7 +1,6 @@
-// Package container wires the repositories (and, in later phases, services and
-// external clients) over an open database, the Go counterpart of
-// core/container.py's ServiceContainer. As the composition root it may depend on
-// both the db and repository layers.
+// Package container wires the repositories, services, and external clients
+// over an open database — the composition root for cmd/pm and
+// cmd/rebalance-order. It may depend on both the db and repository layers.
 package container
 
 import (
@@ -22,7 +21,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/toss"
 )
 
-// Container holds shared dependencies for the web layer.
+// Container holds shared dependencies for cmd/ binaries.
 type Container struct {
 	DB                  *sql.DB
 	Groups              *repositories.GroupRepository
@@ -36,7 +35,6 @@ type Container struct {
 	AccountSyncByKeyID  map[int64]*services.KisAccountSyncService // keyed by kis_api_key_id
 	TossAccountSync     *services.KisAccountSyncService           // nil if Toss not configured
 	PriceSync           *services.PriceSyncService                // nil if KIS not configured
-	BandAlert           *services.BandAlertService                // nil unless BAND_ALERT_WEBHOOK_URL is set
 	StockClassification *services.StockClassificationService      // backfills asset_class via KIS; Enabled()==false if KIS absent
 	KisCano             string
 	KisAcntPrdtCd       string
@@ -129,11 +127,6 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		priceSync = services.NewPriceSyncService(priceClient, stockPrices, stocks, deposits)
 	}
 
-	var bandAlert *services.BandAlertService
-	if url := strings.TrimSpace(os.Getenv("BAND_ALERT_WEBHOOK_URL")); setupKIS && url != "" {
-		bandAlert = services.NewBandAlertService(portfolio, groups, url)
-	}
-
 	stockClassification := services.NewStockClassificationService(stocks, assetClassifier)
 	stockClassification.SetCallDelay(200 * time.Millisecond)
 
@@ -150,7 +143,6 @@ func newWithQueries(sqlDB *sql.DB, q *sqlc.Queries, setupKIS bool) *Container {
 		AccountSyncByKeyID:  accountSyncByKeyID,
 		TossAccountSync:     tossAccountSync,
 		PriceSync:           priceSync,
-		BandAlert:           bandAlert,
 		StockClassification: stockClassification,
 		KisCano:             kisCano,
 		KisAcntPrdtCd:       kisAcntPrdtCd,

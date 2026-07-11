@@ -21,20 +21,10 @@ __pycache__/
 .coverage.*
 htmlcov/
 
-# Tailwind standalone CLI binary
-bin/
-# DaisyUI CSS bundle (downloaded) — both canonical and legacy script path
-internal/web/tailwind/daisyui.css
-src/portfolio_manager/web/tailwind/daisyui.css
-
 # Go
-/portfolio-web
 /pm
 coverage*.out
 coverage.txt
-*_templ.go
-# The user's global gitignore excludes *.templ; re-include the source templates.
-!*.templ
 
 # Playwright MCP captures and manual verification screenshots
 .playwright-mcp/

@@ -216,25 +216,3 @@ func TestPriceSyncServiceEmptyStockListStillSyncsBenchmarks(t *testing.T) {
 		t.Errorf("want 3 benchmark calls with empty stock list, got %d", calls)
 	}
 }
-
-func TestPriceSyncServiceStartStopsOnContextCancel(t *testing.T) {
-	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
-
-	client := &trackingClient{}
-	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	done := make(chan struct{})
-	go func() {
-		svc.Start(ctx)
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Error("Start did not stop after context cancel")
-	}
-}

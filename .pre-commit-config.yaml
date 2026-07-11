@@ -18,13 +18,6 @@ repos:
         stages: [pre-commit]
         always_run: true
 
-      - id: templ-check
-        name: templ generate --check
-        entry: templ generate --check
-        language: system
-        pass_filenames: false
-        stages: [pre-commit]
-
       - id: sqlc-diff
         name: sqlc diff
         entry: sqlc diff

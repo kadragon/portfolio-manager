@@ -3,7 +3,7 @@
 // Principles 1 and 3 from AGENTS.md:
 //
 //	GP-1: only the repository layer accesses the database (internal/db, internal/db/sqlc).
-//	GP-3: web -> services -> repositories -> db; reverse imports are violations.
+//	GP-3: cmd -> services -> repositories -> db; reverse imports are violations.
 package arch
 
 import (
@@ -89,23 +89,43 @@ func assertNoImport(t *testing.T, layer, forbidden, principle string) {
 }
 
 // GP-1: the database is accessed only by the repository layer.
-func TestWebHasNoDirectDBAccess(t *testing.T) {
-	assertNoImport(t, "web", modulePath+"/internal/db", "GP-1: use a repository, not the DB directly")
-}
-
 func TestServicesHaveNoDirectDBAccess(t *testing.T) {
 	assertNoImport(t, "services", modulePath+"/internal/db", "GP-1: use a repository, not the DB directly")
 }
 
 // GP-3: layer dependency direction.
-func TestServicesDoNotImportWeb(t *testing.T) {
-	assertNoImport(t, "services", modulePath+"/internal/web", "GP-3: services must not depend on web")
-}
-
-func TestRepositoriesDoNotImportWeb(t *testing.T) {
-	assertNoImport(t, "repositories", modulePath+"/internal/web", "GP-3: repositories must not depend on web")
-}
-
 func TestRepositoriesDoNotImportServices(t *testing.T) {
 	assertNoImport(t, "repositories", modulePath+"/internal/services", "GP-3: repositories must not depend on services")
+}
+
+// GP-1 (cmd variant): cmd/ binaries reach the database only through
+// container/services/repositories, never internal/db or internal/db/sqlc
+// directly.
+func TestCmdHasNoDirectDBAccess(t *testing.T) {
+	root := repoRoot(t)
+	dir := filepath.Join(root, "cmd")
+	fset := token.NewFileSet()
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		f, ferr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if ferr != nil {
+			return ferr
+		}
+		rel, _ := filepath.Rel(root, path)
+		for _, imp := range f.Imports {
+			p, _ := strconv.Unquote(imp.Path.Value)
+			if strings.HasPrefix(p, modulePath+"/internal/db") {
+				t.Errorf("%s imports %q (GP-1: use container/repositories, not the DB directly)", rel, p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", dir, err)
+	}
 }
