@@ -30,6 +30,7 @@ type Querier interface {
 	DeleteHolding(ctx context.Context, id uuidx.UUID) error
 	DeleteHoldingsByAccount(ctx context.Context, accountID uuidx.UUID) error
 	DeleteStock(ctx context.Context, id uuidx.UUID) error
+	DeleteStockPriceByTickerAndDate(ctx context.Context, arg DeleteStockPriceByTickerAndDateParams) (int64, error)
 	GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, error)
 	GetDepositByDate(ctx context.Context, depositDate datex.Date) (Deposit, error)
 	GetDepositByID(ctx context.Context, id uuidx.UUID) (Deposit, error)
@@ -48,6 +49,7 @@ type Querier interface {
 	ListDeposits(ctx context.Context) ([]Deposit, error)
 	ListGroups(ctx context.Context) ([]Group, error)
 	ListHoldingsByAccount(ctx context.Context, accountID uuidx.UUID) ([]Holding, error)
+	ListOrderExecutions(ctx context.Context, arg ListOrderExecutionsParams) ([]OrderExecution, error)
 	ListRecentOrderExecutions(ctx context.Context, limit int64) ([]OrderExecution, error)
 	ListStockPricesByTickerRange(ctx context.Context, arg ListStockPricesByTickerRangeParams) ([]StockPrice, error)
 	ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]Stock, error)

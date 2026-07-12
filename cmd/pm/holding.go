@@ -5,21 +5,39 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/container"
+	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/repositories"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
+type holdingOutput struct {
+	ID          uuidx.UUID
+	AccountID   uuidx.UUID
+	AccountName string
+	StockID     uuidx.UUID
+	Ticker      string
+	StockName   string
+	GroupID     uuidx.UUID
+	GroupName   string
+	Quantity    numeric.Decimal
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 func runHolding(ctx context.Context, c *container.Container, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: pm holding list|add|add-by-ticker|bulk|update|delete [flags]")
+		return fmt.Errorf("usage: pm holding list|get|add|add-by-ticker|bulk|update|delete [flags]")
 	}
 	verb, rest := args[0], args[1:]
 	switch verb {
 	case "list":
 		return holdingList(ctx, c, rest)
+	case "get":
+		return holdingGet(ctx, c, rest)
 	case "add":
 		return holdingAdd(ctx, c, rest)
 	case "add-by-ticker":
@@ -37,19 +55,112 @@ func runHolding(ctx context.Context, c *container.Container, args []string) erro
 
 func holdingList(ctx context.Context, c *container.Container, args []string) error {
 	fs := flag.NewFlagSet("pm holding list", flag.ExitOnError)
-	account := fs.String("account", "", "account name (required)")
+	account := fs.String("account", "", "account name; omit to list all")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
-	acc, err := resolveAccountByName(ctx, c, *account)
-	if err != nil {
-		return err
+	var (
+		holdings []models.Holding
+		err      error
+	)
+	if strings.TrimSpace(*account) == "" {
+		holdings, err = c.Holdings.ListAll(ctx)
+	} else {
+		var acc models.Account
+		acc, err = resolveAccountByName(ctx, c, *account)
+		if err == nil {
+			holdings, err = c.Holdings.ListByAccount(ctx, acc.ID)
+		}
 	}
-	holdings, err := c.Holdings.ListByAccount(ctx, acc.ID)
 	if err != nil {
 		return fmt.Errorf("list holdings: %w", err)
 	}
-	return printJSON(holdings)
+	output, err := enrichHoldings(ctx, c, holdings)
+	if err != nil {
+		return err
+	}
+	return printJSON(output)
+}
+
+func holdingGet(ctx context.Context, c *container.Container, args []string) error {
+	fs := flag.NewFlagSet("pm holding get", flag.ExitOnError)
+	idRaw := fs.String("id", "", "holding id (required)")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	id, err := uuidx.Parse(*idRaw)
+	if err != nil {
+		return fmt.Errorf("invalid -id: %w", err)
+	}
+	holding, err := c.Holdings.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get holding: %w", err)
+	}
+	if holding == nil {
+		return fmt.Errorf("holding %s not found", *idRaw)
+	}
+	output, err := enrichHoldings(ctx, c, []models.Holding{*holding})
+	if err != nil {
+		return err
+	}
+	return printJSON(output[0])
+}
+
+func enrichHoldings(ctx context.Context, c *container.Container, holdings []models.Holding) ([]holdingOutput, error) {
+	accounts, err := c.Accounts.ListAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list accounts for holding output: %w", err)
+	}
+	stocks, err := c.Stocks.ListAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list stocks for holding output: %w", err)
+	}
+	groups, err := c.Groups.ListAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list groups for holding output: %w", err)
+	}
+	accountNames := make(map[uuidx.UUID]string, len(accounts))
+	for _, account := range accounts {
+		accountNames[account.ID] = account.Name
+	}
+	stocksByID := make(map[uuidx.UUID]models.Stock, len(stocks))
+	for _, stock := range stocks {
+		stocksByID[stock.ID] = stock
+	}
+	groupNames := make(map[uuidx.UUID]string, len(groups))
+	for _, group := range groups {
+		groupNames[group.ID] = group.Name
+	}
+
+	output := make([]holdingOutput, 0, len(holdings))
+	for _, holding := range holdings {
+		accountName, ok := accountNames[holding.AccountID]
+		if !ok {
+			return nil, fmt.Errorf("holding %s references missing account %s", holding.ID, holding.AccountID)
+		}
+		stock, ok := stocksByID[holding.StockID]
+		if !ok {
+			return nil, fmt.Errorf("holding %s references missing stock %s", holding.ID, holding.StockID)
+		}
+		groupName, ok := groupNames[stock.GroupID]
+		if !ok {
+			return nil, fmt.Errorf("stock %s references missing group %s", stock.ID, stock.GroupID)
+		}
+		output = append(output, holdingOutput{
+			ID:          holding.ID,
+			AccountID:   holding.AccountID,
+			AccountName: accountName,
+			StockID:     holding.StockID,
+			Ticker:      stock.Ticker,
+			StockName:   stock.Name,
+			GroupID:     stock.GroupID,
+			GroupName:   groupName,
+			Quantity:    holding.Quantity,
+			CreatedAt:   holding.CreatedAt,
+			UpdatedAt:   holding.UpdatedAt,
+		})
+	}
+	return output, nil
 }
 
 func holdingAdd(ctx context.Context, c *container.Container, args []string) error {
@@ -201,6 +312,13 @@ func holdingDelete(ctx context.Context, c *container.Container, args []string) e
 	id, err := uuidx.Parse(*idRaw)
 	if err != nil {
 		return fmt.Errorf("invalid -id: %w", err)
+	}
+	existing, err := c.Holdings.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get holding: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("holding %s not found", *idRaw)
 	}
 	if err := c.Holdings.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete holding: %w", err)

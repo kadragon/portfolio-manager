@@ -53,6 +53,22 @@ func TestStockListAll(t *testing.T) {
 	}
 }
 
+func TestStockGet(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+	g := mustGroup(t, ctx, c, "Test Group")
+	s, err := c.Stocks.Create(ctx, "AAPL", g.ID)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := runStock(ctx, c, []string{"get", "-id", s.ID.String()}); err != nil {
+		t.Fatalf("stock get: %v", err)
+	}
+	if err := runStock(ctx, c, []string{"get", "-id", uuidx.New().String()}); err == nil {
+		t.Fatal("expected error for unknown id")
+	}
+}
+
 func TestStockListByGroup(t *testing.T) {
 	ctx := context.Background()
 	c := newStockContainer(t)
@@ -244,7 +260,7 @@ func TestStockDeleteUnknownID(t *testing.T) {
 	ctx := context.Background()
 	c := newStockContainer(t)
 
-	if err := runStock(ctx, c, []string{"delete", "-id", uuidx.New().String()}); err != nil {
-		t.Fatalf("delete unknown id should be a no-op, got: %v", err)
+	if err := runStock(ctx, c, []string{"delete", "-id", uuidx.New().String()}); err == nil {
+		t.Fatal("expected error for unknown id")
 	}
 }

@@ -49,6 +49,21 @@ func TestGroupList(t *testing.T) {
 	}
 }
 
+func TestGroupGet(t *testing.T) {
+	ctx := context.Background()
+	c := newGroupContainer(t)
+	g, err := c.Groups.Create(ctx, "성장주", 60)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := runGroup(ctx, c, []string{"get", "-id", g.ID.String()}); err != nil {
+		t.Fatalf("group get: %v", err)
+	}
+	if err := runGroup(ctx, c, []string{"get", "-id", uuidx.New().String()}); err == nil {
+		t.Fatal("expected error for unknown id")
+	}
+}
+
 func TestGroupAdd(t *testing.T) {
 	ctx := context.Background()
 	c := newGroupContainer(t)
@@ -157,7 +172,7 @@ func TestGroupDeleteUnknownID(t *testing.T) {
 	ctx := context.Background()
 	c := newGroupContainer(t)
 
-	if err := runGroup(ctx, c, []string{"delete", "-id", uuidx.New().String()}); err != nil {
-		t.Fatalf("delete unknown id should be a no-op, got: %v", err)
+	if err := runGroup(ctx, c, []string{"delete", "-id", uuidx.New().String()}); err == nil {
+		t.Fatal("expected error for unknown id")
 	}
 }

@@ -75,6 +75,23 @@ func (r *OrderExecutionRepository) ListRecent(ctx context.Context, limit int) ([
 	return result, nil
 }
 
+// List returns recent execution records with optional exact ticker and status filters.
+func (r *OrderExecutionRepository) List(ctx context.Context, ticker, status string, limit int) ([]models.OrderExecutionRecord, error) {
+	rows, err := r.q.ListOrderExecutions(ctx, sqlc.ListOrderExecutionsParams{
+		Ticker:   ticker,
+		Status:   status,
+		RowLimit: int64(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]models.OrderExecutionRecord, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, toDomainOrderExecution(row))
+	}
+	return result, nil
+}
+
 func toDomainOrderExecution(row sqlc.OrderExecution) models.OrderExecutionRecord {
 	var raw map[string]any
 	if row.RawResponse.Valid && row.RawResponse.String != "" {

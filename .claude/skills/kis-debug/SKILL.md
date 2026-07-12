@@ -94,8 +94,8 @@ restart needed.
 
 Key sets 2–9 come from `KIS_APP_KEY_{id}` / `KIS_APP_SECRET_{id}` (`container.go:454` `buildKISAuthExtra`); they inherit env/custType/baseURL/tokenManager from key-1. An account routes to its key set via `account.KisAPIKeyID` → `resolveSyncService` (`container.go:216`), which **falls back to key-1 if the id is unmapped**. So "key 2 not applying" is usually one of:
 
-- Account row's `KisAPIKeyID` not set to 2 → silently uses key-1. Check it via the portfolio-data
-  skill (`pm account list`) or the DB directly.
+- Account row's `KisAPIKeyID` not set to 2 → silently uses key-1. `pm account list` doesn't expose
+  this field at all (avoids a CodeQL clear-text-logging alert) — check it in the DB directly.
 - `KIS_APP_KEY_2`/`KIS_APP_SECRET_2` missing or blank in `.env` → key set 2 never built → fallback to key-1.
 - **Cold-start skip**: log line `KIS key set 2: skipping cold-start initialization to avoid 1-req/min rate-limit conflict with key set 1. Restart after ~60s to activate key set 2.` printed to stderr on
   `pm` startup. Since each `pm` call is a fresh process, key 2 only activates on a call made

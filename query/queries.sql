@@ -167,6 +167,9 @@ WHERE ticker = sqlc.arg(ticker)
 ORDER BY price_date DESC
 LIMIT sqlc.arg(row_limit);
 
+-- name: DeleteStockPriceByTickerAndDate :execrows
+DELETE FROM stock_prices WHERE ticker = ? AND price_date = ?;
+
 -- name: UpsertStockPrice :one
 INSERT INTO stock_prices (id, ticker, price, currency, name, exchange, price_date, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -187,3 +190,10 @@ RETURNING *;
 
 -- name: ListRecentOrderExecutions :many
 SELECT * FROM order_executions ORDER BY created_at DESC LIMIT ?;
+
+-- name: ListOrderExecutions :many
+SELECT * FROM order_executions
+WHERE (CAST(sqlc.arg(ticker) AS TEXT) = '' OR ticker = CAST(sqlc.arg(ticker) AS TEXT))
+  AND (CAST(sqlc.arg(status) AS TEXT) = '' OR status = CAST(sqlc.arg(status) AS TEXT))
+ORDER BY created_at DESC
+LIMIT sqlc.arg(row_limit);

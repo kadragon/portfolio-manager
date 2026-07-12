@@ -12,12 +12,14 @@ import (
 
 func runGroup(ctx context.Context, c *container.Container, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: pm group list|add|update|delete [flags]")
+		return fmt.Errorf("usage: pm group list|get|add|update|delete [flags]")
 	}
 	verb, rest := args[0], args[1:]
 	switch verb {
 	case "list":
 		return groupList(ctx, c)
+	case "get":
+		return groupGet(ctx, c, rest)
 	case "add":
 		return groupAdd(ctx, c, rest)
 	case "update":
@@ -27,6 +29,26 @@ func runGroup(ctx context.Context, c *container.Container, args []string) error 
 	default:
 		return fmt.Errorf("unknown group verb %q", verb)
 	}
+}
+
+func groupGet(ctx context.Context, c *container.Container, args []string) error {
+	fs := flag.NewFlagSet("pm group get", flag.ExitOnError)
+	idRaw := fs.String("id", "", "group id (required)")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	id, err := uuidx.Parse(*idRaw)
+	if err != nil {
+		return fmt.Errorf("invalid -id: %w", err)
+	}
+	group, err := c.Groups.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get group: %w", err)
+	}
+	if group == nil {
+		return fmt.Errorf("group %s not found", *idRaw)
+	}
+	return printJSON(group)
 }
 
 func groupList(ctx context.Context, c *container.Container) error {
@@ -98,6 +120,13 @@ func groupDelete(ctx context.Context, c *container.Container, args []string) err
 	id, err := uuidx.Parse(*idRaw)
 	if err != nil {
 		return fmt.Errorf("invalid -id: %w", err)
+	}
+	existing, err := c.Groups.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get group: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("group %s not found", *idRaw)
 	}
 	if err := c.Groups.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete group: %w", err)

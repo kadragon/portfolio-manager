@@ -27,6 +27,21 @@ func TestAccountListEmpty(t *testing.T) {
 	}
 }
 
+func TestAccountGet(t *testing.T) {
+	ctx := context.Background()
+	c := newAccountContainer(t)
+	acc, err := c.Accounts.Create(ctx, "ISA", numeric.Zero)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := runAccount(ctx, c, []string{"get", "-id", acc.ID.String()}); err != nil {
+		t.Fatalf("account get: %v", err)
+	}
+	if err := runAccount(ctx, c, []string{"get", "-id", "00000000000000000000000000000000"}); err == nil {
+		t.Fatal("expected error for unknown account id")
+	}
+}
+
 func TestAccountAdd(t *testing.T) {
 	ctx := context.Background()
 	c := newAccountContainer(t)
@@ -100,6 +115,48 @@ func TestAccountUpdateUnknownID(t *testing.T) {
 	}
 }
 
+func TestAccountUpdateClearsNullableLinkage(t *testing.T) {
+	ctx := context.Background()
+	c := newAccountContainer(t)
+	acc, err := c.Accounts.Create(ctx, "TOSS", numeric.Zero)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := runAccount(ctx, c, []string{
+		"update", "-id", acc.ID.String(),
+		"-kis-account-no", "1234567801",
+		"-kis-api-key-id", "2",
+		"-account-type", "isa",
+		"-toss-account-seq", "123",
+	}); err != nil {
+		t.Fatalf("set linkage: %v", err)
+	}
+	seeded, err := c.Accounts.GetByID(ctx, acc.ID)
+	if err != nil {
+		t.Fatalf("GetByID seeded: %v", err)
+	}
+	if seeded.KisAPIKeyID == nil || *seeded.KisAPIKeyID != 2 || seeded.TossAccountSeq == nil || *seeded.TossAccountSeq != 123 {
+		t.Fatalf("numeric linkage not stored: %+v", seeded)
+	}
+
+	if err := runAccount(ctx, c, []string{
+		"update", "-id", acc.ID.String(),
+		"-kis-account-no", "/clear",
+		"-kis-api-key-id", "/clear",
+		"-account-type", "/clear",
+		"-toss-account-seq", "/clear",
+	}); err != nil {
+		t.Fatalf("clear linkage: %v", err)
+	}
+	got, err := c.Accounts.GetByID(ctx, acc.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.KisAccountNo != nil || got.KisAPIKeyID != nil || got.AccountType != nil || got.TossAccountSeq != nil {
+		t.Fatalf("linkage not cleared: %+v", got)
+	}
+}
+
 func TestAccountDelete(t *testing.T) {
 	ctx := context.Background()
 	c := newAccountContainer(t)
@@ -116,6 +173,14 @@ func TestAccountDelete(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatalf("expected account deleted, still found: %+v", got)
+	}
+}
+
+func TestAccountDeleteUnknownID(t *testing.T) {
+	ctx := context.Background()
+	c := newAccountContainer(t)
+	if err := runAccount(ctx, c, []string{"delete", "-id", "00000000000000000000000000000000"}); err == nil {
+		t.Fatal("expected error for unknown account id")
 	}
 }
 
