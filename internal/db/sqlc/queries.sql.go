@@ -316,6 +316,23 @@ func (q *Queries) DeleteStock(ctx context.Context, id uuidx.UUID) error {
 	return err
 }
 
+const deleteStockPriceByTickerAndDate = `-- name: DeleteStockPriceByTickerAndDate :execrows
+DELETE FROM stock_prices WHERE ticker = ? AND price_date = ?
+`
+
+type DeleteStockPriceByTickerAndDateParams struct {
+	Ticker    string
+	PriceDate datex.Date
+}
+
+func (q *Queries) DeleteStockPriceByTickerAndDate(ctx context.Context, arg DeleteStockPriceByTickerAndDateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteStockPriceByTickerAndDate, arg.Ticker, arg.PriceDate)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getAccountByID = `-- name: GetAccountByID :one
 SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq FROM accounts WHERE id = ?
 `
@@ -731,6 +748,54 @@ func (q *Queries) ListHoldingsByAccount(ctx context.Context, accountID uuidx.UUI
 			&i.Quantity,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrderExecutions = `-- name: ListOrderExecutions :many
+SELECT id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at FROM order_executions
+WHERE (?1 = '' OR ticker = ?1)
+  AND (?2 = '' OR status = ?2)
+ORDER BY created_at DESC
+LIMIT ?3
+`
+
+type ListOrderExecutionsParams struct {
+	Ticker   interface{}
+	Status   interface{}
+	RowLimit int64
+}
+
+func (q *Queries) ListOrderExecutions(ctx context.Context, arg ListOrderExecutionsParams) ([]OrderExecution, error) {
+	rows, err := q.db.QueryContext(ctx, listOrderExecutions, arg.Ticker, arg.Status, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OrderExecution{}
+	for rows.Next() {
+		var i OrderExecution
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ticker,
+			&i.Side,
+			&i.Quantity,
+			&i.Currency,
+			&i.Exchange,
+			&i.Status,
+			&i.Message,
+			&i.RawResponse,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -39,6 +39,21 @@ func TestDepositList(t *testing.T) {
 	}
 }
 
+func TestDepositGet(t *testing.T) {
+	c := newDepositContainer(t)
+	ctx := context.Background()
+	if err := runDeposit(ctx, c, []string{"add", "-amount", "1000", "-date", "2026-01-15"}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	id := firstDepositID(ctx, t, c)
+	if err := runDeposit(ctx, c, []string{"get", "-id", id.String()}); err != nil {
+		t.Fatalf("deposit get: %v", err)
+	}
+	if err := runDeposit(ctx, c, []string{"get", "-id", uuidx.New().String()}); err == nil {
+		t.Fatal("expected error for unknown id")
+	}
+}
+
 func TestDepositAddHappyPath(t *testing.T) {
 	c := newDepositContainer(t)
 	ctx := context.Background()
@@ -211,8 +226,8 @@ func TestDepositDelete(t *testing.T) {
 func TestDepositDeleteUnknownID(t *testing.T) {
 	c := newDepositContainer(t)
 	ctx := context.Background()
-	if err := runDeposit(ctx, c, []string{"delete", "-id", uuidx.New().String()}); err != nil {
-		t.Errorf("delete unknown id should be a no-op, got %v", err)
+	if err := runDeposit(ctx, c, []string{"delete", "-id", uuidx.New().String()}); err == nil {
+		t.Fatal("expected error for unknown id")
 	}
 }
 

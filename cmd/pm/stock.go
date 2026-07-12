@@ -12,12 +12,14 @@ import (
 
 func runStock(ctx context.Context, c *container.Container, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: pm stock list|add|update|move|delete [flags]")
+		return fmt.Errorf("usage: pm stock list|get|add|update|move|delete [flags]")
 	}
 	verb, rest := args[0], args[1:]
 	switch verb {
 	case "list":
 		return stockList(ctx, c, rest)
+	case "get":
+		return stockGet(ctx, c, rest)
 	case "add":
 		return stockAdd(ctx, c, rest)
 	case "update":
@@ -29,6 +31,26 @@ func runStock(ctx context.Context, c *container.Container, args []string) error 
 	default:
 		return fmt.Errorf("unknown stock verb %q", verb)
 	}
+}
+
+func stockGet(ctx context.Context, c *container.Container, args []string) error {
+	fs := flag.NewFlagSet("pm stock get", flag.ExitOnError)
+	idRaw := fs.String("id", "", "stock id (required)")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	id, err := uuidx.Parse(*idRaw)
+	if err != nil {
+		return fmt.Errorf("invalid -id: %w", err)
+	}
+	stock, err := c.Stocks.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get stock: %w", err)
+	}
+	if stock == nil {
+		return fmt.Errorf("stock %s not found", *idRaw)
+	}
+	return printJSON(stock)
 }
 
 func stockList(ctx context.Context, c *container.Container, args []string) error {
@@ -169,6 +191,13 @@ func stockDelete(ctx context.Context, c *container.Container, args []string) err
 	id, err := uuidx.Parse(*idRaw)
 	if err != nil {
 		return fmt.Errorf("invalid -id: %w", err)
+	}
+	existing, err := c.Stocks.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get stock: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("stock %s not found", *idRaw)
 	}
 	if err := c.Stocks.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete stock: %w", err)

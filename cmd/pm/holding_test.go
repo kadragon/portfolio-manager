@@ -78,6 +78,32 @@ func TestHoldingListEmptyAndAfterAdd(t *testing.T) {
 	}
 }
 
+func TestHoldingListAllAndGet(t *testing.T) {
+	ctx := context.Background()
+	c := newHoldingContainer(t)
+	acc, stock := holdingFixtures(t, ctx, c)
+	h, err := c.Holdings.Create(ctx, acc.ID, stock.ID, mustDecimal(t, "2"))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := runHolding(ctx, c, []string{"list"}); err != nil {
+		t.Fatalf("holding list all: %v", err)
+	}
+	if err := runHolding(ctx, c, []string{"get", "-id", h.ID.String()}); err != nil {
+		t.Fatalf("holding get: %v", err)
+	}
+	output, err := enrichHoldings(ctx, c, []models.Holding{h})
+	if err != nil {
+		t.Fatalf("enrich holdings: %v", err)
+	}
+	if len(output) != 1 || output[0].AccountName != "ISA" || output[0].Ticker != "AAPL" || output[0].GroupName != "성장주" {
+		t.Fatalf("unexpected enriched output: %+v", output)
+	}
+	if err := runHolding(ctx, c, []string{"get", "-id", uuidx.New().String()}); err == nil {
+		t.Fatal("expected error for unknown id")
+	}
+}
+
 func TestHoldingAdd(t *testing.T) {
 	ctx := context.Background()
 	c := newHoldingContainer(t)
@@ -262,8 +288,8 @@ func TestHoldingDeleteUnknownID(t *testing.T) {
 	c := newHoldingContainer(t)
 	holdingFixtures(t, ctx, c)
 
-	if err := runHolding(ctx, c, []string{"delete", "-id", uuidx.New().String()}); err != nil {
-		t.Fatalf("delete unknown id should be a no-op, got: %v", err)
+	if err := runHolding(ctx, c, []string{"delete", "-id", uuidx.New().String()}); err == nil {
+		t.Fatal("expected error for unknown id")
 	}
 }
 

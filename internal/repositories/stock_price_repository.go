@@ -89,6 +89,18 @@ func (r *StockPriceRepository) ListByTickerRange(ctx context.Context, ticker str
 	return prices, nil
 }
 
+// Delete removes one cached close and reports whether a row existed.
+func (r *StockPriceRepository) Delete(ctx context.Context, ticker string, priceDate datex.Date) (bool, error) {
+	count, err := r.q.DeleteStockPriceByTickerAndDate(ctx, sqlc.DeleteStockPriceByTickerAndDateParams{
+		Ticker:    ticker,
+		PriceDate: priceDate,
+	})
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // Save upserts a price entry. If a row already exists for (ticker, date),
 // it updates price/currency/exchange/updated_at and preserves the existing name
 // when the new name is empty (matches Python behaviour).

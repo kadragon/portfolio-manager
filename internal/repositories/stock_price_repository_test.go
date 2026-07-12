@@ -58,6 +58,24 @@ func TestStockPriceAbsentReturnsNil(t *testing.T) {
 	}
 }
 
+func TestStockPriceDelete(t *testing.T) {
+	r := newStockPriceRepo(t)
+	ctx := context.Background()
+	d, _ := datex.ParseDate("2026-01-15")
+	price, _ := numeric.FromString("85000")
+	if _, err := r.Save(ctx, "005930", d, price, "KRW", "삼성전자", sql.NullString{}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	deleted, err := r.Delete(ctx, "005930", d)
+	if err != nil || !deleted {
+		t.Fatalf("delete existing: deleted=%v err=%v", deleted, err)
+	}
+	deleted, err = r.Delete(ctx, "005930", d)
+	if err != nil || deleted {
+		t.Fatalf("delete missing: deleted=%v err=%v", deleted, err)
+	}
+}
+
 func TestStockPriceGetLatestByTicker(t *testing.T) {
 	r := newStockPriceRepo(t)
 	ctx := context.Background()

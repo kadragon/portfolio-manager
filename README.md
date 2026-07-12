@@ -8,10 +8,11 @@ Toss Invest API와 연동하여 국내/해외 주식 보유 현황, 실시간 �
 ## 주요 기능
 
 - **대시보드** — 보유 종목, 현재가, 평가액, 수익률(연환산 포함), 그룹별 비중 요약 (`portfolio-data` 스킬)
-- **그룹/종목/계좌/입금/보유 관리** — CRUD 전부 `portfolio-data` 스킬
+- **그룹/종목/계좌/입금/보유 관리** — CRUD, 단건·전체 조회를 `portfolio-data` 스킬로 실행
 - **계좌 동기화** — KIS/Toss 계좌 동기화, 가격 갱신, 종목 자산분류를 온디맨드로 실행 (`portfolio-sync` 스킬)
 - **리밸런싱** — 계획 수립은 `rebalance-plan` 스킬, TOSS/ISA 주문 실행은 `execute-rebalance-plan` 스킬 + `cmd/rebalance-order`
-- **시세 캐싱** — 일별 가격 DB 캐시
+- **시세 캐싱** — 일별 가격 DB 캐시 조회·동기화·수동 정정
+- **주문 감사 이력** — 성공·실패·지연 주문을 append-only 이력으로 조회
 
 ## 기술 스택
 

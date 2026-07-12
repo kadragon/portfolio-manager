@@ -15,12 +15,14 @@ import (
 
 func runDeposit(ctx context.Context, c *container.Container, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: pm deposit list|add|update|delete [flags]")
+		return fmt.Errorf("usage: pm deposit list|get|add|update|delete [flags]")
 	}
 	verb, rest := args[0], args[1:]
 	switch verb {
 	case "list":
 		return depositList(ctx, c)
+	case "get":
+		return depositGet(ctx, c, rest)
 	case "add":
 		return depositAdd(ctx, c, rest)
 	case "update":
@@ -30,6 +32,26 @@ func runDeposit(ctx context.Context, c *container.Container, args []string) erro
 	default:
 		return fmt.Errorf("unknown deposit verb %q", verb)
 	}
+}
+
+func depositGet(ctx context.Context, c *container.Container, args []string) error {
+	fs := flag.NewFlagSet("pm deposit get", flag.ExitOnError)
+	idRaw := fs.String("id", "", "deposit id (required)")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	id, err := uuidx.Parse(*idRaw)
+	if err != nil {
+		return fmt.Errorf("invalid -id: %w", err)
+	}
+	deposit, err := c.Deposits.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get deposit: %w", err)
+	}
+	if deposit == nil {
+		return fmt.Errorf("deposit %s not found", *idRaw)
+	}
+	return printJSON(deposit)
 }
 
 func depositList(ctx context.Context, c *container.Container) error {
@@ -168,6 +190,13 @@ func depositDelete(ctx context.Context, c *container.Container, args []string) e
 	id, err := uuidx.Parse(*idRaw)
 	if err != nil {
 		return fmt.Errorf("invalid -id: %w", err)
+	}
+	existing, err := c.Deposits.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get deposit: %w", err)
+	}
+	if existing == nil {
+		return fmt.Errorf("deposit %s not found", *idRaw)
 	}
 	if err := c.Deposits.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete deposit: %w", err)

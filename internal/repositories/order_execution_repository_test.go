@@ -68,3 +68,22 @@ func TestOrderExecutionListRecentEmpty(t *testing.T) {
 		t.Errorf("expected empty, got %d", len(recs))
 	}
 }
+
+func TestOrderExecutionListFilters(t *testing.T) {
+	r := newOrderExecRepo(t)
+	ctx := context.Background()
+	if _, err := r.Create(ctx, "AAPL", "buy", 1, "USD", "filled", "ok", "NASD", nil); err != nil {
+		t.Fatalf("Create filled: %v", err)
+	}
+	if _, err := r.Create(ctx, "005930", "sell", 2, "KRW", "failed", "rejected", "KRX", nil); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	records, err := r.List(ctx, "005930", "failed", 10)
+	if err != nil {
+		t.Fatalf("List filters: %v", err)
+	}
+	if len(records) != 1 || records[0].Ticker != "005930" || records[0].Status != "failed" {
+		t.Fatalf("unexpected filtered records: %+v", records)
+	}
+}

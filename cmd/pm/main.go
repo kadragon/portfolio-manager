@@ -53,6 +53,8 @@ func main() {
 		runErr = runDashboard(ctx, c, args)
 	case "price":
 		runErr = runPrice(ctx, c, args)
+	case "order-execution":
+		runErr = runOrderExecution(ctx, c, args)
 	case "price-sync":
 		runErr = runPriceSync(ctx, c, args)
 	case "price-backfill":
@@ -75,15 +77,16 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `usage: pm <resource> <verb> [flags]
 
 resources:
-  account          list | add -name -cash | update -id [-name -cash -kis-account-no -kis-api-key-id -account-type -toss-account-seq] | delete -id | set-cash -id -cash
-  group            list | add -name -target | update -id [-name -target] | delete -id
-  stock            list [-group] | add -group -ticker | update -id [-ticker -exchange -name -asset-class -security-group] | move -id -group | delete -id
-  deposit          list | add -amount -date [-note] | update -id [-amount -date -note] | delete -id
-  holding          list -account | add -account -stock -qty | add-by-ticker -account -ticker -qty | bulk -account -updates | update -id -qty | delete -id
+  account          list | get -id | add -name -cash | update -id [-name -cash -kis-account-no -kis-api-key-id -account-type -toss-account-seq] | delete -id | set-cash -id -cash
+  group            list | get -id | add -name -target | update -id [-name -target] | delete -id
+  stock            list [-group] | get -id | add -group -ticker | update -id [-ticker -exchange -name -asset-class -security-group] | move -id -group | delete -id
+  deposit          list | get -id | add -amount -date [-note] | update -id [-amount -date -note] | delete -id
+  holding          list [-account] | get -id | add -account -stock -qty | add-by-ticker -account -ticker -qty | bulk -account -updates | update -id -qty | delete -id
   sync             -account NAME [-confirm-empty]   (KIS/Toss account sync, routed by account link)
   classify-stocks  backfill asset_class via KIS
   dashboard        [-no-change-rates] [-sort {value,1d,1m,6m,1y}] [-asc]   (portfolio summary)
-  price            list -ticker T [-from YYYY-MM-DD] [-to YYYY-MM-DD] [-limit N]   (read cached daily closes)
+  price            list -ticker T [-from DATE] [-to DATE] [-limit N] | set -ticker T -date DATE -price P [-currency C -name N -exchange E] | delete -ticker T -date DATE
+  order-execution  list [-limit N] [-ticker T] [-status STATUS]   (read append-only order history)
   price-sync       refresh stock prices once
   price-backfill   -ticker T -from YYYY-MM-DD -to YYYY-MM-DD   (backfill historical closes for one ticker)
 
