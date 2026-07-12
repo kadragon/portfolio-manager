@@ -29,6 +29,11 @@ func (i DomesticStockInfo) AssetClass() string {
 // "etf" or "stock". A KOSPI/KOSDAQ-listed ETF reports scty_grp_id_cd "EF"; ETFs
 // also carry a non-empty etf_dvsn_cd. Anything else (주권 "ST", ETN, etc.) is
 // treated as a regular stock for eligibility.
+//
+// ETN ("EN") intentionally falls through to "stock": Korean capital markets
+// law treats ETNs as 파생결합증권 (issuer-credit-linked debt securities), which
+// are ineligible for 연금저축/IRP accounts industry-wide. Classifying ETN as
+// "stock" correctly blocks IRP/연금 buys via canHold — this is not a bug.
 func ClassifyDomesticAssetClass(sctyGrpIDCd, etfDvsnCd string) string {
 	grp := strings.ToUpper(strings.TrimSpace(sctyGrpIDCd))
 	// "EF" is the documented ETF code. "FE" is an UNVERIFIED guess at a foreign-ETF
