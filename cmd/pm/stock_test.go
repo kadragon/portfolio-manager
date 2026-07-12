@@ -199,6 +199,38 @@ func TestStockUpdateEmptyTickerRejected(t *testing.T) {
 	}
 }
 
+func TestStockUpdateInvalidSecurityGroupRejected(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+	g := mustGroup(t, ctx, c, "Test Group")
+	s, err := c.Stocks.Create(ctx, "AAPL", g.ID)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := runStock(ctx, c, []string{"update", "-id", s.ID.String(), "-security-group", "XX"}); err == nil {
+		t.Fatal("expected error for unrecognized -security-group code")
+	}
+	got, err := c.Stocks.GetByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.SecurityGroup != nil {
+		t.Fatalf("security group should be unchanged after rejected update, got %v", got.SecurityGroup)
+	}
+
+	if err := runStock(ctx, c, []string{"update", "-id", s.ID.String(), "-security-group", "EF"}); err != nil {
+		t.Fatalf("stock update -security-group: %v", err)
+	}
+	got, err = c.Stocks.GetByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.SecurityGroup == nil || *got.SecurityGroup != "EF" {
+		t.Fatalf("expected security group EF, got %v", got.SecurityGroup)
+	}
+}
+
 func TestStockUpdateNoFields(t *testing.T) {
 	ctx := context.Background()
 	c := newStockContainer(t)
