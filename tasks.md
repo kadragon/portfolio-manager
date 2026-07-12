@@ -11,15 +11,6 @@ Schema / lifecycle:
 ### PR #114 — KIS ETF classification + tax-location rebalance reasoning (2026-06-03)
 
 - [ ] [debt] ETN (scty_grp_id_cd "EN") classified as "stock" blocks IRP/연금 buys; verify KR ETN eligibility for 연금/IRP and model if eligible (source: pr-review-toolkit:review-pr) — internal/kis/domestic_info.go:34, internal/services/rebalance_service.go canHold
-- [x] [debt] Unclassifiable/failed tickers keep asset_class=nil and are re-queried on every sync/ClassifyAll; persist an "unknown" sentinel (needs schema + edit-form value decision) to stop redundant KIS calls (source: agy) — internal/services/stock_classification.go:27 — **resolved: `AssetClassUnknown` sentinel stamped on asset_class ONLY (security_group keeps KIS code space); `isUnknown(asset_class)` terminal for all skip-gates (no schema change — TEXT col); edit form "" resets to re-query; sentinel set by classifier only, not client POST.**
-- [x] [debt] ClassifyAll loops KIS calls synchronously with no throttle inside the web handler; large unclassified sets risk KIS rate-limit and HTTP timeout — add inter-call delay or background job + HTMX polling (source: agy) — internal/services/stock_classification.go:88 — **resolved: ctx-aware inter-call delay (`SetCallDelay`, container injects 200ms) + loop-top ctx.Err() guard; background-job+HTMX-polling deferred (see Out of scope).**
-- [x] [doc] Drop redundant html.EscapeString in classifyStocks/syncAccount handlers (templ auto-escapes `{ message }`, output is double-escaped) — cosmetic, currently consistent with sibling handler (source: security-review) — internal/web/handlers/accounts.go:272 — **obsolete: internal/web/ removed (web UI teardown, cmd/pm CLI replaces it).**
-
-### PR #119 — refactor(ui): separate page canvas from card surface (2026-06-04)
-
-- [x] [harness] `internal/web/static/css/app.css` is tracked in git; compiled output creates noisy diffs and build-env divergence risk — add to `.gitignore` and generate in CI/Docker instead (source: pr-review-toolkit:review-pr) — `internal/web/static/css/app.css` — **obsolete: internal/web/, Tailwind toolchain, and Docker removed (web UI teardown).**
-- [x] [debt] DaisyUI base-100/200 role inversion from convention (100=card, 200=canvas) is intentional but confusing; document design decision in `docs/` or DESIGN.md comment block (source: review) — `internal/web/tailwind/input.css:15-19` — **obsolete: internal/web/ and Tailwind toolchain removed (web UI teardown).**
-- [x] [doc] Commit message format: project uses `[TYPE]` prefix (AGENTS.md), not Conventional Commits `type(scope):` — align or update `docs/conventions.md` to accept both (source: pr-review-toolkit:review-pr) — **resolved: `docs/conventions.md:5` already documents `[TYPE]` format, explicitly "Conventional Commits 사용 안 함".**
 
 ### PR #129 — [REFACTOR] centralize asset-class vocabulary via models.ValidAssetClass (2026-06-19)
 
