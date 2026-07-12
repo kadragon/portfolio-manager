@@ -4,6 +4,7 @@ package toss
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -121,7 +122,7 @@ func (c *Client) FetchAccountSnapshot(accountSeq, _ string) (models.KisAccountSn
 }
 
 // PlaceOrder creates a market quantity order for the given Toss accountSeq.
-func (c *Client) PlaceOrder(accountSeq string, intent models.OrderIntent) (map[string]any, error) {
+func (c *Client) PlaceOrder(ctx context.Context, accountSeq string, intent models.OrderIntent) (map[string]any, error) {
 	accountSeq = strings.TrimSpace(accountSeq)
 	if accountSeq == "" {
 		return nil, fmt.Errorf("toss order: accountSeq is required")
@@ -150,7 +151,7 @@ func (c *Client) PlaceOrder(accountSeq string, intent models.OrderIntent) (map[s
 	if err != nil {
 		return nil, fmt.Errorf("toss order: json marshal: %w", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/api/v1/orders", bytes.NewReader(body)) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/v1/orders", bytes.NewReader(body)) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
 	if err != nil {
 		return nil, fmt.Errorf("toss order: create request: %w", err)
 	}

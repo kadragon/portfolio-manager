@@ -53,7 +53,7 @@ type fakeKISOrderClient struct {
 	err  error
 }
 
-func (f *fakeKISOrderClient) PlaceOrder(ticker, side string, quantity int, exchange string) (map[string]any, error) {
+func (f *fakeKISOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string) (map[string]any, error) {
 	return f.resp, f.err
 }
 
@@ -64,7 +64,7 @@ type fakeTossOrderClient struct {
 	err          error
 }
 
-func (f *fakeTossOrderClient) PlaceOrder(accountSeq string, intent models.OrderIntent) (map[string]any, error) {
+func (f *fakeTossOrderClient) PlaceOrder(ctx context.Context, accountSeq string, intent models.OrderIntent) (map[string]any, error) {
 	f.calledSeq = accountSeq
 	f.calledIntent = intent
 	return f.resp, f.err

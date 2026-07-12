@@ -1,6 +1,7 @@
 package kis
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -38,7 +39,7 @@ func retryServer(t *testing.T, okBody string) (*httptest.Server, *TokenManager) 
 
 func TestPostWithRetryTokenExpiry(t *testing.T) {
 	srv, mgr := retryServer(t, `{"rt_cd":"0","result":"posted"}`)
-	body, err := postWithRetry(srv.Client(), srv.URL+"/order", map[string]string{"PDNO": "005930"},
+	body, err := postWithRetry(context.Background(), srv.Client(), srv.URL+"/order", map[string]string{"PDNO": "005930"},
 		BuildHeaders("old_token", "k", "s", "TRID", "P"),
 		mgr, "k", "s", "TRID", "P")
 	if err != nil {
@@ -56,7 +57,7 @@ func TestPostWithRetryHTTP400(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	mgr := makeManager(t, "tok")
-	_, err := postWithRetry(srv.Client(), srv.URL+"/order", map[string]string{"x": "1"},
+	_, err := postWithRetry(context.Background(), srv.Client(), srv.URL+"/order", map[string]string{"x": "1"},
 		BuildHeaders("tok", "k", "s", "TRID", "P"),
 		mgr, "k", "s", "TRID", "P")
 	if err == nil {

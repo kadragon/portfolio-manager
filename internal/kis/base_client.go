@@ -2,6 +2,7 @@ package kis
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -67,6 +68,7 @@ func GetWithRetry(
 
 // postWithRetry issues a POST request with a JSON body, retrying once on EGW00123.
 func postWithRetry(
+	ctx context.Context,
 	client *http.Client,
 	url string,
 	payload any,
@@ -74,7 +76,7 @@ func postWithRetry(
 	manager *TokenManager,
 	appKey, appSecret, trID, custType string,
 ) ([]byte, error) {
-	body, status, err := doPost(client, url, payload, headers)
+	body, status, err := doPost(ctx, client, url, payload, headers)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +85,7 @@ func postWithRetry(
 		if refreshErr != nil {
 			return nil, fmt.Errorf("KIS token refresh: %w", refreshErr)
 		}
-		body, status, err = doPost(client, url, payload, BuildHeaders(newToken, appKey, appSecret, trID, custType))
+		body, status, err = doPost(ctx, client, url, payload, BuildHeaders(newToken, appKey, appSecret, trID, custType))
 		if err != nil {
 			return nil, err
 		}
@@ -94,12 +96,12 @@ func postWithRetry(
 	return body, nil
 }
 
-func doPost(client *http.Client, url string, payload any, headers map[string]string) ([]byte, int, error) {
+func doPost(ctx context.Context, client *http.Client, url string, payload any, headers map[string]string) ([]byte, int, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, 0, err
 	}
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
 		return nil, 0, err
 	}

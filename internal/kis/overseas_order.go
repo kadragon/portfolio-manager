@@ -1,6 +1,7 @@
 package kis
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,7 +22,7 @@ type OverseasOrderClient struct {
 
 // PlaceOrder places an overseas order and returns the raw KIS response.
 // exchange must be the KIS order-form code: NASD, NYSE, AMEX.
-func (c *OverseasOrderClient) PlaceOrder(ticker, side string, quantity int, exchange string) (map[string]any, error) {
+func (c *OverseasOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string) (map[string]any, error) {
 	trID, err := TrIDForEnv(c.Env, overseasOrderTrID(side, false), overseasOrderTrID(side, true))
 	if err != nil {
 		return nil, err
@@ -45,7 +46,7 @@ func (c *OverseasOrderClient) PlaceOrder(ticker, side string, quantity int, exch
 	headers := BuildHeaders(token, c.AppKey, c.AppSecret, trID, c.CustType)
 	headers["content-type"] = "application/json; charset=utf-8"
 
-	body, err := postWithRetry(c.HTTP, c.BaseURL+"/uapi/overseas-stock/v1/trading/order", payload, headers, c.Manager, c.AppKey, c.AppSecret, trID, c.CustType)
+	body, err := postWithRetry(ctx, c.HTTP, c.BaseURL+"/uapi/overseas-stock/v1/trading/order", payload, headers, c.Manager, c.AppKey, c.AppSecret, trID, c.CustType)
 	if err != nil {
 		return nil, err
 	}
