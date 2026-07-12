@@ -56,11 +56,12 @@ without re-reading the full collection. Never guess or fabricate a UUID.
 - Dates (`-date` on `deposit`) are ISO `YYYY-MM-DD`.
 - Tickers are case-insensitive on input — `cmd/pm` upper-cases them itself.
 - `account-type` is one of `brokerage|irp|pension|isa`; anything else is rejected.
-- On `account update`, `-kis-account-no /clear`, `-kis-api-key-id /clear`,
-  `-account-type /clear`, and `-toss-account-seq /clear` reset the corresponding nullable
-  broker metadata. Clear each field explicitly; clearing one does not silently clear another.
-- Account JSON exposes `KisAPIKeyConfigured` (bool) only — never the source key-slot integer or
-  credentials.
+- On `account update`, an empty string or `/clear` on `-kis-account-no`, `-kis-api-key-id`,
+  `-account-type`, or `-toss-account-seq` resets the corresponding nullable broker metadata.
+  Clear each field explicitly; clearing one does not silently clear another.
+- Account JSON never exposes the KIS API key slot value or credentials — there is no field
+  derived from it at all (not even a presence flag), to avoid retripping a CodeQL
+  clear-text-logging alert this repo has hit before.
 - `pm deposit update -id X -note "/clear"` nulls an existing note. An empty/omitted `-note` on
   `update` leaves the existing note untouched — it is *not* the same as clearing it.
 - `update`/`account`/`group`/`stock` verbs only touch the flags you actually pass — every other

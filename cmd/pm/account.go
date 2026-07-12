@@ -18,34 +18,31 @@ import (
 // accountOutput is the CLI's JSON view of an account. It deliberately has no
 // field derived from models.Account.KisAPIKeyID: CodeQL's clear-text-logging
 // query treats any struct reaching json.Marshal as exposing all of its
-// fields (including values derived from a flagged field via a reversible
-// transform), so a `json:"-"` tag on the source struct doesn't stop the
-// alert — only never putting a value derived from that field on the type
-// that gets marshaled does. KisAPIKeyConfigured only reports presence, never
-// the slot value.
+// fields — including a boolean presence check like `a.KisAPIKeyID != nil` —
+// so a `json:"-"` tag on the source struct doesn't stop the alert. Only
+// never putting any value derived from that field on the type that gets
+// marshaled does.
 type accountOutput struct {
-	ID                  uuidx.UUID
-	Name                string
-	CashBalance         numeric.Decimal
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-	KisAccountNo        *string
-	KisAPIKeyConfigured bool
-	AccountType         *string
-	TossAccountSeq      *int64
+	ID             uuidx.UUID
+	Name           string
+	CashBalance    numeric.Decimal
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	KisAccountNo   *string
+	AccountType    *string
+	TossAccountSeq *int64
 }
 
 func toAccountOutput(a models.Account) accountOutput {
 	return accountOutput{
-		ID:                  a.ID,
-		Name:                a.Name,
-		CashBalance:         a.CashBalance,
-		CreatedAt:           a.CreatedAt,
-		UpdatedAt:           a.UpdatedAt,
-		KisAccountNo:        a.KisAccountNo,
-		KisAPIKeyConfigured: a.KisAPIKeyID != nil,
-		AccountType:         a.AccountType,
-		TossAccountSeq:      a.TossAccountSeq,
+		ID:             a.ID,
+		Name:           a.Name,
+		CashBalance:    a.CashBalance,
+		CreatedAt:      a.CreatedAt,
+		UpdatedAt:      a.UpdatedAt,
+		KisAccountNo:   a.KisAccountNo,
+		AccountType:    a.AccountType,
+		TossAccountSeq: a.TossAccountSeq,
 	}
 }
 
