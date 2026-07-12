@@ -90,6 +90,7 @@ func (s *OrderExecutionService) PlaceOrder(
 	if side != "buy" && side != "sell" {
 		return models.OrderExecutionRecord{}, fmt.Errorf("side must be buy or sell, got %q", side)
 	}
+	ticker = strings.ToUpper(strings.TrimSpace(ticker))
 	if quantity <= 0 {
 		return models.OrderExecutionRecord{}, fmt.Errorf("quantity must be positive, got %d", quantity)
 	}

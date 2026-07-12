@@ -15,10 +15,14 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
-// accountOutput is the CLI's JSON view of an account. It deliberately exposes
-// only whether a KIS key slot is configured, never the source slot value.
-// CodeQL's clear-text-logging query treats any value reaching json.Marshal as
-// exposed, so a json:"-" tag on models.Account would not be sufficient.
+// accountOutput is the CLI's JSON view of an account. It deliberately has no
+// field derived from models.Account.KisAPIKeyID: CodeQL's clear-text-logging
+// query treats any struct reaching json.Marshal as exposing all of its
+// fields (including values derived from a flagged field via a reversible
+// transform), so a `json:"-"` tag on the source struct doesn't stop the
+// alert — only never putting a value derived from that field on the type
+// that gets marshaled does. KisAPIKeyConfigured only reports presence, never
+// the slot value.
 type accountOutput struct {
 	ID                  uuidx.UUID
 	Name                string
@@ -27,7 +31,6 @@ type accountOutput struct {
 	UpdatedAt           time.Time
 	KisAccountNo        *string
 	KisAPIKeyConfigured bool
-	KisAPIKeySlot       *string
 	AccountType         *string
 	TossAccountSeq      *int64
 }
@@ -41,38 +44,9 @@ func toAccountOutput(a models.Account) accountOutput {
 		UpdatedAt:           a.UpdatedAt,
 		KisAccountNo:        a.KisAccountNo,
 		KisAPIKeyConfigured: a.KisAPIKeyID != nil,
-		KisAPIKeySlot:       kisAPIKeySlotLabel(a.KisAPIKeyID),
 		AccountType:         a.AccountType,
 		TossAccountSeq:      a.TossAccountSeq,
 	}
-}
-
-func kisAPIKeySlotLabel(id *int64) *string {
-	if id == nil {
-		return nil
-	}
-	label := "unmapped"
-	switch *id {
-	case 1:
-		label = "slot-1"
-	case 2:
-		label = "slot-2"
-	case 3:
-		label = "slot-3"
-	case 4:
-		label = "slot-4"
-	case 5:
-		label = "slot-5"
-	case 6:
-		label = "slot-6"
-	case 7:
-		label = "slot-7"
-	case 8:
-		label = "slot-8"
-	case 9:
-		label = "slot-9"
-	}
-	return &label
 }
 
 func toAccountOutputs(accounts []models.Account) []accountOutput {
@@ -259,7 +233,7 @@ func accountUpdate(ctx context.Context, c *container.Container, args []string) e
 
 func parseNullableInt64Flag(name, raw string) (sql.NullInt64, error) {
 	trimmed := strings.TrimSpace(raw)
-	if strings.EqualFold(trimmed, "/clear") {
+	if trimmed == "" || strings.EqualFold(trimmed, "/clear") {
 		return sql.NullInt64{}, nil
 	}
 	value, err := strconv.ParseInt(trimmed, 10, 64)

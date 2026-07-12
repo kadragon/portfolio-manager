@@ -135,6 +135,24 @@ func TestOrderExecutionService_PlaceOrder_RoutesToss(t *testing.T) {
 	}
 }
 
+func TestOrderExecutionService_PlaceOrder_NormalizesTickerCase(t *testing.T) {
+	acct := tossAccount("TOSS", 42)
+	accounts := &fakeAccountLister{accounts: []models.Account{acct}}
+	executions := &fakeExecutionRecorder{}
+	toss := &fakeTossOrderClient{resp: map[string]any{"result": map[string]any{"orderId": "abc"}}}
+
+	svc := NewOrderExecutionService(accounts, executions, nil, toss)
+	if _, err := svc.PlaceOrder(context.Background(), "TOSS", "aapl", "sell", 3, "", "USD"); err != nil {
+		t.Fatalf("PlaceOrder returned error: %v", err)
+	}
+	if toss.calledIntent.Ticker != "AAPL" {
+		t.Errorf("toss intent ticker = %q, want AAPL", toss.calledIntent.Ticker)
+	}
+	if len(executions.calls) != 1 || executions.calls[0].ticker != "AAPL" {
+		t.Fatalf("recorded execution ticker not normalized: %+v", executions.calls)
+	}
+}
+
 func TestOrderExecutionService_PlaceOrder_UnknownAccount(t *testing.T) {
 	accounts := &fakeAccountLister{accounts: []models.Account{kisAccount("ISA", nil)}}
 	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, nil, nil)

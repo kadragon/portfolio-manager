@@ -94,8 +94,8 @@ restart needed.
 
 Key sets 2–9 come from `KIS_APP_KEY_{id}` / `KIS_APP_SECRET_{id}` (`container.go:454` `buildKISAuthExtra`); they inherit env/custType/baseURL/tokenManager from key-1. An account routes to its key set via `account.KisAPIKeyID` → `resolveSyncService` (`container.go:216`), which **falls back to key-1 if the id is unmapped**. So "key 2 not applying" is usually one of:
 
-- Account row's `KisAPIKeyID` not set to 2 → silently uses key-1. Check `KisAPIKeySlot` via
-  `go run ./cmd/pm account list`; the expected bounded label is `"slot-2"`.
+- Account row's `KisAPIKeyID` not set to 2 → silently uses key-1. `pm account list` only reports
+  `KisAPIKeyConfigured` (presence, not which slot) — check the actual slot value in the DB directly.
 - `KIS_APP_KEY_2`/`KIS_APP_SECRET_2` missing or blank in `.env` → key set 2 never built → fallback to key-1.
 - **Cold-start skip**: log line `KIS key set 2: skipping cold-start initialization to avoid 1-req/min rate-limit conflict with key set 1. Restart after ~60s to activate key set 2.` printed to stderr on
   `pm` startup. Since each `pm` call is a fresh process, key 2 only activates on a call made
@@ -104,7 +104,7 @@ Key sets 2–9 come from `KIS_APP_KEY_{id}` / `KIS_APP_SECRET_{id}` (`container.
 
 ```bash
 grep -E '^KIS_APP_(KEY|SECRET)_[0-9]=' .env
-go run ./cmd/pm account list   # inspect KisAPIKeyConfigured and KisAPIKeySlot
+go run ./cmd/pm account list   # inspect KisAPIKeyConfigured (presence only, not which slot)
 go run ./cmd/pm sync -account "<name>" 2>&1 | grep -i 'key set'   # spot the cold-start-skip line
 ```
 

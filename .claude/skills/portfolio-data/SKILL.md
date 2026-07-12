@@ -59,9 +59,8 @@ without re-reading the full collection. Never guess or fabricate a UUID.
 - On `account update`, `-kis-account-no /clear`, `-kis-api-key-id /clear`,
   `-account-type /clear`, and `-toss-account-seq /clear` reset the corresponding nullable
   broker metadata. Clear each field explicitly; clearing one does not silently clear another.
-- Account JSON exposes `KisAPIKeyConfigured` and a bounded label such as `KisAPIKeySlot:
-  "slot-2"`. It never emits the source key-slot integer or credentials; unknown values become
-  `"unmapped"`.
+- Account JSON exposes `KisAPIKeyConfigured` (bool) only — never the source key-slot integer or
+  credentials.
 - `pm deposit update -id X -note "/clear"` nulls an existing note. An empty/omitted `-note` on
   `update` leaves the existing note untouched — it is *not* the same as clearing it.
 - `update`/`account`/`group`/`stock` verbs only touch the flags you actually pass — every other

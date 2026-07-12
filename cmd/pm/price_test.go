@@ -81,6 +81,35 @@ func TestPriceSetCreatesAndUpdatesCachedRow(t *testing.T) {
 	}
 }
 
+func TestPriceSetRejectsUnsupportedCurrencyOnUpdate(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+	d, _ := datex.ParseDate("2026-01-20")
+	p, _ := numeric.FromString("100")
+	if _, err := c.StockPrices.Save(ctx, "AAPL", d, p, "USD", "Apple Inc.", sql.NullString{}); err != nil {
+		t.Fatalf("seed price: %v", err)
+	}
+
+	if err := runPrice(ctx, c, []string{
+		"set", "-ticker", "AAPL", "-date", "2026-01-20", "-price", "105", "-currency", "",
+	}); err == nil {
+		t.Fatal("expected error when -currency is empty")
+	}
+	if err := runPrice(ctx, c, []string{
+		"set", "-ticker", "AAPL", "-date", "2026-01-20", "-price", "105", "-currency", "EUR",
+	}); err == nil {
+		t.Fatal("expected error for unsupported currency")
+	}
+
+	got, err := c.StockPrices.GetByTickerAndDate(ctx, "AAPL", d)
+	if err != nil || got == nil {
+		t.Fatalf("get price: got=%v err=%v", got, err)
+	}
+	if got.Currency != "USD" {
+		t.Fatalf("currency was corrupted by rejected update: %+v", got)
+	}
+}
+
 func TestPriceSetNewRowRequiresMetadata(t *testing.T) {
 	ctx := context.Background()
 	c := newStockContainer(t)

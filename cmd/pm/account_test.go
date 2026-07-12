@@ -138,9 +138,6 @@ func TestAccountUpdateClearsNullableLinkage(t *testing.T) {
 	if !toAccountOutput(*seeded).KisAPIKeyConfigured {
 		t.Fatal("linked account must report a configured KIS API key")
 	}
-	if slot := toAccountOutput(*seeded).KisAPIKeySlot; slot == nil || *slot != "slot-2" {
-		t.Fatalf("KIS key slot = %v, want slot-2", slot)
-	}
 	if seeded.KisAPIKeyID == nil || *seeded.KisAPIKeyID != 2 || seeded.TossAccountSeq == nil || *seeded.TossAccountSeq != 123 {
 		t.Fatalf("numeric linkage not stored: %+v", seeded)
 	}
@@ -163,9 +160,6 @@ func TestAccountUpdateClearsNullableLinkage(t *testing.T) {
 	}
 	if toAccountOutput(*got).KisAPIKeyConfigured {
 		t.Fatal("cleared account must report no KIS API key configured")
-	}
-	if toAccountOutput(*got).KisAPIKeySlot != nil {
-		t.Fatal("cleared account must report no KIS API key slot")
 	}
 }
 

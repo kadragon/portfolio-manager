@@ -193,7 +193,7 @@ SELECT * FROM order_executions ORDER BY created_at DESC LIMIT ?;
 
 -- name: ListOrderExecutions :many
 SELECT * FROM order_executions
-WHERE (sqlc.arg(ticker) = '' OR ticker = sqlc.arg(ticker))
-  AND (sqlc.arg(status) = '' OR status = sqlc.arg(status))
+WHERE (CAST(sqlc.arg(ticker) AS TEXT) = '' OR ticker = CAST(sqlc.arg(ticker) AS TEXT))
+  AND (CAST(sqlc.arg(status) AS TEXT) = '' OR status = CAST(sqlc.arg(status) AS TEXT))
 ORDER BY created_at DESC
 LIMIT sqlc.arg(row_limit);

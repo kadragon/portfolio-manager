@@ -73,7 +73,11 @@ func priceSet(ctx context.Context, c *container.Container, args []string) error 
 		exchange = existing.Exchange
 	}
 	if seen["currency"] {
-		currency = strings.ToUpper(strings.TrimSpace(*currencyRaw))
+		trimmed := strings.ToUpper(strings.TrimSpace(*currencyRaw))
+		if trimmed != "KRW" && trimmed != "USD" {
+			return fmt.Errorf("-currency must be KRW or USD")
+		}
+		currency = trimmed
 	}
 	if seen["name"] {
 		name = strings.TrimSpace(*nameRaw)

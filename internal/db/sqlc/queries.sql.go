@@ -764,15 +764,15 @@ func (q *Queries) ListHoldingsByAccount(ctx context.Context, accountID uuidx.UUI
 
 const listOrderExecutions = `-- name: ListOrderExecutions :many
 SELECT id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at FROM order_executions
-WHERE (?1 = '' OR ticker = ?1)
-  AND (?2 = '' OR status = ?2)
+WHERE (CAST(?1 AS TEXT) = '' OR ticker = CAST(?1 AS TEXT))
+  AND (CAST(?2 AS TEXT) = '' OR status = CAST(?2 AS TEXT))
 ORDER BY created_at DESC
 LIMIT ?3
 `
 
 type ListOrderExecutionsParams struct {
-	Ticker   interface{}
-	Status   interface{}
+	Ticker   string
+	Status   string
 	RowLimit int64
 }
 
