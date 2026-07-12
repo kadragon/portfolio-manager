@@ -231,6 +231,54 @@ func TestStockUpdateInvalidSecurityGroupRejected(t *testing.T) {
 	}
 }
 
+func TestStockUpdateSecurityGroupNormalizesCase(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+	g := mustGroup(t, ctx, c, "Test Group")
+	s, err := c.Stocks.Create(ctx, "AAPL", g.ID)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := runStock(ctx, c, []string{"update", "-id", s.ID.String(), "-security-group", "  ef  "}); err != nil {
+		t.Fatalf("stock update -security-group (lowercase/padded): %v", err)
+	}
+	got, err := c.Stocks.GetByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.SecurityGroup == nil || *got.SecurityGroup != "EF" {
+		t.Fatalf("expected normalized security group EF, got %v", got.SecurityGroup)
+	}
+}
+
+func TestStockUpdateInvalidSecurityGroupLeavesOtherFieldsUnchanged(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+	g := mustGroup(t, ctx, c, "Test Group")
+	s, err := c.Stocks.Create(ctx, "AAPL", g.ID)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := runStock(ctx, c, []string{
+		"update", "-id", s.ID.String(),
+		"-ticker", "spy", "-security-group", "XX",
+	}); err == nil {
+		t.Fatal("expected error for unrecognized -security-group code")
+	}
+	got, err := c.Stocks.GetByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.Ticker != "AAPL" {
+		t.Fatalf("ticker should be unchanged when -security-group validation fails, got %q", got.Ticker)
+	}
+	if got.SecurityGroup != nil {
+		t.Fatalf("security group should be unchanged, got %v", got.SecurityGroup)
+	}
+}
+
 func TestStockUpdateNoFields(t *testing.T) {
 	ctx := context.Background()
 	c := newStockContainer(t)
