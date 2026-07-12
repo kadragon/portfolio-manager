@@ -1,6 +1,7 @@
 package toss
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -456,7 +457,7 @@ func TestPlaceOrderCreatesMarketQuantityOrder(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := NewClient(srv.Client(), srv.URL, "cid", "secret")
-	got, err := client.PlaceOrder("7", models.OrderIntent{
+	got, err := client.PlaceOrder(context.Background(), "7", models.OrderIntent{
 		Ticker:   "aapl",
 		Side:     "buy",
 		Quantity: 3,
@@ -495,7 +496,7 @@ func TestPlaceOrderHTTPError(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := NewClient(srv.Client(), srv.URL, "cid", "secret")
-	_, err := client.PlaceOrder("7", models.OrderIntent{Ticker: "005930", Side: "buy", Quantity: 1})
+	_, err := client.PlaceOrder(context.Background(), "7", models.OrderIntent{Ticker: "005930", Side: "buy", Quantity: 1})
 	if err == nil || !strings.Contains(err.Error(), "insufficient-buying-power") {
 		t.Fatalf("expected order API error, got %v", err)
 	}
@@ -503,13 +504,13 @@ func TestPlaceOrderHTTPError(t *testing.T) {
 
 func TestPlaceOrderValidatesInput(t *testing.T) {
 	client := NewClient(nil, "http://localhost", "cid", "secret")
-	if _, err := client.PlaceOrder("", models.OrderIntent{Ticker: "005930", Side: "buy", Quantity: 1}); err == nil {
+	if _, err := client.PlaceOrder(context.Background(), "", models.OrderIntent{Ticker: "005930", Side: "buy", Quantity: 1}); err == nil {
 		t.Fatal("expected accountSeq error")
 	}
-	if _, err := client.PlaceOrder("7", models.OrderIntent{Ticker: "005930", Side: "buy"}); err == nil {
+	if _, err := client.PlaceOrder(context.Background(), "7", models.OrderIntent{Ticker: "005930", Side: "buy"}); err == nil {
 		t.Fatal("expected quantity error")
 	}
-	if _, err := client.PlaceOrder("7", models.OrderIntent{Ticker: "005930", Side: "hold", Quantity: 1}); err == nil {
+	if _, err := client.PlaceOrder(context.Background(), "7", models.OrderIntent{Ticker: "005930", Side: "hold", Quantity: 1}); err == nil {
 		t.Fatal("expected side error")
 	}
 }

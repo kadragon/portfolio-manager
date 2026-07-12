@@ -12,12 +12,12 @@ import (
 
 // KISOrderClient places a single market order through KIS (domestic or overseas).
 type KISOrderClient interface {
-	PlaceOrder(ticker, side string, quantity int, exchange string) (map[string]any, error)
+	PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string) (map[string]any, error)
 }
 
 // TossOrderClient places a single market order through Toss.
 type TossOrderClient interface {
-	PlaceOrder(accountSeq string, intent models.OrderIntent) (map[string]any, error)
+	PlaceOrder(ctx context.Context, accountSeq string, intent models.OrderIntent) (map[string]any, error)
 }
 
 // KISOrderClientFactory builds a KISOrderClient scoped to one account's CANO,
@@ -109,7 +109,7 @@ func (s *OrderExecutionService) PlaceOrder(
 			return models.OrderExecutionRecord{}, fmt.Errorf("account %q is Toss-linked but no Toss client is configured", account.Name)
 		}
 		seq := strconv.FormatInt(*account.TossAccountSeq, 10)
-		raw, placeErr = s.toss.PlaceOrder(seq, models.OrderIntent{
+		raw, placeErr = s.toss.PlaceOrder(ctx, seq, models.OrderIntent{
 			Ticker: ticker, Side: side, Quantity: quantity, Currency: currency,
 			AccountID: account.ID, AccountName: account.Name,
 		})
@@ -123,7 +123,7 @@ func (s *OrderExecutionService) PlaceOrder(
 		if ferr != nil {
 			return models.OrderExecutionRecord{}, ferr
 		}
-		raw, placeErr = client.PlaceOrder(ticker, side, quantity, exchange)
+		raw, placeErr = client.PlaceOrder(ctx, ticker, side, quantity, exchange)
 
 	default:
 		return models.OrderExecutionRecord{}, fmt.Errorf("account %q is not linked to KIS or Toss", account.Name)

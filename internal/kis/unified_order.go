@@ -1,6 +1,7 @@
 package kis
 
 import (
+	"context"
 	"fmt"
 )
 
@@ -21,18 +22,18 @@ type UnifiedOrderClient struct {
 
 // PlaceOrder routes to domestic or overseas client based on ticker length.
 // exchange should be the order-form code (NASD/NYSE/AMEX) or price-form (NAS/NYS/AMS).
-func (c *UnifiedOrderClient) PlaceOrder(ticker, side string, quantity int, exchange string) (map[string]any, error) {
+func (c *UnifiedOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string) (map[string]any, error) {
 	if IsDomesticTicker(ticker) {
 		if c.Domestic == nil {
 			return nil, fmt.Errorf("domestic order client not configured")
 		}
-		return c.Domestic.PlaceOrder(ticker, side, quantity, "")
+		return c.Domestic.PlaceOrder(ctx, ticker, side, quantity, "")
 	}
 	if c.Overseas == nil {
 		return nil, fmt.Errorf("overseas order client not configured")
 	}
 	ex := normalizeOrderExchange(exchange)
-	return c.Overseas.PlaceOrder(ticker, side, quantity, ex)
+	return c.Overseas.PlaceOrder(ctx, ticker, side, quantity, ex)
 }
 
 func normalizeOrderExchange(exchange string) string {

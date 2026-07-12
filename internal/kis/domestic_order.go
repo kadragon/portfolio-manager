@@ -1,6 +1,7 @@
 package kis
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,7 +22,7 @@ type DomesticOrderClient struct {
 
 // PlaceOrder places a domestic order and returns the raw KIS response.
 // exchange is ignored for domestic orders (always KRX).
-func (c *DomesticOrderClient) PlaceOrder(ticker, side string, quantity int, _ string) (map[string]any, error) {
+func (c *DomesticOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, _ string) (map[string]any, error) {
 	trID, err := TrIDForEnv(c.Env, domesticOrderTrID(side, false), domesticOrderTrID(side, true))
 	if err != nil {
 		return nil, err
@@ -45,7 +46,7 @@ func (c *DomesticOrderClient) PlaceOrder(ticker, side string, quantity int, _ st
 	headers := BuildHeaders(token, c.AppKey, c.AppSecret, trID, c.CustType)
 	headers["content-type"] = "application/json; charset=utf-8"
 
-	body, err := postWithRetry(c.HTTP, c.BaseURL+"/uapi/domestic-stock/v1/trading/order-cash", payload, headers, c.Manager, c.AppKey, c.AppSecret, trID, c.CustType)
+	body, err := postWithRetry(ctx, c.HTTP, c.BaseURL+"/uapi/domestic-stock/v1/trading/order-cash", payload, headers, c.Manager, c.AppKey, c.AppSecret, trID, c.CustType)
 	if err != nil {
 		return nil, err
 	}

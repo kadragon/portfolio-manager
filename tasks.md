@@ -16,10 +16,6 @@ Schema / lifecycle:
 
 - [ ] [refactor] `AssetClassUnknown = "unknown"` sentinel lives in `services` while the new valid-class consts (`AssetClassETF`/`AssetClassStock`) live in `models`; co-locating the sentinel in `models/stock.go` would unify the asset_class value space, but ripples to external `services.AssetClassUnknown` references in test files (out of PR #129 scope) (source: review) — `internal/services/stock_classification.go:20`
 
-### PR #132 — fix/toss-post-review-fixes (2026-06-28)
-
-- [ ] [debt] `accountOrderRouter.PlaceOrder` and `ExecuteRebalanceOrders` persistence loop use `context.Background()` — `OrderClient` interface carries no `ctx` parameter (same pattern as existing KIS order clients). Systemic fix: add `ctx context.Context` to `OrderClient.PlaceOrder`, `kisOrderPlacer`, `tossOrderPlacer` interfaces and all implementations (`kis.DomesticOrderClient`, `kis.OverseasOrderClient`, `toss.Client.PlaceOrder`) (source: agy, review) — `internal/container/container.go:258`, `internal/services/rebalance_execution_service.go:170`
-
 ### PR #135 — [FEAT] skip buy recs when executable qty < 1 whole share (2026-06-29)
 
 - [ ] [debt] `hasExecutableWholeShare` applies a blanket ≥1 whole-share floor to all currencies including USD, where some brokers support fractional shares; if fractional trading is ever enabled for overseas stocks, this guard will need per-currency / per-account-type gating (source: agy) — `internal/services/rebalance_service.go:961`
