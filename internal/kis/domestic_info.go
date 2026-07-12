@@ -32,8 +32,11 @@ func (i DomesticStockInfo) AssetClass() string {
 //
 // ETN ("EN") intentionally falls through to "stock": Korean capital markets
 // law treats ETNs as 파생결합증권 (issuer-credit-linked debt securities), which
-// are ineligible for 연금저축/IRP accounts industry-wide. Classifying ETN as
-// "stock" correctly blocks IRP/연금 buys via canHold — this is not a bug.
+// are ineligible for 연금저축/IRP accounts industry-wide. There is no in-repo
+// canHold gate enforcing this (removed with rebalance_service.go in PR #145);
+// AssetClass is informational metadata the rebalance-plan skill uses to reason
+// about account eligibility. Classifying ETN as "stock" here keeps that signal
+// accurate — this is not a bug.
 func ClassifyDomesticAssetClass(sctyGrpIDCd, etfDvsnCd string) string {
 	grp := strings.ToUpper(strings.TrimSpace(sctyGrpIDCd))
 	// "EF" is the documented ETF code. "FE" is an UNVERIFIED guess at a foreign-ETF
