@@ -3,7 +3,6 @@
 package toss
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -42,41 +41,6 @@ type tokenResponse struct {
 	ExpiresIn   int64  `json:"expires_in"`
 }
 
-type apiErrorResponse struct {
-	Error struct {
-		RequestID string `json:"requestId"`
-		Code      string `json:"code"`
-		Message   string `json:"message"`
-	} `json:"error"`
-}
-
-type holdingsResponse struct {
-	Result struct {
-		Items []holdingItem `json:"items"`
-	} `json:"result"`
-}
-
-type buyingPowerResponse struct {
-	Result struct {
-		Currency        string `json:"currency"`
-		CashBuyingPower string `json:"cashBuyingPower"`
-	} `json:"result"`
-}
-
-type exchangeRateResponse struct {
-	Result struct {
-		BaseCurrency  string `json:"baseCurrency"`
-		QuoteCurrency string `json:"quoteCurrency"`
-		Rate          string `json:"rate"`
-	} `json:"result"`
-}
-
-type holdingItem struct {
-	Symbol   string `json:"symbol"`
-	Name     string `json:"name"`
-	Quantity string `json:"quantity"`
-}
-
 // NewClient builds a Toss Open API client.
 func NewClient(httpClient *http.Client, baseURL, clientID, clientSecret string) *Client {
 	if httpClient == nil {
@@ -102,118 +66,32 @@ func (c *Client) FetchAccountSnapshot(accountSeq, _ string) (models.KisAccountSn
 	if accountSeq == "" {
 		return models.KisAccountSnapshot{}, fmt.Errorf("toss: accountSeq is required")
 	}
-	token, err := c.accessToken()
-	if err != nil {
-		return models.KisAccountSnapshot{}, err
-	}
-	cashBalance, cashBalanceKRW, cashBalanceUSD, usdKRWRate, err := c.fetchCashBalances(token, accountSeq)
+	ctx := context.Background()
+
+	cashBalance, cashBalanceKRW, cashBalanceUSD, usdKRWRate, err := c.fetchCashBalances(ctx, accountSeq)
 	if err != nil {
 		return models.KisAccountSnapshot{}, err
 	}
 
-	holdings, err := c.fetchHoldings(token, accountSeq)
+	overview, err := c.GetHoldings(ctx, accountSeq, "")
 	if err != nil {
 		return models.KisAccountSnapshot{}, err
 	}
+
 	return models.KisAccountSnapshot{
 		CashBalance:    cashBalance,
 		CashBalanceKRW: &cashBalanceKRW,
 		CashBalanceUSD: &cashBalanceUSD,
 		USDKRWRate:     usdKRWRate,
-		Holdings:       holdings,
+		Holdings:       aggregateHoldings(overview.Items),
 	}, nil
 }
 
-// PlaceOrder creates a market quantity order for the given Toss accountSeq.
-func (c *Client) PlaceOrder(ctx context.Context, accountSeq string, intent models.OrderIntent) (map[string]any, error) {
-	accountSeq = strings.TrimSpace(accountSeq)
-	if accountSeq == "" {
-		return nil, fmt.Errorf("toss order: accountSeq is required")
-	}
-	if intent.Quantity <= 0 {
-		return nil, fmt.Errorf("toss order: quantity must be positive")
-	}
-
-	side, err := tossOrderSide(intent.Side)
-	if err != nil {
-		return nil, err
-	}
-
-	token, err := c.accessToken()
-	if err != nil {
-		return nil, err
-	}
-
-	payload := map[string]string{
-		"symbol":    strings.ToUpper(strings.TrimSpace(intent.Ticker)),
-		"side":      side,
-		"orderType": "MARKET",
-		"quantity":  fmt.Sprintf("%d", intent.Quantity),
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("toss order: json marshal: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/v1/orders", bytes.NewReader(body)) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
-	if err != nil {
-		return nil, fmt.Errorf("toss order: create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-Tossinvest-Account", accountSeq)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.HTTP.Do(req) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
-	if err != nil {
-		return nil, fmt.Errorf("toss order: request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("toss order: read response: %w", err)
-	}
-	if resp.StatusCode >= 400 {
-		return nil, parseAPIError("toss order", resp.StatusCode, respBody)
-	}
-
-	var raw map[string]any
-	if err := json.Unmarshal(respBody, &raw); err != nil {
-		return nil, fmt.Errorf("toss order: json unmarshal: %w", err)
-	}
-	result, _ := raw["result"].(map[string]any)
-	if orderID, _ := result["orderId"].(string); orderID == "" {
-		return nil, fmt.Errorf("toss order: missing orderId")
-	}
-	return raw, nil
-}
-
-func (c *Client) fetchHoldings(token, accountSeq string) ([]models.KisHoldingPosition, error) {
-	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/api/v1/holdings", nil) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
-	if err != nil {
-		return nil, fmt.Errorf("toss holdings: create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-Tossinvest-Account", accountSeq)
-
-	resp, err := c.HTTP.Do(req) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
-	if err != nil {
-		return nil, fmt.Errorf("toss holdings: request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("toss holdings: read response: %w", err)
-	}
-	if resp.StatusCode >= 400 {
-		return nil, parseAPIError("toss holdings", resp.StatusCode, body)
-	}
-
-	var parsed holdingsResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("toss holdings: json unmarshal: %w", err)
-	}
-
+// aggregateHoldings merges Toss holdings items by symbol (summing quantity),
+// drops non-positive-quantity items, and sorts the result by symbol.
+func aggregateHoldings(items []HoldingsItem) []models.KisHoldingPosition {
 	bySymbol := map[string]models.KisHoldingPosition{}
-	for _, item := range parsed.Result.Items {
+	for _, item := range items {
 		symbol := strings.ToUpper(strings.TrimSpace(item.Symbol))
 		if symbol == "" {
 			continue
@@ -241,24 +119,26 @@ func (c *Client) fetchHoldings(token, accountSeq string) ([]models.KisHoldingPos
 	for _, symbol := range symbols {
 		holdings = append(holdings, bySymbol[symbol])
 	}
-	return holdings, nil
+	return holdings
 }
 
+// fetchCashBalances returns (total KRW-equivalent cash, KRW cash, USD cash,
+// USD/KRW rate used for the conversion [nil if USD cash is zero]).
 func (c *Client) fetchCashBalances(
-	token, accountSeq string,
+	ctx context.Context, accountSeq string,
 ) (numeric.Decimal, numeric.Decimal, numeric.Decimal, *numeric.Decimal, error) {
-	krw, err := c.fetchBuyingPower(token, accountSeq, "KRW")
+	krw, err := c.buyingPowerDecimal(ctx, accountSeq, "KRW")
 	if err != nil {
 		return numeric.Decimal{}, numeric.Decimal{}, numeric.Decimal{}, nil, err
 	}
-	usd, err := c.fetchBuyingPower(token, accountSeq, "USD")
+	usd, err := c.buyingPowerDecimal(ctx, accountSeq, "USD")
 	if err != nil {
 		return numeric.Decimal{}, numeric.Decimal{}, numeric.Decimal{}, nil, err
 	}
 	if usd.IsZero() {
 		return krw, krw, usd, nil, nil
 	}
-	rate, err := c.fetchUSDKRWRate(token)
+	rate, err := c.usdKRWRateDecimal(ctx)
 	if err != nil {
 		return numeric.Decimal{}, numeric.Decimal{}, numeric.Decimal{}, nil, err
 	}
@@ -266,79 +146,32 @@ func (c *Client) fetchCashBalances(
 	return total, krw, usd, &rate, nil
 }
 
-func (c *Client) fetchBuyingPower(token, accountSeq, currency string) (numeric.Decimal, error) {
-	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/api/v1/buying-power", nil) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
+func (c *Client) buyingPowerDecimal(ctx context.Context, accountSeq, currency string) (numeric.Decimal, error) {
+	resp, err := c.GetBuyingPower(ctx, accountSeq, currency)
 	if err != nil {
-		return numeric.Decimal{}, fmt.Errorf("toss buying-power: create request: %w", err)
+		return numeric.Decimal{}, err
 	}
-	q := req.URL.Query()
-	q.Set("currency", currency)
-	req.URL.RawQuery = q.Encode()
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-Tossinvest-Account", accountSeq)
-
-	resp, err := c.HTTP.Do(req) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
-	if err != nil {
-		return numeric.Decimal{}, fmt.Errorf("toss buying-power: request: %w", err)
+	if !strings.EqualFold(resp.Currency, currency) {
+		return numeric.Decimal{}, fmt.Errorf("toss buying-power: unexpected currency %q", resp.Currency)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return numeric.Decimal{}, fmt.Errorf("toss buying-power: read response: %w", err)
-	}
-	if resp.StatusCode >= 400 {
-		return numeric.Decimal{}, parseAPIError("toss buying-power", resp.StatusCode, body)
-	}
-
-	var parsed buyingPowerResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return numeric.Decimal{}, fmt.Errorf("toss buying-power: json unmarshal: %w", err)
-	}
-	if !strings.EqualFold(parsed.Result.Currency, currency) {
-		return numeric.Decimal{}, fmt.Errorf("toss buying-power: unexpected currency %q", parsed.Result.Currency)
-	}
-	power := numeric.Wrap(parseDecimal(parsed.Result.CashBuyingPower))
+	power := numeric.Wrap(parseDecimal(resp.CashBuyingPower))
 	if power.IsNegative() {
-		return numeric.Decimal{}, fmt.Errorf("toss buying-power: negative %s cashBuyingPower %q", currency, parsed.Result.CashBuyingPower)
+		return numeric.Decimal{}, fmt.Errorf("toss buying-power: negative %s cashBuyingPower %q", currency, resp.CashBuyingPower)
 	}
 	return power, nil
 }
 
-func (c *Client) fetchUSDKRWRate(token string) (numeric.Decimal, error) {
-	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/api/v1/exchange-rate", nil) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
+func (c *Client) usdKRWRateDecimal(ctx context.Context) (numeric.Decimal, error) {
+	resp, err := c.GetExchangeRate(ctx, "USD", "KRW", time.Time{})
 	if err != nil {
-		return numeric.Decimal{}, fmt.Errorf("toss exchange-rate: create request: %w", err)
+		return numeric.Decimal{}, err
 	}
-	q := req.URL.Query()
-	q.Set("baseCurrency", "USD")
-	q.Set("quoteCurrency", "KRW")
-	req.URL.RawQuery = q.Encode()
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := c.HTTP.Do(req) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
-	if err != nil {
-		return numeric.Decimal{}, fmt.Errorf("toss exchange-rate: request: %w", err)
+	if !strings.EqualFold(resp.BaseCurrency, "USD") || !strings.EqualFold(resp.QuoteCurrency, "KRW") {
+		return numeric.Decimal{}, fmt.Errorf("toss exchange-rate: unexpected pair %q/%q", resp.BaseCurrency, resp.QuoteCurrency)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return numeric.Decimal{}, fmt.Errorf("toss exchange-rate: read response: %w", err)
-	}
-	if resp.StatusCode >= 400 {
-		return numeric.Decimal{}, parseAPIError("toss exchange-rate", resp.StatusCode, body)
-	}
-
-	var parsed exchangeRateResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return numeric.Decimal{}, fmt.Errorf("toss exchange-rate: json unmarshal: %w", err)
-	}
-	if !strings.EqualFold(parsed.Result.BaseCurrency, "USD") || !strings.EqualFold(parsed.Result.QuoteCurrency, "KRW") {
-		return numeric.Decimal{}, fmt.Errorf("toss exchange-rate: unexpected pair %q/%q",
-			parsed.Result.BaseCurrency, parsed.Result.QuoteCurrency)
-	}
-	rate := parseDecimal(parsed.Result.Rate)
+	rate := parseDecimal(resp.Rate)
 	if !rate.IsPositive() {
-		return numeric.Decimal{}, fmt.Errorf("toss exchange-rate: invalid USD/KRW rate %q", parsed.Result.Rate)
+		return numeric.Decimal{}, fmt.Errorf("toss exchange-rate: invalid USD/KRW rate %q", resp.Rate)
 	}
 	return numeric.Wrap(rate), nil
 }
@@ -387,47 +220,10 @@ func (c *Client) accessToken() (string, error) {
 	return c.token, nil
 }
 
-func parseOAuthError(status int, body []byte) error {
-	var data struct {
-		Error            string `json:"error"`
-		ErrorDescription string `json:"error_description"`
-	}
-	if err := json.Unmarshal(body, &data); err == nil && data.Error != "" {
-		if data.ErrorDescription != "" {
-			return fmt.Errorf("toss auth HTTP %d: %s: %s", status, data.Error, data.ErrorDescription)
-		}
-		return fmt.Errorf("toss auth HTTP %d: %s", status, data.Error)
-	}
-	return fmt.Errorf("toss auth HTTP %d: %s", status, string(body))
-}
-
-func parseAPIError(prefix string, status int, body []byte) error {
-	var data apiErrorResponse
-	if err := json.Unmarshal(body, &data); err == nil && data.Error.Code != "" {
-		if data.Error.RequestID != "" {
-			return fmt.Errorf("%s HTTP %d: %s: %s (request_id=%s)",
-				prefix, status, data.Error.Code, data.Error.Message, data.Error.RequestID)
-		}
-		return fmt.Errorf("%s HTTP %d: %s: %s", prefix, status, data.Error.Code, data.Error.Message)
-	}
-	return fmt.Errorf("%s HTTP %d: %s", prefix, status, string(body))
-}
-
 func parseDecimal(s string) decimal.Decimal {
 	d, err := decimal.NewFromString(strings.TrimSpace(s))
 	if err != nil {
 		return decimal.Zero
 	}
 	return d
-}
-
-func tossOrderSide(side string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(side)) {
-	case "buy":
-		return "BUY", nil
-	case "sell":
-		return "SELL", nil
-	default:
-		return "", fmt.Errorf("toss order: unsupported side %q", side)
-	}
 }

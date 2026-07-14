@@ -1,16 +1,20 @@
 package toss
 
 import (
-	"encoding/json"
-	"io"
+	"context"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
-func TestLiveFetchAccountSnapshot(t *testing.T) {
+// newLiveClient skips the test unless TOSS_LIVE=1 and credentials are
+// configured, then returns a client and a resolved accountSeq (from
+// TOSS_ACCOUNT_SEQ, or the first account GetAccounts returns).
+func newLiveClient(t *testing.T) (*Client, string) {
+	t.Helper()
 	if os.Getenv("TOSS_LIVE") != "1" {
 		t.Skip("set TOSS_LIVE=1 to call Toss Open API")
 	}
@@ -23,12 +27,13 @@ func TestLiveFetchAccountSnapshot(t *testing.T) {
 	c := NewClient(http.DefaultClient, os.Getenv("TOSS_BASE_URL"), clientID, clientSecret)
 	accountSeq := strings.TrimSpace(os.Getenv("TOSS_ACCOUNT_SEQ"))
 	if accountSeq == "" {
-		token, err := c.accessToken()
-		if err != nil {
-			t.Fatalf("accessToken: %v", err)
-		}
-		accountSeq = fetchFirstAccountSeq(t, c, token)
+		accountSeq = fetchFirstAccountSeq(t, c)
 	}
+	return c, accountSeq
+}
+
+func TestLiveFetchAccountSnapshot(t *testing.T) {
+	c, accountSeq := newLiveClient(t)
 
 	snapshot, err := c.FetchAccountSnapshot(accountSeq, "")
 	if err != nil {
@@ -48,39 +53,53 @@ func TestLiveFetchAccountSnapshot(t *testing.T) {
 	t.Logf("snapshot ok: holdings=%d cash_present=%t", len(snapshot.Holdings), !snapshot.CashBalance.IsZero())
 }
 
-func fetchFirstAccountSeq(t *testing.T, c *Client, token string) string {
-	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/api/v1/accounts", nil)
-	if err != nil {
-		t.Fatalf("create accounts request: %v", err)
+// TestLiveTossReadEndpoints chains a handful of cheap, side-effect-free reads
+// across most of the client's endpoint groups in a single test, rather than
+// one live test per endpoint — TOSS_LIVE token issuance is rate-limited to
+// ~1/min, so a per-endpoint sweep would be slow and likely to hit that limit.
+// It only proves the real API's response shapes decode into our structs;
+// write operations (CreateOrder, ModifyOrder, CancelOrder, conditional-order
+// writes) must never run here or in any other TOSS_LIVE test — placing or
+// altering a real order is not something a test suite gets to do.
+func TestLiveTossReadEndpoints(t *testing.T) {
+	c, accountSeq := newLiveClient(t)
+	ctx := context.Background()
+
+	if _, err := c.GetAccounts(ctx); err != nil {
+		t.Fatalf("GetAccounts: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		t.Fatalf("accounts request: %v", err)
+
+	if _, err := c.GetHoldings(ctx, accountSeq, ""); err != nil {
+		t.Fatalf("GetHoldings: %v", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read accounts response: %v", err)
+
+	if _, err := c.GetBuyingPower(ctx, accountSeq, "KRW"); err != nil {
+		t.Fatalf("GetBuyingPower: %v", err)
 	}
-	if resp.StatusCode >= 400 {
-		t.Fatalf("accounts HTTP %d: %s", resp.StatusCode, string(body))
+
+	if _, err := c.GetOrders(ctx, accountSeq, OrderListParams{Status: "OPEN"}); err != nil {
+		t.Fatalf("GetOrders: %v", err)
 	}
-	var parsed struct {
-		Result []struct {
-			AccountSeq int64 `json:"accountSeq"`
-		} `json:"result"`
+
+	if _, err := c.GetPrices(ctx, []string{"005930"}); err != nil {
+		t.Fatalf("GetPrices: %v", err)
 	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		t.Fatalf("unmarshal accounts: %v", err)
+
+	if _, err := c.GetExchangeRate(ctx, "USD", "KRW", time.Time{}); err != nil {
+		t.Fatalf("GetExchangeRate: %v", err)
 	}
-	if len(parsed.Result) == 0 || parsed.Result[0].AccountSeq == 0 {
-		t.Fatal("no Toss accounts returned")
-	}
-	return itoa(parsed.Result[0].AccountSeq)
+
+	t.Log("live read sweep ok: accounts, holdings, buying-power, orders, prices, exchange-rate")
 }
 
-func itoa(v int64) string {
-	return strconv.FormatInt(v, 10)
+func fetchFirstAccountSeq(t *testing.T, c *Client) string {
+	t.Helper()
+	accounts, err := c.GetAccounts(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccounts: %v", err)
+	}
+	if len(accounts) == 0 || accounts[0].AccountSeq == 0 {
+		t.Fatal("no Toss accounts returned")
+	}
+	return strconv.FormatInt(accounts[0].AccountSeq, 10)
 }
