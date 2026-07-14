@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kadragon/portfolio-manager/internal/container"
+	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
@@ -123,6 +124,14 @@ func stockUpdate(ctx context.Context, c *container.Container, args []string) err
 		return fmt.Errorf("no fields to update")
 	}
 
+	normalizedSecurityGroup := ""
+	if seen["security-group"] {
+		normalizedSecurityGroup = strings.ToUpper(strings.TrimSpace(*securityGroup))
+		if normalizedSecurityGroup != "" && !models.ValidSecurityGroup(normalizedSecurityGroup) {
+			return fmt.Errorf("invalid -security-group: %q", *securityGroup)
+		}
+	}
+
 	if seen["ticker"] {
 		tick := strings.ToUpper(strings.TrimSpace(*ticker))
 		if tick == "" {
@@ -148,7 +157,7 @@ func stockUpdate(ctx context.Context, c *container.Container, args []string) err
 		}
 	}
 	if seen["security-group"] {
-		if _, err := c.Stocks.UpdateSecurityGroup(ctx, id, *securityGroup); err != nil {
+		if _, err := c.Stocks.UpdateSecurityGroup(ctx, id, normalizedSecurityGroup); err != nil {
 			return fmt.Errorf("update stock security group: %w", err)
 		}
 	}

@@ -16,10 +16,6 @@ Schema / lifecycle:
 
 - [ ] [debt] `hasExecutableWholeShare` applies a blanket ≥1 whole-share floor to all currencies including USD, where some brokers support fractional shares; if fractional trading is ever enabled for overseas stocks, this guard will need per-currency / per-account-type gating (source: agy) — `internal/services/rebalance_service.go:961`
 
-### PR #137 — PR #117 backlog close (2026-06-30)
-
-- [ ] [debt] `ValidSecurityGroup` allowlist may reject unknown-but-legitimate future KIS `scty_grp_id_cd` codes not in the initial 8; classifier path intentionally bypasses it, but extend the allowlist if KIS adds new codes (source: codex, review) — `internal/models/stock.go:ValidSecurityGroup`
-
 ### PR #136 — [FEAT] add dashboard benchmark comparison (2026-06-30)
 
 - [ ] [debt] `computeBenchmarkReturns` skips showing benchmark return rates when `portfolioReturn == nil` (shows "-" for all values); benchmark rates could be shown without the diff column when portfolio return is unavailable — design decision deferred (source: inline) — `internal/services/portfolio_service.go`
@@ -42,3 +38,7 @@ Schema / lifecycle:
 ### PR #150 — [DOCS] document ETN pension-account ineligibility as intentional classification (2026-07-12)
 
 - [ ] [debt] `ClassifyDomesticAssetClass` classifies ETN via a two-step fallback (scty_grp_id_cd not "EF"/"FE", then etf_dvsn_cd empty/"0" → "stock"); no explicit `grp == "EN"` guard exists, so a KIS response where an ETN unexpectedly carries a non-empty/non-"0" etf_dvsn_cd would misclassify it as "etf" — pre-existing logic, not introduced by this PR, but worth an explicit guard if ever observed in practice (source: agy) — `internal/kis/domestic_info.go:ClassifyDomesticAssetClass`
+
+### PR #151 — [FIX] validate -security-group against KIS allowlist in pm stock update (2026-07-14)
+
+- [ ] [debt] `ValidSecurityGroup` allowlist may reject unknown-but-legitimate future KIS `scty_grp_id_cd` codes not in the initial 8; this PR restores CLI-side enforcement of the existing allowlist but does not extend the allowlist itself, so the underlying concern from PR #137 is still unaddressed — extend the allowlist if KIS adds new codes (source: review, contest-round) — `internal/models/stock.go:ValidSecurityGroup`

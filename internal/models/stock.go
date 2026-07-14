@@ -37,7 +37,7 @@ const (
 )
 
 // ValidSecurityGroup reports whether s is a recognized KIS security-group code.
-// Does NOT accept empty string (mirrors ValidAssetClass). The web handler accepts
+// Does NOT accept empty string (mirrors ValidAssetClass). `pm stock update` accepts
 // empty separately to clear the field; KIS sync bypasses this check entirely.
 func ValidSecurityGroup(s string) bool {
 	switch s {

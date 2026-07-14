@@ -1,6 +1,6 @@
 ---
 name: rebalance-plan
-description: Produce a quarterly (Feb/May/Aug/Nov) portfolio rebalancing trade-instruction document from the portfolio-manager DB, applying the user's allocation targets and Korean tax placement rules from .data/rebalance-policy.md. Use whenever the user asks for a rebalancing plan, trade instructions, portfolio drift check, or says "리밸런싱", "리밸런스 계획", "지시서", "포트폴리오 점검", "분기 리밸런싱", or mentions rebalancing in February, May, August, or November — even without naming the skill. Also use for off-cycle checks like "지금 비중 얼마나 틀어졌어?" and for deposit allocation — when the user says new money arrived or asks what to buy with a deposit ("예치금 들어왔어", "500만원 입금했는데 뭐 살까", "이번 달 적립금 배분"). Also use when the user wants to change the allocation policy itself — new targets, band changes, adding/removing groups ("목표 비중 바꾸자", "리밸런싱 기준 수정", "금 비중 줄일까?") — revision mode checks proposals against the recorded design rationale before anything changes. Also use when a target change is too big to apply in one quarter and the user wants to phase it in gradually ("점진적으로 바꾸자", "한번에 바꾸면 문제되니 나눠서", "금 비중 단계적으로 올려줘") — gradual transition mode spreads the move across several quarterly cycles via an interim glide-path target.
+description: Monitor the portfolio monthly and produce threshold-triggered, per-account trade instructions from the portfolio-manager DB using .data/rebalance-policy.md. Use for rebalancing plans, trade instructions, drift checks, monthly checks, or requests containing "리밸런싱", "지시서", "포트폴리오 점검", "월간 점검", or "지금 비중 얼마나 틀어졌어?". Also use for buy-only deposit allocation ("예치금 들어왔어", "이번 달 적립금 배분"), policy revisions such as target/band/group changes, gradual target transitions, and the late-January annual review of targets, risk capacity, current tax rules, and account placement. Monthly monitoring never forces trades; active glide paths advance only in February, May, August, and November.
 ---
 
 # Rebalance Plan
@@ -49,8 +49,19 @@ the deviation itself, so a group already at its interim value reads as in-band, 
 - Placement violations (an asset sitting in an account the policy forbids, e.g. KR-listed
   overseas ETF in TOSS) → trade regardless of group deviation.
 
-If nothing breaches the band and no override fires, write no document — report
-"이번 분기 매매 불필요" with the deviation table and stop.
+Glide-path advancement runs unconditionally as part of this step, not only when the outcome
+turns out to be no-trade: if this month is a scheduled advance month (February, May, August, or
+November), perform any due §Transition Schedule advancement under §Gradual transition mode step 4
+**before** computing the deviations and triggers above, so every deviation, band check, and
+downstream trade decision this run — breach or no breach — is against the advanced interim
+targets, never the stale pre-advancement ones. If nothing breaches the band and no
+override fires, write no document — report "이번 점검 매매 불필요"
+with the group-deviation table, then stop. A breach starts a trade
+decision; it does not override the policy's tax-aware deferral rules. If the only breach is an
+underweight that a **confirmed** contribution before the next monthly monitoring run can fully
+bring inside band, write no trade document: report the amount and date required, and re-check
+after the deposit. Never use an assumed or unscheduled contribution to defer a breach. KOSPI
+exit and placement violations cannot be deferred.
 
 ### 3. Design trades
 
@@ -63,6 +74,11 @@ Work account by account. Hard constraints from policy §Tax Placement Rules — 
 - Never plan US-listed sells without flagging the estimated gain (양도세 22%) and asking.
 - KR-listed overseas ETF sells in the taxable account are taxable — flag the amount; prefer ISA/연금 sells.
 - 여유금: no trades. Prefer covering underweights with scheduled new contributions over selling.
+- Apply the policy's trade waterfall: new cash and distributions first, then tax-sheltered
+  account trades, then tax-free domestic-equity adjustments, and taxable sales last.
+- Apply the policy's destination rule. Overweight taxable positions stop at target + half-band;
+  deposit buys fill toward target; tax-sheltered positions may reach target. The KOSPI exit
+  still trims directly to 20%.
 
 Round to whole shares for KRW-listed ETFs; USD ETFs may be stated as amounts plus an FX-conversion
 step. Skipping a sub-1-share buy is fine — say so.
@@ -120,6 +136,10 @@ underweights without tax events, which is why the policy prefers it over selling
 
 1. Same inputs as step 1 (policy, FX, snapshot). Ask for the account if not given —
    placement rules differ per account (e.g. cash landing in 연금저축 may only buy 금·채권).
+   If this month is a scheduled advance month (February, May, August, or November) and no
+   full-plan run has already advanced the schedule this month, perform any due §Transition
+   Schedule advancement under §Gradual transition mode step 4 first — same as full-plan mode
+   step 2 — so a deposit-only run doesn't leave the schedule stale for the cycle.
 2. Recompute group weights against `total + deposit`. Allocate the deposit to below-target
    groups in proportion to their shortfall (%p × total value), filling toward the effective
    target — the §Target Allocation value, or the interim value if the group has an active
@@ -164,14 +184,32 @@ policy to guarding its history:
    discrepancy check cannot detect because a markdown-only group has no DB row at all —
    tell the user to mirror the change in the app's group settings, then verify with a fresh
    snapshot that `db_target_pct` agrees.
-6. Normal plan runs and deposit runs never write the policy file — only revision mode does.
+6. Normal plan runs and deposit runs never write the policy file except for scheduled
+   §Transition Schedule advancement under §Gradual transition mode step 4; only revision mode
+   changes policy criteria.
+
+## Annual policy review mode (late January)
+
+The annual review evaluates the policy; it does not force trades or target changes.
+
+1. Run in late January, or earlier after a material change in investment horizon, income, tax
+   treatment, account availability, or risk capacity.
+2. Re-read §Profile, §Tax Placement Rules, and every §Design Rationale invariant. Check whether
+   the recorded assumptions still match the user's circumstances and current Korean tax/account
+   rules; browse authoritative current sources for anything time-sensitive.
+3. Report each item as unchanged, needs evidence, or proposed revision. Do not infer a target
+   change merely because markets moved.
+4. Any proposed revision follows Policy revision mode, including invariant conflict disclosure,
+   rationale update, changelog entry, and transition offer for target changes over 5%p.
+5. If no revision is needed, report that result without touching the policy or generating trades.
 
 ## Gradual transition mode (phased target changes)
 
 A target change of more than 5%p (금 10→20%, e.g.) closes in one shot the moment the band
 rule sees it — a lump trade the band can't smooth, and often a lump tax event. Phasing spreads
-it over several quarterly cycles as a glide path instead: each run only nudges toward an interim
-target, so the trade size and tax hit stay in the same range as an ordinary rebalance.
+it over scheduled quarterly cycles as a glide path instead: each February/May/August/November
+cycle only nudges toward an interim target, so the trade size and tax hit stay in the same range
+as an ordinary rebalance.
 
 1. Triggered from Policy revision mode step 4, or any time the user asks directly
    ("점진적으로 바꾸자", "한번에 말고 나눠서"). Ask step size if not given — default **5%p per
@@ -179,26 +217,24 @@ target, so the trade size and tax hit stay in the same range as an ordinary reba
    trade under the old target either). A different step is fine; note the tradeoff — bigger
    steps finish sooner but produce bigger per-quarter trades and taxable events.
 2. Write the FINAL value to §Target Allocation (that stays the north star). Add a row to
-   §Transition Schedule: group, interim target (starts at the **old value advanced one step
-   toward final**, clamped — not the bare old value; the schedule exists to move the target,
-   so the first quarter after the decision should already trade toward it, not repeat the old
-   target for a full extra cycle), final target, step %p/quarter, Started (this run's YYYY-MM),
-   Last advanced (this run's YYYY-MM — it just advanced). Log the decision (old → final, step
-   size, reason) in §Revision changelog. If this change is one half of a compensating pair
+   §Transition Schedule: group, interim target, final target, step %p/quarter, Started, and
+   Last advanced. If the decision occurs in February, May, August, or November, start at the
+   **old value advanced one step toward final** (clamped) and set Last advanced to this run's
+   YYYY-MM. Otherwise start at the old value and set Last advanced to `—`; the first move occurs
+   in the next scheduled advance month. Log the decision (old → final, step size, reason) in
+   §Revision changelog. If this change is one half of a compensating pair
    (e.g. 금 up / 채권 down to hold 85/15), schedule both rows together with the same step
    cadence — see point 7 below.
 3. Every run after that (see step 1/2 of the main workflow), a group in §Transition Schedule
    uses its interim value — not §Target Allocation — for deviation math and deposit
    allocation. Tell the user plainly: "X군 목표 전환 중 — 이번 분기 기준 Y%, 최종 목표 Z%".
-4. After the plan is written and verified, advance each active row's interim target one step
-   toward final (clamp on the last step — don't overshoot), and update §Transition Schedule in
-   the policy file — including its **Last advanced** column (YYYY-MM of this run). When interim
-   reaches final, delete the row and log completion in §Revision changelog. This applies
-   whether or not the group actually traded this run — the glide path advances on a schedule,
-   not on execution (a skipped trade just means next quarter's gap is a bit wider, still
-   bounded by the step size). Guard against double-advancing: if **Last advanced** already
-   matches this run's YYYY-MM (e.g. an earlier off-cycle KOSPI-exit document already advanced
-   it this same month), don't advance again.
+4. Advance active rows only during February, May, August, or November. A monthly monitoring run
+   in any other month never advances the glide path. During an advance month, move each interim
+   target one step toward final (clamp on the last step), even if no trade is needed, and update
+   **Last advanced** with that run's YYYY-MM. This schedule action is independent of whether a
+   trade document was written. When interim reaches final, delete the row and log completion in
+   §Revision changelog. Guard against double-advancing: if **Last advanced** already matches the
+   current YYYY-MM, do not advance again.
 5. The KOSPI exit rule and placement violations still override everything, phased or not —
    they're mechanical safety rules, not target-seeking ones.
 6. The user can edit an active transition anytime through Policy revision mode: change the
@@ -218,5 +254,8 @@ target, so the trade size and tax hit stay in the same range as an ordinary reba
 - Letting a buy exceed an account's sell proceeds (cash is account-local).
 - Hiding a taxable event inside a routine trade list — tax notes are per-line, not a footnote.
 - Applying a large target change (>5%p) in one shot without offering §Gradual transition mode.
-- Forgetting to advance §Transition Schedule after writing the plan — leaves next quarter
-  computing deviations against a stale interim target.
+- Forgetting to advance §Transition Schedule in February, May, August, or November even when
+  no trade document is written — leaves the next cycle using a stale interim target.
+- Advancing §Transition Schedule during an ordinary monthly check outside February, May,
+  August, or November.
+- Treating the late-January policy review as a mandatory rebalance or target change.
