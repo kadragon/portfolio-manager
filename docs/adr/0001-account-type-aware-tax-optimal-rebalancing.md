@@ -262,6 +262,36 @@ other account remain manual, and the skill refuses to run against them. Market o
 limit price — matches the underlying KIS/Toss client capability); no unattended/scheduled
 execution — a human confirms every single order in conversation before it's placed.
 
+## Revision (2026-07-14): Toss order modify/cancel and conditional orders — a scoped exception to "no unattended execution"
+
+`internal/toss/` now covers the full Toss Securities Open API (market data, account/holdings
+queries, order history, and order management), sourced directly from Toss's official OpenAPI
+spec rather than any third-party summary. Two additions to the Go client extend what a human can
+ask this codebase to do with a live Toss order, beyond the narrow "place one market order" path
+above:
+
+- **`ModifyOrder`/`CancelOrder`**: change or cancel an order the human already placed. Same
+  momentary, human-witnessed shape as `PlaceOrder` — one call, one confirmation, no standing
+  effect once it returns.
+- **`CreateConditionalOrder`/`ModifyConditionalOrder`/`CancelConditionalOrder`** (SINGLE/OCO/OTO):
+  register a price-triggered order that Toss's servers watch and fire **on their own, later,
+  with no human present** once the trigger condition is met (bounded by the order's `expireDate`).
+  This is a genuine, intentional narrowing of this ADR's "no unattended/scheduled execution"
+  guarantee — the only such exception in this codebase, and only for Toss-linked accounts (KIS
+  has no conditional-order support to parallel it).
+
+These live outside `cmd/pm` (the read/mutate-DB data CLI) and outside `cmd/rebalance-order` (kept
+provably matching its "one market order, human-confirmed" description above): they ship in a
+separate binary, `cmd/toss-order-manage`, with the same dry-run-by-default + explicit `-yes` gate
+as `cmd/rebalance-order`. The user-facing mitigation for the conditional-order exception is that
+gate plus a printed summary of the exact trigger/expire conditions before the human confirms —
+the unattended window is bounded to what they explicitly approved and for how long they approved
+it, never open-ended.
+
+Read-only Toss queries (prices, orderbook, holdings, order/conditional-order history, buying
+power, commissions, etc.) landed in `pm toss <verb>` — those carry no execution risk and fit
+`cmd/pm`'s existing data/query surface.
+
 ## References
 - Phase 1 + 2 implementation: `internal/db/db.go`, `internal/db/schema.sql`,
   `internal/services/rebalance_service.go` (`canHold`, `_placementScore`;
