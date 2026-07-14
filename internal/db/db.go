@@ -32,6 +32,8 @@ var addedColumns = []struct{ table, column, columnType string }{
 	{"accounts", "account_type", "TEXT"},
 	{"stocks", "security_group", "TEXT"},
 	{"accounts", "toss_account_seq", "INTEGER"},
+	{"accounts", "cash_balance_krw", "DECIMAL(10, 10)"},
+	{"accounts", "cash_balance_usd", "DECIMAL(10, 10)"},
 }
 
 // migrate applies idempotent ALTER TABLE ADD COLUMN for every entry in

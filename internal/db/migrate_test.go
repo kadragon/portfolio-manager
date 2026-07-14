@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+
+	dbsqlc "github.com/kadragon/portfolio-manager/internal/db/sqlc"
+	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
 // columnNames returns the column names of a table via PRAGMA table_info.
@@ -53,6 +56,7 @@ func TestMigrateIdempotent(t *testing.T) {
 	defer sqlDB.Close()
 	sqlDB.SetMaxOpenConns(1)
 	ctx := context.Background()
+	accountID := uuidx.New()
 
 	// Old schema: accounts without account_type, stocks without asset_class.
 	const oldSchema = `
@@ -79,7 +83,7 @@ CREATE TABLE "stocks" (
 	}
 	if _, err := sqlDB.ExecContext(ctx,
 		`INSERT INTO accounts (id, name, cash_balance, created_at, updated_at) VALUES (?,?,?,?,?)`,
-		"acc1", "기존계좌", 1000, "2026-01-01 00:00:00+00:00", "2026-01-01 00:00:00+00:00",
+		accountID, "기존계좌", 1000, "2026-01-01 00:00:00+00:00", "2026-01-01 00:00:00+00:00",
 	); err != nil {
 		t.Fatalf("seed account: %v", err)
 	}
@@ -94,17 +98,39 @@ CREATE TABLE "stocks" (
 	if n := countCol(accCols, "account_type"); n != 1 {
 		t.Errorf("accounts.account_type count = %d, want 1 (cols: %v)", n, accCols)
 	}
+	for _, column := range []string{"cash_balance_krw", "cash_balance_usd"} {
+		if n := countCol(accCols, column); n != 1 {
+			t.Errorf("accounts.%s count = %d, want 1 (cols: %v)", column, n, accCols)
+		}
+	}
 	stkCols := columnNames(t, sqlDB, "stocks")
 	if n := countCol(stkCols, "asset_class"); n != 1 {
 		t.Errorf("stocks.asset_class count = %d, want 1 (cols: %v)", n, stkCols)
 	}
 
 	var name string
-	if err := sqlDB.QueryRowContext(ctx, `SELECT name FROM accounts WHERE id = ?`, "acc1").Scan(&name); err != nil {
+	if err := sqlDB.QueryRowContext(ctx, `SELECT name FROM accounts WHERE id = ?`, accountID).Scan(&name); err != nil {
 		t.Fatalf("read seeded row: %v", err)
 	}
 	if name != "기존계좌" {
 		t.Errorf("seeded row name = %q, want 기존계좌", name)
+	}
+	var krwCash, usdCash any
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT cash_balance_krw, cash_balance_usd FROM accounts WHERE id = ?`, accountID,
+	).Scan(&krwCash, &usdCash); err != nil {
+		t.Fatalf("read migrated cash balances: %v", err)
+	}
+	if krwCash != nil || usdCash != nil {
+		t.Fatalf("migrated legacy cash balances = %v, %v; want NULL, NULL", krwCash, usdCash)
+	}
+	legacy, err := dbsqlc.New(sqlDB).GetAccountByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("read migrated account through sqlc: %v", err)
+	}
+	if legacy.CashBalanceKrw != nil || legacy.CashBalanceUsd != nil {
+		t.Fatalf("sqlc migrated cash balances = %v, %v; want nil, nil",
+			legacy.CashBalanceKrw, legacy.CashBalanceUsd)
 	}
 }
 
@@ -118,6 +144,11 @@ func TestOpenMemoryHasNewColumns(t *testing.T) {
 	defer sqlDB.Close()
 	if n := countCol(columnNames(t, sqlDB, "accounts"), "account_type"); n != 1 {
 		t.Errorf("fresh accounts.account_type count = %d, want 1", n)
+	}
+	for _, column := range []string{"cash_balance_krw", "cash_balance_usd"} {
+		if n := countCol(columnNames(t, sqlDB, "accounts"), column); n != 1 {
+			t.Errorf("fresh accounts.%s count = %d, want 1", column, n)
+		}
 	}
 	if n := countCol(columnNames(t, sqlDB, "stocks"), "asset_class"); n != 1 {
 		t.Errorf("fresh stocks.asset_class count = %d, want 1", n)

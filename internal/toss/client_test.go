@@ -16,7 +16,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 )
 
-func TestFetchAccountSnapshotCombinesKRWAndUSDBuyingPower(t *testing.T) {
+func TestFetchAccountSnapshotPreservesKRWAndUSDBuyingPower(t *testing.T) {
 	var calls []string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +90,15 @@ func TestFetchAccountSnapshotCombinesKRWAndUSDBuyingPower(t *testing.T) {
 
 	if !got.CashBalance.Equal(mustDecimal("4500").Decimal) {
 		t.Fatalf("cash = %s, want 4500", got.CashBalance.String())
+	}
+	if got.CashBalanceKRW == nil || !got.CashBalanceKRW.Equal(mustDecimal("1000").Decimal) {
+		t.Fatalf("KRW cash = %s, want 1000", got.CashBalanceKRW.String())
+	}
+	if got.CashBalanceUSD == nil || !got.CashBalanceUSD.Equal(mustDecimal("2.5").Decimal) {
+		t.Fatalf("USD cash = %s, want 2.5", got.CashBalanceUSD.String())
+	}
+	if got.USDKRWRate == nil || !got.USDKRWRate.Equal(mustDecimal("1400").Decimal) {
+		t.Fatalf("USD/KRW rate = %s, want 1400", got.USDKRWRate.String())
 	}
 	if len(got.Holdings) != 2 {
 		t.Fatalf("holdings = %+v", got.Holdings)
@@ -179,6 +188,11 @@ func TestFetchAccountSnapshotUSDZero(t *testing.T) {
 	}
 	if !got.CashBalance.Equal(mustDecimal("500").Decimal) {
 		t.Fatalf("cash = %s, want 500", got.CashBalance.String())
+	}
+	if got.CashBalanceKRW == nil || !got.CashBalanceKRW.Equal(mustDecimal("500").Decimal) ||
+		got.CashBalanceUSD == nil || !got.CashBalanceUSD.IsZero() {
+		t.Fatalf("currency cash = KRW %s USD %s, want KRW 500 USD 0",
+			got.CashBalanceKRW.String(), got.CashBalanceUSD.String())
 	}
 }
 

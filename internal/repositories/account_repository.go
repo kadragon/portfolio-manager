@@ -25,12 +25,16 @@ func NewAccountRepository(q *sqlc.Queries) *AccountRepository {
 // Create inserts a new account with zero cash balance by default.
 func (r *AccountRepository) Create(ctx context.Context, name string, cashBalance numeric.Decimal) (models.Account, error) {
 	now := ktime.Now()
+	krwCash := cashBalance
+	usdCash := numeric.Zero
 	row, err := r.q.CreateAccount(ctx, sqlc.CreateAccountParams{
-		ID:          uuidx.New(),
-		Name:        name,
-		CashBalance: cashBalance,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:             uuidx.New(),
+		Name:           name,
+		CashBalance:    cashBalance,
+		CashBalanceKrw: &krwCash,
+		CashBalanceUsd: &usdCash,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	})
 	if err != nil {
 		return models.Account{}, err
@@ -64,13 +68,40 @@ func (r *AccountRepository) GetByID(ctx context.Context, id uuidx.UUID) (*models
 	return &a, nil
 }
 
-// UpdateNameCash updates only name and cash_balance (used by bulk-cash; preserves KIS fields).
+// UpdateNameCash treats manually supplied cash as KRW and clears any USD cash
+// component while preserving broker linkage fields.
 func (r *AccountRepository) UpdateNameCash(ctx context.Context, id uuidx.UUID, name string, cashBalance numeric.Decimal) (models.Account, error) {
-	row, err := r.q.UpdateAccountNameCash(ctx, sqlc.UpdateAccountNameCashParams{
-		Name:        name,
-		CashBalance: cashBalance,
-		UpdatedAt:   ktime.Now(),
-		ID:          id,
+	krwCash := cashBalance
+	usdCash := numeric.Zero
+	row, err := r.q.UpdateAccountCashBalances(ctx, sqlc.UpdateAccountCashBalancesParams{
+		Name:           name,
+		CashBalance:    cashBalance,
+		CashBalanceKrw: &krwCash,
+		CashBalanceUsd: &usdCash,
+		UpdatedAt:      ktime.Now(),
+		ID:             id,
+	})
+	if err != nil {
+		return models.Account{}, err
+	}
+	return toAccount(row), nil
+}
+
+// UpdateCashBalances atomically stores a broker cash snapshot: the canonical
+// KRW aggregate plus its raw KRW and USD components.
+func (r *AccountRepository) UpdateCashBalances(
+	ctx context.Context,
+	id uuidx.UUID,
+	name string,
+	cashBalance, cashBalanceKRW, cashBalanceUSD numeric.Decimal,
+) (models.Account, error) {
+	row, err := r.q.UpdateAccountCashBalances(ctx, sqlc.UpdateAccountCashBalancesParams{
+		Name:           name,
+		CashBalance:    cashBalance,
+		CashBalanceKrw: &cashBalanceKRW,
+		CashBalanceUsd: &cashBalanceUSD,
+		UpdatedAt:      ktime.Now(),
+		ID:             id,
 	})
 	if err != nil {
 		return models.Account{}, err
@@ -84,6 +115,8 @@ func (r *AccountRepository) Update(
 	id uuidx.UUID,
 	name string,
 	cashBalance numeric.Decimal,
+	cashBalanceKRW *numeric.Decimal,
+	cashBalanceUSD *numeric.Decimal,
 	kisAccountNo sql.NullString,
 	kisAPIKeyID sql.NullInt64,
 	accountType sql.NullString,
@@ -92,6 +125,8 @@ func (r *AccountRepository) Update(
 	row, err := r.q.UpdateAccount(ctx, sqlc.UpdateAccountParams{
 		Name:           name,
 		CashBalance:    cashBalance,
+		CashBalanceKrw: cashBalanceKRW,
+		CashBalanceUsd: cashBalanceUSD,
 		KisAccountNo:   kisAccountNo,
 		KisApiKeyID:    kisAPIKeyID,
 		AccountType:    accountType,
@@ -134,6 +169,8 @@ func toAccount(row sqlc.Account) models.Account {
 		ID:             row.ID,
 		Name:           row.Name,
 		CashBalance:    row.CashBalance,
+		CashBalanceKRW: row.CashBalanceKrw,
+		CashBalanceUSD: row.CashBalanceUsd,
 		CreatedAt:      row.CreatedAt.Time,
 		UpdatedAt:      row.UpdatedAt.Time,
 		KisAccountNo:   kisAccountNo,

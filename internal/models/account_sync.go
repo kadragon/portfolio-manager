@@ -15,6 +15,9 @@ type KisHoldingPosition struct {
 // KisAccountSnapshot is the cash + holdings snapshot from the KIS balance API.
 type KisAccountSnapshot struct {
 	CashBalance         numeric.Decimal
+	CashBalanceKRW      *numeric.Decimal
+	CashBalanceUSD      *numeric.Decimal
+	USDKRWRate          *numeric.Decimal
 	PreserveCashBalance bool
 	Holdings            []KisHoldingPosition // sorted by ticker
 }
@@ -32,6 +35,9 @@ type KisAccountSyncResult struct {
 	AccountID         uuidx.UUID
 	CashBalance       numeric.Decimal
 	OldCashBalance    numeric.Decimal
+	CashBalanceKRW    *numeric.Decimal
+	CashBalanceUSD    *numeric.Decimal
+	USDKRWRate        *numeric.Decimal
 	HoldingCount      int
 	CreatedStockCount int
 	HoldingChanges    []HoldingSyncDetail

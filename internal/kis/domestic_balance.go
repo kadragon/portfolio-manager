@@ -129,7 +129,13 @@ func (c *DomesticBalanceClient) FetchAccountSnapshot(cano, acntPrdtCd string) (m
 		})
 	}
 
-	return models.KisAccountSnapshot{CashBalance: cashBalance, Holdings: holdings}, nil
+	usdCash := numeric.Zero
+	return models.KisAccountSnapshot{
+		CashBalance:    cashBalance,
+		CashBalanceKRW: &cashBalance,
+		CashBalanceUSD: &usdCash,
+		Holdings:       holdings,
+	}, nil
 }
 
 func balanceTrIDForEnv(env string) (string, error) {

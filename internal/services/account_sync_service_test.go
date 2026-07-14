@@ -31,13 +31,20 @@ type mockSyncAccountRepo struct {
 	updated []mockAccountUpdate
 }
 type mockAccountUpdate struct {
-	id   uuidx.UUID
-	name string
-	cash numeric.Decimal
+	id      uuidx.UUID
+	name    string
+	cash    numeric.Decimal
+	krwCash numeric.Decimal
+	usdCash numeric.Decimal
 }
 
-func (r *mockSyncAccountRepo) UpdateNameCash(_ context.Context, id uuidx.UUID, name string, cash numeric.Decimal) (models.Account, error) {
-	r.updated = append(r.updated, mockAccountUpdate{id, name, cash})
+func (r *mockSyncAccountRepo) UpdateCashBalances(
+	_ context.Context,
+	id uuidx.UUID,
+	name string,
+	cash, krwCash, usdCash numeric.Decimal,
+) (models.Account, error) {
+	r.updated = append(r.updated, mockAccountUpdate{id, name, cash, krwCash, usdCash})
 	return models.Account{ID: id, Name: name, CashBalance: cash}, nil
 }
 
@@ -188,6 +195,8 @@ func mustDecimal(s string) numeric.Decimal {
 	}
 	return d
 }
+
+func decimalPtr(value numeric.Decimal) *numeric.Decimal { return &value }
 
 func makeTestAccount() models.Account {
 	return models.Account{
@@ -529,7 +538,9 @@ func TestSyncAccount_UpdatesCashBalance(t *testing.T) {
 	account := makeTestAccount()
 
 	bc := &mockBalanceClient{snapshot: models.KisAccountSnapshot{
-		CashBalance: mustDecimal("2000000"),
+		CashBalance:    mustDecimal("2000000"),
+		CashBalanceKRW: decimalPtr(mustDecimal("1500000")),
+		CashBalanceUSD: decimalPtr(mustDecimal("350")),
 	}}
 	accts := &mockSyncAccountRepo{}
 	hlds := &mockSyncHoldingRepo{}
@@ -545,11 +556,45 @@ func TestSyncAccount_UpdatesCashBalance(t *testing.T) {
 	if !accts.updated[0].cash.Equal(mustDecimal("2000000").Decimal) {
 		t.Errorf("want cash=2000000, got %v", accts.updated[0].cash)
 	}
+	if !accts.updated[0].krwCash.Equal(mustDecimal("1500000").Decimal) ||
+		!accts.updated[0].usdCash.Equal(mustDecimal("350").Decimal) {
+		t.Errorf("currency cash = KRW %v USD %v", accts.updated[0].krwCash, accts.updated[0].usdCash)
+	}
 	if !result.CashBalance.Equal(mustDecimal("2000000").Decimal) {
 		t.Errorf("result.CashBalance: want 2000000, got %v", result.CashBalance)
 	}
 	if !result.OldCashBalance.Equal(mustDecimal("1000000").Decimal) {
 		t.Errorf("result.OldCashBalance: want 1000000, got %v", result.OldCashBalance)
+	}
+	if result.CashBalanceKRW == nil || !result.CashBalanceKRW.Equal(mustDecimal("1500000").Decimal) ||
+		result.CashBalanceUSD == nil || !result.CashBalanceUSD.Equal(mustDecimal("350").Decimal) {
+		t.Errorf("result currency cash = KRW %v USD %v", result.CashBalanceKRW, result.CashBalanceUSD)
+	}
+}
+
+func TestSyncAccount_PreservesCashBreakdown(t *testing.T) {
+	account := makeTestAccount()
+	account.CashBalanceKRW = decimalPtr(mustDecimal("700000"))
+	account.CashBalanceUSD = decimalPtr(mustDecimal("200"))
+	bc := &mockBalanceClient{snapshot: models.KisAccountSnapshot{
+		CashBalance:         mustDecimal("0"),
+		PreserveCashBalance: true,
+	}}
+	accts := &mockSyncAccountRepo{}
+	svc := makeSyncSvc(bc, accts, &mockSyncHoldingRepo{}, &mockSyncStockRepo{}, &mockSyncGroupRepo{})
+
+	result, err := svc.SyncAccount(context.Background(), account, "12345678", "01", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(accts.updated) != 0 {
+		t.Fatalf("preserved cash should not be written, got %d updates", len(accts.updated))
+	}
+	if result.CashBalance.String() != "1000000" || result.CashBalanceKRW == nil ||
+		result.CashBalanceKRW.String() != "700000" || result.CashBalanceUSD == nil ||
+		result.CashBalanceUSD.String() != "200" {
+		t.Fatalf("preserved cash = total %s KRW %v USD %v",
+			result.CashBalance.String(), result.CashBalanceKRW, result.CashBalanceUSD)
 	}
 }
 

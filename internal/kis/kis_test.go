@@ -850,6 +850,11 @@ func TestFetchAccountSnapshotSinglePage(t *testing.T) {
 	if snap.CashBalance.String() != "1000000" {
 		t.Errorf("CashBalance = %v, want 1000000", snap.CashBalance)
 	}
+	if snap.CashBalanceKRW == nil || snap.CashBalanceKRW.String() != "1000000" ||
+		snap.CashBalanceUSD == nil || !snap.CashBalanceUSD.IsZero() {
+		t.Errorf("currency cash = KRW %v USD %v, want KRW 1000000 USD 0",
+			snap.CashBalanceKRW, snap.CashBalanceUSD)
+	}
 	if len(snap.Holdings) != 2 {
 		t.Fatalf("holdings count = %d, want 2", len(snap.Holdings))
 	}

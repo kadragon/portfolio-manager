@@ -54,7 +54,7 @@ type Querier interface {
 	ListStockPricesByTickerRange(ctx context.Context, arg ListStockPricesByTickerRangeParams) ([]StockPrice, error)
 	ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]Stock, error)
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) (Account, error)
-	UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNameCashParams) (Account, error)
+	UpdateAccountCashBalances(ctx context.Context, arg UpdateAccountCashBalancesParams) (Account, error)
 	UpdateDeposit(ctx context.Context, arg UpdateDepositParams) (Deposit, error)
 	UpdateDepositWithoutNote(ctx context.Context, arg UpdateDepositWithoutNoteParams) (Deposit, error)
 	UpdateGroup(ctx context.Context, arg UpdateGroupParams) (Group, error)

@@ -49,7 +49,9 @@ CREATE TABLE IF NOT EXISTS "accounts" (
     "kis_account_no" TEXT,
     "kis_api_key_id" INTEGER,
     "account_type" TEXT,
-    "toss_account_seq" INTEGER
+    "toss_account_seq" INTEGER,
+    "cash_balance_krw" DECIMAL(10, 10),
+    "cash_balance_usd" DECIMAL(10, 10)
 );
 
 CREATE TABLE IF NOT EXISTS "holdings" (

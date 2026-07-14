@@ -26,6 +26,12 @@ sql:
             go_type: &decimal
               import: "github.com/kadragon/portfolio-manager/internal/numeric"
               type: "Decimal"
+          - column: "accounts.cash_balance_krw"
+            go_type: &nullable_decimal
+              import: "github.com/kadragon/portfolio-manager/internal/numeric"
+              type: "Decimal"
+              pointer: true
+          - { column: "accounts.cash_balance_usd", go_type: *nullable_decimal }
           - { column: "holdings.quantity", go_type: *decimal }
           - { column: "deposits.amount", go_type: *decimal }
           - { column: "stock_prices.price", go_type: *decimal }

@@ -40,7 +40,12 @@ func IsKisEmptySnapshotError(err error) bool {
 // Unexported interfaces for repo injection — enable mock testing without a DB.
 
 type syncAccountRepo interface {
-	UpdateNameCash(ctx context.Context, id uuidx.UUID, name string, cashBalance numeric.Decimal) (models.Account, error)
+	UpdateCashBalances(
+		ctx context.Context,
+		id uuidx.UUID,
+		name string,
+		cashBalance, cashBalanceKRW, cashBalanceUSD numeric.Decimal,
+	) (models.Account, error)
 }
 
 type syncHoldingRepo interface {
@@ -302,10 +307,29 @@ func (s *KisAccountSyncService) SyncAccount(
 
 	oldCash := account.CashBalance
 	cashBalance := snapshot.CashBalance
+	cashBalanceKRW := snapshot.CashBalanceKRW
+	cashBalanceUSD := snapshot.CashBalanceUSD
 	if snapshot.PreserveCashBalance {
 		cashBalance = oldCash
+		cashBalanceKRW = account.CashBalanceKRW
+		cashBalanceUSD = account.CashBalanceUSD
 	} else {
-		if _, err := s.accounts.UpdateNameCash(ctx, account.ID, account.Name, snapshot.CashBalance); err != nil {
+		if cashBalanceKRW == nil {
+			krw := snapshot.CashBalance
+			cashBalanceKRW = &krw
+		}
+		if cashBalanceUSD == nil {
+			usd := numeric.Zero
+			cashBalanceUSD = &usd
+		}
+		if _, err := s.accounts.UpdateCashBalances(
+			ctx,
+			account.ID,
+			account.Name,
+			snapshot.CashBalance,
+			*cashBalanceKRW,
+			*cashBalanceUSD,
+		); err != nil {
 			return models.KisAccountSyncResult{}, err
 		}
 	}
@@ -314,6 +338,9 @@ func (s *KisAccountSyncService) SyncAccount(
 		AccountID:         account.ID,
 		CashBalance:       cashBalance,
 		OldCashBalance:    oldCash,
+		CashBalanceKRW:    cashBalanceKRW,
+		CashBalanceUSD:    cashBalanceUSD,
+		USDKRWRate:        snapshot.USDKRWRate,
 		HoldingCount:      len(targetQty),
 		CreatedStockCount: createdStockCount,
 		HoldingChanges:    holdingChanges,
@@ -339,9 +366,18 @@ func (s *KisAccountSyncService) SyncAccount(
 		"created_stock_count":  createdStockCount,
 		"allow_empty_snapshot": allowEmptySnapshot,
 		"holding_changes":      changesLog,
+		"cash_balance_krw":     decimalString(cashBalanceKRW),
+		"cash_balance_usd":     decimalString(cashBalanceUSD),
 	})
 
 	return result, nil
+}
+
+func decimalString(value *numeric.Decimal) any {
+	if value == nil {
+		return nil
+	}
+	return value.String()
 }
 
 // ValidateAccount confirms KIS credentials by fetching a balance snapshot.
