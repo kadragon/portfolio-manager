@@ -81,6 +81,25 @@ func doPost[T any](ctx context.Context, c *Client, prefix, path string, body any
 	return doRequest[T](c, prefix, req)
 }
 
+// doDelete issues an authenticated DELETE and decodes the {"result": T}
+// envelope.
+func doDelete[T any](ctx context.Context, c *Client, prefix, path string, headers map[string]string) (T, error) {
+	var zero T
+	token, err := c.accessToken()
+	if err != nil {
+		return zero, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.BaseURL+path, nil) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
+	if err != nil {
+		return zero, fmt.Errorf("%s: create request: %w", prefix, err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	return doRequest[T](c, prefix, req)
+}
+
 func doRequest[T any](c *Client, prefix string, req *http.Request) (T, error) {
 	var zero T
 	resp, err := c.HTTP.Do(req) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
@@ -94,6 +113,10 @@ func doRequest[T any](c *Client, prefix string, req *http.Request) (T, error) {
 	}
 	if resp.StatusCode >= 400 {
 		return zero, parseAPIError(prefix, resp.StatusCode, respBody)
+	}
+	if len(respBody) == 0 {
+		// e.g. 204 No Content (cancelConditionalOrder has no response body).
+		return zero, nil
 	}
 	var env apiEnvelope[T]
 	if err := json.Unmarshal(respBody, &env); err != nil {
