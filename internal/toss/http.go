@@ -114,8 +114,12 @@ func doRequest[T any](c *Client, prefix string, req *http.Request) (T, error) {
 	if resp.StatusCode >= 400 {
 		return zero, parseAPIError(prefix, resp.StatusCode, respBody)
 	}
-	if len(respBody) == 0 {
-		// e.g. 204 No Content (cancelConditionalOrder has no response body).
+	if resp.StatusCode == http.StatusNoContent {
+		// cancelConditionalOrder is the one documented 204 No Content
+		// endpoint. Gate on the status code, not "body happens to be
+		// empty" — a truncated/malformed 200 response must still fail
+		// json.Unmarshal below rather than silently report a zero-value
+		// result (e.g. empty holdings, zero balance) as success.
 		return zero, nil
 	}
 	var env apiEnvelope[T]

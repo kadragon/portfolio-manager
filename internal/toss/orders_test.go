@@ -232,6 +232,20 @@ func TestModifyOrderHTTPError(t *testing.T) {
 	}
 }
 
+// TestModifyOrderValidatesPrice covers a review finding: ModifyOrder had no
+// LIMIT/MARKET price validation, so a fat-fingered LIMIT-with-no-price or
+// MARKET-with-price modify request went straight to the live API instead of
+// failing locally, unlike CreateOrder.
+func TestModifyOrderValidatesPrice(t *testing.T) {
+	client := NewClient(nil, "http://localhost", "cid", "secret")
+	if _, err := client.ModifyOrder(context.Background(), "7", "ord-1", OrderModifyRequest{OrderType: "LIMIT"}); err == nil {
+		t.Fatal("expected error: LIMIT requires price")
+	}
+	if _, err := client.ModifyOrder(context.Background(), "7", "ord-1", OrderModifyRequest{OrderType: "MARKET", Price: "100"}); err == nil {
+		t.Fatal("expected error: MARKET forbids price")
+	}
+}
+
 func TestCancelOrderHappyPath(t *testing.T) {
 	var gotPath, gotAccountHeader, gotMethod, gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

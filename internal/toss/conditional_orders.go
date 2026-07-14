@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 )
 
 // ConditionRequest describes one watch leg of a conditional order: "when the
@@ -81,6 +82,9 @@ func (c *Client) CreateConditionalOrder(ctx context.Context, accountSeq string, 
 // and creates a new one; use the conditionalOrderId in the response for
 // subsequent calls.
 func (c *Client) ModifyConditionalOrder(ctx context.Context, accountSeq, conditionalOrderID string, req ConditionalOrderModifyRequest) (ConditionalOrderResponse, error) {
+	if err := validateConditionalOrderLegs(req.Type, req.OrderType, req.First, req.Second); err != nil {
+		return ConditionalOrderResponse{}, err
+	}
 	headers := map[string]string{"X-Tossinvest-Account": accountSeq}
 	path := "/api/v1/conditional-orders/" + url.PathEscape(conditionalOrderID) + "/modify"
 	return doPost[ConditionalOrderResponse](ctx, c, "toss conditional order modify", path, req, headers)
@@ -100,6 +104,12 @@ func (c *Client) CancelConditionalOrder(ctx context.Context, accountSeq, conditi
 // documents for each conditional order type, so callers get a clear local
 // error instead of a 400/422 round trip.
 func validateConditionalOrderLegs(orderType, groupOrderType string, first ConditionRequest, second *ConditionRequest) error {
+	if strings.TrimSpace(first.TriggerPrice) == "" {
+		return fmt.Errorf("toss conditional order: first.triggerPrice is required")
+	}
+	if second != nil && strings.TrimSpace(second.TriggerPrice) == "" {
+		return fmt.Errorf("toss conditional order: second.triggerPrice is required")
+	}
 	switch orderType {
 	case "SINGLE":
 		if second != nil {
@@ -130,6 +140,14 @@ func validateConditionalOrderLegs(orderType, groupOrderType string, first Condit
 		}
 	default:
 		return fmt.Errorf("toss conditional order: unsupported type %q", orderType)
+	}
+	if groupOrderType == "LIMIT" {
+		if strings.TrimSpace(first.OrderPrice) == "" {
+			return fmt.Errorf("toss conditional order: orderType LIMIT requires first.orderPrice")
+		}
+		if second != nil && strings.TrimSpace(second.OrderPrice) == "" {
+			return fmt.Errorf("toss conditional order: orderType LIMIT requires second.orderPrice")
+		}
 	}
 	return nil
 }

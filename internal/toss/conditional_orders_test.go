@@ -257,6 +257,45 @@ func TestModifyConditionalOrderHTTPError(t *testing.T) {
 	}
 }
 
+// TestModifyConditionalOrderValidatesLegs covers a review finding (confirmed
+// independently by two reviewers): unlike CreateConditionalOrder,
+// ModifyConditionalOrder never called validateConditionalOrderLegs, so an
+// invalid leg-side/orderType combination (e.g. OCO with a BUY leg) went
+// straight to the live API instead of failing locally.
+func TestModifyConditionalOrderValidatesLegs(t *testing.T) {
+	client := NewClient(nil, "http://localhost", "cid", "secret")
+	_, err := client.ModifyConditionalOrder(context.Background(), "7", "cond-1", ConditionalOrderModifyRequest{
+		Type:       "OCO",
+		Quantity:   "100",
+		OrderType:  "LIMIT",
+		ExpireDate: "2026-09-10",
+		First:      ConditionRequest{OrderSide: "BUY", TriggerPrice: "310", OrderPrice: "310"},
+		Second:     ptr(ConditionRequest{OrderSide: "SELL", TriggerPrice: "290", OrderPrice: "290"}),
+	})
+	if err == nil || !strings.Contains(err.Error(), "OCO requires both legs SELL") {
+		t.Fatalf("expected OCO leg-side validation error, got %v", err)
+	}
+}
+
+// TestValidateConditionalOrderLegsRequiresPrices covers two more review
+// findings: LIMIT orders require each leg's OrderPrice, and every leg always
+// requires TriggerPrice — neither was checked before, so a request missing
+// either only failed on the API round trip instead of locally.
+func TestValidateConditionalOrderLegsRequiresPrices(t *testing.T) {
+	valid := ConditionRequest{OrderSide: "SELL", TriggerPrice: "100", OrderPrice: "100"}
+
+	if err := validateConditionalOrderLegs("SINGLE", "LIMIT", ConditionRequest{OrderSide: "SELL", TriggerPrice: "100"}, nil); err == nil {
+		t.Fatal("expected error: LIMIT requires first.orderPrice")
+	}
+	if err := validateConditionalOrderLegs("SINGLE", "MARKET", ConditionRequest{OrderSide: "SELL"}, nil); err == nil {
+		t.Fatal("expected error: triggerPrice always required")
+	}
+	if err := validateConditionalOrderLegs("OCO", "LIMIT", valid,
+		&ConditionRequest{OrderSide: "SELL", TriggerPrice: "90"}); err == nil {
+		t.Fatal("expected error: LIMIT requires second.orderPrice")
+	}
+}
+
 func TestCancelConditionalOrderHappyPath(t *testing.T) {
 	var gotMethod, gotPath, gotAccount string
 	srv := tokenOnlyServer(t, func(w http.ResponseWriter, r *http.Request) {

@@ -92,8 +92,29 @@ type OrderOperationResponse struct {
 	OrderID string `json:"orderId"`
 }
 
+// validate enforces the same LIMIT/MARKET price rule as
+// OrderCreateRequest.validate: Price is required for LIMIT and forbidden for
+// MARKET.
+func (r OrderModifyRequest) validate() error {
+	hasPrice := strings.TrimSpace(r.Price) != ""
+	switch r.OrderType {
+	case "MARKET":
+		if hasPrice {
+			return fmt.Errorf("toss order modify: orderType MARKET forbids price")
+		}
+	case "LIMIT":
+		if !hasPrice {
+			return fmt.Errorf("toss order modify: orderType LIMIT requires price")
+		}
+	}
+	return nil
+}
+
 // ModifyOrder amends the price and/or quantity of an existing order.
 func (c *Client) ModifyOrder(ctx context.Context, accountSeq, orderID string, req OrderModifyRequest) (OrderOperationResponse, error) {
+	if err := req.validate(); err != nil {
+		return OrderOperationResponse{}, err
+	}
 	headers := map[string]string{"X-Tossinvest-Account": accountSeq}
 	path := "/api/v1/orders/" + url.PathEscape(orderID) + "/modify"
 	return doPost[OrderOperationResponse](ctx, c, "toss order modify", path, req, headers)
