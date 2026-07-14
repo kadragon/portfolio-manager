@@ -1,8 +1,7 @@
 package toss
 
 import (
-	"encoding/json"
-	"io"
+	"context"
 	"net/http"
 	"os"
 	"strconv"
@@ -23,11 +22,7 @@ func TestLiveFetchAccountSnapshot(t *testing.T) {
 	c := NewClient(http.DefaultClient, os.Getenv("TOSS_BASE_URL"), clientID, clientSecret)
 	accountSeq := strings.TrimSpace(os.Getenv("TOSS_ACCOUNT_SEQ"))
 	if accountSeq == "" {
-		token, err := c.accessToken()
-		if err != nil {
-			t.Fatalf("accessToken: %v", err)
-		}
-		accountSeq = fetchFirstAccountSeq(t, c, token)
+		accountSeq = fetchFirstAccountSeq(t, c)
 	}
 
 	snapshot, err := c.FetchAccountSnapshot(accountSeq, "")
@@ -48,39 +43,14 @@ func TestLiveFetchAccountSnapshot(t *testing.T) {
 	t.Logf("snapshot ok: holdings=%d cash_present=%t", len(snapshot.Holdings), !snapshot.CashBalance.IsZero())
 }
 
-func fetchFirstAccountSeq(t *testing.T, c *Client, token string) string {
+func fetchFirstAccountSeq(t *testing.T, c *Client) string {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/api/v1/accounts", nil)
+	accounts, err := c.GetAccounts(context.Background())
 	if err != nil {
-		t.Fatalf("create accounts request: %v", err)
+		t.Fatalf("GetAccounts: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		t.Fatalf("accounts request: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read accounts response: %v", err)
-	}
-	if resp.StatusCode >= 400 {
-		t.Fatalf("accounts HTTP %d: %s", resp.StatusCode, string(body))
-	}
-	var parsed struct {
-		Result []struct {
-			AccountSeq int64 `json:"accountSeq"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		t.Fatalf("unmarshal accounts: %v", err)
-	}
-	if len(parsed.Result) == 0 || parsed.Result[0].AccountSeq == 0 {
+	if len(accounts) == 0 || accounts[0].AccountSeq == 0 {
 		t.Fatal("no Toss accounts returned")
 	}
-	return itoa(parsed.Result[0].AccountSeq)
-}
-
-func itoa(v int64) string {
-	return strconv.FormatInt(v, 10)
+	return strconv.FormatInt(accounts[0].AccountSeq, 10)
 }
