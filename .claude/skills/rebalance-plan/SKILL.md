@@ -49,10 +49,13 @@ the deviation itself, so a group already at its interim value reads as in-band, 
 - Placement violations (an asset sitting in an account the policy forbids, e.g. KR-listed
   overseas ETF in TOSS) → trade regardless of group deviation.
 
-Before deciding that nothing breaches, perform any glide-path advancement due this month under
-§Gradual transition mode step 4, then recompute deviations and triggers against the advanced
-interim targets. This happens before any no-trade return. If nothing breaches the band and no
-override fires after that recomputation, write no document — report "이번 점검 매매 불필요"
+Glide-path advancement runs unconditionally as part of this step, not only when the outcome
+turns out to be no-trade: if this month is a scheduled advance month (February, May, August, or
+November), perform any due §Transition Schedule advancement under §Gradual transition mode step 4
+**before** computing the deviations and triggers above, so every deviation, band check, and
+downstream trade decision this run — breach or no breach — is against the advanced interim
+targets, never the stale pre-advancement ones. If nothing breaches the band and no
+override fires, write no document — report "이번 점검 매매 불필요"
 with the group-deviation table, then stop. A breach starts a trade
 decision; it does not override the policy's tax-aware deferral rules. If the only breach is an
 underweight that a **confirmed** contribution before the next monthly monitoring run can fully
@@ -133,6 +136,10 @@ underweights without tax events, which is why the policy prefers it over selling
 
 1. Same inputs as step 1 (policy, FX, snapshot). Ask for the account if not given —
    placement rules differ per account (e.g. cash landing in 연금저축 may only buy 금·채권).
+   If this month is a scheduled advance month (February, May, August, or November) and no
+   full-plan run has already advanced the schedule this month, perform any due §Transition
+   Schedule advancement under §Gradual transition mode step 4 first — same as full-plan mode
+   step 2 — so a deposit-only run doesn't leave the schedule stale for the cycle.
 2. Recompute group weights against `total + deposit`. Allocate the deposit to below-target
    groups in proportion to their shortfall (%p × total value), filling toward the effective
    target — the §Target Allocation value, or the interim value if the group has an active
