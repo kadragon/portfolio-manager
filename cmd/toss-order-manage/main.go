@@ -109,6 +109,15 @@ func main() {
 
 	switch *action {
 	case "modify":
+		// Fetch the order being changed so the preview shows what it IS, not
+		// just what it will become — without this, a human confirming -yes
+		// has nothing to compare the new quantity/price against and can't
+		// catch a fat-finger typo (e.g. 5 vs 50). Fetching also fails fast if
+		// orderId doesn't exist, before ever calling ModifyOrder.
+		current, err := c.TossClient.GetOrder(ctx, accountSeq, *orderID)
+		if err != nil {
+			log.Fatalf("look up current order before modify: %v", err)
+		}
 		req := toss.OrderModifyRequest{
 			OrderType:             strings.ToUpper(strings.TrimSpace(*orderType)),
 			Quantity:              strings.TrimSpace(*quantity),
@@ -116,7 +125,7 @@ func main() {
 			ConfirmHighValueOrder: *confirmHighValueOrder,
 		}
 		if !*yes {
-			printDryRun("modify", *account, accountSeq, map[string]any{"orderId": *orderID, "request": req})
+			printDryRun("modify", *account, accountSeq, map[string]any{"orderId": *orderID, "currentOrder": current, "proposedChange": req})
 			return
 		}
 		resp, err := c.TossClient.ModifyOrder(ctx, accountSeq, *orderID, req)
@@ -126,8 +135,15 @@ func main() {
 		printJSON(resp)
 
 	case "cancel":
+		// Same rationale as modify: show what's actually being canceled
+		// (symbol/side/quantity/status) rather than a bare opaque orderId,
+		// and fail fast if it doesn't exist.
+		current, err := c.TossClient.GetOrder(ctx, accountSeq, *orderID)
+		if err != nil {
+			log.Fatalf("look up current order before cancel: %v", err)
+		}
 		if !*yes {
-			printDryRun("cancel", *account, accountSeq, map[string]any{"orderId": *orderID})
+			printDryRun("cancel", *account, accountSeq, map[string]any{"orderId": *orderID, "currentOrder": current})
 			return
 		}
 		resp, err := c.TossClient.CancelOrder(ctx, accountSeq, *orderID)
@@ -159,6 +175,12 @@ func main() {
 		printJSON(resp)
 
 	case "modify-conditional":
+		// Same rationale as "modify": show the existing watch/trigger state
+		// before overwriting it, and fail fast if the ID doesn't exist.
+		current, err := c.TossClient.GetConditionalOrder(ctx, accountSeq, *conditionalOrderID)
+		if err != nil {
+			log.Fatalf("look up current conditional order before modify: %v", err)
+		}
 		req := toss.ConditionalOrderModifyRequest{
 			Type:                  strings.ToUpper(strings.TrimSpace(*condType)),
 			Quantity:              strings.TrimSpace(*quantity),
@@ -169,7 +191,7 @@ func main() {
 			ConfirmHighValueOrder: *confirmHighValueOrder,
 		}
 		if !*yes {
-			printDryRun("modify-conditional", *account, accountSeq, map[string]any{"conditionalOrderId": *conditionalOrderID, "request": req})
+			printDryRun("modify-conditional", *account, accountSeq, map[string]any{"conditionalOrderId": *conditionalOrderID, "currentConditionalOrder": current, "proposedChange": req})
 			return
 		}
 		resp, err := c.TossClient.ModifyConditionalOrder(ctx, accountSeq, *conditionalOrderID, req)
@@ -179,8 +201,14 @@ func main() {
 		printJSON(resp)
 
 	case "cancel-conditional":
+		// Same rationale as "cancel": show what's actually being canceled
+		// (symbol/type/trigger conditions/status), not a bare opaque ID.
+		current, err := c.TossClient.GetConditionalOrder(ctx, accountSeq, *conditionalOrderID)
+		if err != nil {
+			log.Fatalf("look up current conditional order before cancel: %v", err)
+		}
 		if !*yes {
-			printDryRun("cancel-conditional", *account, accountSeq, map[string]any{"conditionalOrderId": *conditionalOrderID})
+			printDryRun("cancel-conditional", *account, accountSeq, map[string]any{"conditionalOrderId": *conditionalOrderID, "currentConditionalOrder": current})
 			return
 		}
 		if err := c.TossClient.CancelConditionalOrder(ctx, accountSeq, *conditionalOrderID); err != nil {
