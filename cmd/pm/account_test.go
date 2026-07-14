@@ -6,6 +6,7 @@ import (
 
 	"github.com/kadragon/portfolio-manager/internal/container"
 	"github.com/kadragon/portfolio-manager/internal/db"
+	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 )
 
@@ -39,6 +40,24 @@ func TestAccountGet(t *testing.T) {
 	}
 	if err := runAccount(ctx, c, []string{"get", "-id", "00000000000000000000000000000000"}); err == nil {
 		t.Fatal("expected error for unknown account id")
+	}
+}
+
+func TestAccountOutputIncludesCurrencyCashBalances(t *testing.T) {
+	krw, _ := numeric.FromString("1000")
+	usd, _ := numeric.FromString("2.5")
+	out := toAccountOutput(models.Account{CashBalanceKRW: &krw, CashBalanceUSD: &usd})
+	if out.CashBalanceKRW == nil || out.CashBalanceKRW.String() != "1000" ||
+		out.CashBalanceUSD == nil || out.CashBalanceUSD.String() != "2.5" {
+		t.Fatalf("currency cash = KRW %v USD %v", out.CashBalanceKRW, out.CashBalanceUSD)
+	}
+}
+
+func TestAccountOutputPreservesUnknownCurrencyCashBalances(t *testing.T) {
+	out := toAccountOutput(models.Account{})
+	if out.CashBalanceKRW != nil || out.CashBalanceUSD != nil {
+		t.Fatalf("unknown currency cash = KRW %v USD %v; want nil, nil",
+			out.CashBalanceKRW, out.CashBalanceUSD)
 	}
 }
 
@@ -90,6 +109,10 @@ func TestAccountUpdatePartial(t *testing.T) {
 	if updated.CashBalance.String() != "500" {
 		t.Fatalf("expected cash 500, got %s", updated.CashBalance.String())
 	}
+	if updated.CashBalanceKRW == nil || updated.CashBalanceKRW.String() != "500" ||
+		updated.CashBalanceUSD == nil || !updated.CashBalanceUSD.IsZero() {
+		t.Fatalf("manual currency cash = KRW %v USD %v", updated.CashBalanceKRW, updated.CashBalanceUSD)
+	}
 
 	if err := runAccount(ctx, c, []string{"update", "-id", acc.ID.String(), "-name", "TOSS renamed"}); err != nil {
 		t.Fatalf("account update -name: %v", err)
@@ -103,6 +126,35 @@ func TestAccountUpdatePartial(t *testing.T) {
 	}
 	if updated.CashBalance.String() != "500" {
 		t.Fatalf("expected cash unchanged (500), got %s", updated.CashBalance.String())
+	}
+}
+
+func TestAccountUpdateNamePreservesBrokerCashBreakdown(t *testing.T) {
+	ctx := context.Background()
+	c := newAccountContainer(t)
+	acc, err := c.Accounts.Create(ctx, "TOSS", numeric.Zero)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	total, _ := numeric.FromString("4500")
+	krw, _ := numeric.FromString("1000")
+	usd, _ := numeric.FromString("2.5")
+	if _, err := c.Accounts.UpdateCashBalances(ctx, acc.ID, acc.Name, total, krw, usd); err != nil {
+		t.Fatalf("seed broker cash: %v", err)
+	}
+
+	if err := runAccount(ctx, c, []string{"update", "-id", acc.ID.String(), "-name", "TOSS renamed"}); err != nil {
+		t.Fatalf("account update -name: %v", err)
+	}
+	updated, err := c.Accounts.GetByID(ctx, acc.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if updated.CashBalance.String() != "4500" || updated.CashBalanceKRW == nil ||
+		updated.CashBalanceKRW.String() != "1000" || updated.CashBalanceUSD == nil ||
+		updated.CashBalanceUSD.String() != "2.5" {
+		t.Fatalf("broker cash changed: total %s KRW %v USD %v",
+			updated.CashBalance.String(), updated.CashBalanceKRW, updated.CashBalanceUSD)
 	}
 }
 
@@ -200,6 +252,10 @@ func TestAccountSetCash(t *testing.T) {
 	}
 	if updated.CashBalance.String() != "999" {
 		t.Fatalf("expected cash 999, got %s", updated.CashBalance.String())
+	}
+	if updated.CashBalanceKRW == nil || updated.CashBalanceKRW.String() != "999" ||
+		updated.CashBalanceUSD == nil || !updated.CashBalanceUSD.IsZero() {
+		t.Fatalf("manual currency cash = KRW %v USD %v", updated.CashBalanceKRW, updated.CashBalanceUSD)
 	}
 }
 

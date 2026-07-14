@@ -20,6 +20,8 @@ func newAccountRepo(t *testing.T) *repositories.AccountRepository {
 	return repositories.NewAccountRepository(q)
 }
 
+func decimalPointer(value numeric.Decimal) *numeric.Decimal { return &value }
+
 func TestAccountTypeRoundTrip(t *testing.T) {
 	repo := newAccountRepo(t)
 	ctx := context.Background()
@@ -33,6 +35,7 @@ func TestAccountTypeRoundTrip(t *testing.T) {
 	}
 
 	updated, err := repo.Update(ctx, a.ID, a.Name, a.CashBalance,
+		a.CashBalanceKRW, a.CashBalanceUSD,
 		sql.NullString{}, sql.NullInt64{},
 		sql.NullString{String: "irp", Valid: true}, sql.NullInt64{})
 	if err != nil {
@@ -64,6 +67,9 @@ func TestAccountCreateAndList(t *testing.T) {
 	}
 	if !a.CashBalance.IsZero() {
 		t.Fatalf("cash = %v", a.CashBalance)
+	}
+	if a.CashBalanceKRW == nil || !a.CashBalanceKRW.IsZero() || a.CashBalanceUSD == nil || !a.CashBalanceUSD.IsZero() {
+		t.Fatalf("created currency cash should be known zero: %+v", a)
 	}
 	if a.KisAccountNo != nil || a.KisAPIKeyID != nil {
 		t.Fatalf("KIS fields should be nil: %+v", a)
@@ -127,9 +133,33 @@ func TestAccountUpdateNameCash(t *testing.T) {
 	if !updated.CashBalance.Equal(cash.Decimal) {
 		t.Fatalf("cash = %v", updated.CashBalance)
 	}
+	if updated.CashBalanceKRW == nil || !updated.CashBalanceKRW.Equal(cash.Decimal) ||
+		updated.CashBalanceUSD == nil || !updated.CashBalanceUSD.IsZero() {
+		t.Fatalf("manual cash split = KRW %v USD %v", updated.CashBalanceKRW, updated.CashBalanceUSD)
+	}
 	// KIS fields should remain nil
 	if updated.KisAccountNo != nil || updated.KisAPIKeyID != nil {
 		t.Fatalf("KIS fields changed: %+v", updated)
+	}
+}
+
+func TestAccountUpdateCashBalances(t *testing.T) {
+	repo := newAccountRepo(t)
+	ctx := context.Background()
+	a, err := repo.Create(ctx, "TOSS", numeric.Zero)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	total, _ := numeric.FromString("4500")
+	krw, _ := numeric.FromString("1000")
+	usd, _ := numeric.FromString("2.5")
+	updated, err := repo.UpdateCashBalances(ctx, a.ID, a.Name, total, krw, usd)
+	if err != nil {
+		t.Fatalf("update cash balances: %v", err)
+	}
+	if updated.CashBalanceKRW == nil || updated.CashBalanceKRW.String() != "1000" ||
+		updated.CashBalanceUSD == nil || updated.CashBalanceUSD.String() != "2.5" {
+		t.Fatalf("currency cash = KRW %v USD %v", updated.CashBalanceKRW, updated.CashBalanceUSD)
 	}
 }
 
@@ -144,6 +174,7 @@ func TestAccountUpdateFull(t *testing.T) {
 
 	cash, _ := numeric.FromString("500000")
 	updated, err := repo.Update(ctx, a.ID, "B", cash,
+		decimalPointer(cash), decimalPointer(numeric.Zero),
 		sql.NullString{String: "12345678-01", Valid: true},
 		sql.NullInt64{Int64: 1, Valid: true}, sql.NullString{},
 		sql.NullInt64{Int64: 7, Valid: true},
@@ -166,6 +197,7 @@ func TestAccountUpdateFull(t *testing.T) {
 
 	// Clear KIS by setting NULL
 	cleared, err := repo.Update(ctx, a.ID, "B", cash,
+		decimalPointer(cash), decimalPointer(numeric.Zero),
 		sql.NullString{Valid: false},
 		sql.NullInt64{Valid: false}, sql.NullString{}, sql.NullInt64{},
 	)
@@ -184,6 +216,7 @@ func TestAccountUpdateNameCashPreservesKIS(t *testing.T) {
 	a, _ := repo.Create(ctx, "A", numeric.Zero)
 	cash, _ := numeric.FromString("1000")
 	_, err := repo.Update(ctx, a.ID, "A", cash,
+		decimalPointer(cash), decimalPointer(numeric.Zero),
 		sql.NullString{String: "12345678-01", Valid: true},
 		sql.NullInt64{Int64: 1, Valid: true}, sql.NullString{},
 		sql.NullInt64{Int64: 3, Valid: true},

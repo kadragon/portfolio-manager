@@ -17,17 +17,19 @@ import (
 
 const createAccount = `-- name: CreateAccount :one
 
-INSERT INTO accounts (id, name, cash_balance, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?)
-RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq
+INSERT INTO accounts (id, name, cash_balance, cash_balance_krw, cash_balance_usd, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq, cash_balance_krw, cash_balance_usd
 `
 
 type CreateAccountParams struct {
-	ID          uuidx.UUID
-	Name        string
-	CashBalance numeric.Decimal
-	CreatedAt   ktime.Time
-	UpdatedAt   ktime.Time
+	ID             uuidx.UUID
+	Name           string
+	CashBalance    numeric.Decimal
+	CashBalanceKrw *numeric.Decimal
+	CashBalanceUsd *numeric.Decimal
+	CreatedAt      ktime.Time
+	UpdatedAt      ktime.Time
 }
 
 // Account queries (Phase 3).
@@ -36,6 +38,8 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		arg.ID,
 		arg.Name,
 		arg.CashBalance,
+		arg.CashBalanceKrw,
+		arg.CashBalanceUsd,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -50,6 +54,8 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.KisApiKeyID,
 		&i.AccountType,
 		&i.TossAccountSeq,
+		&i.CashBalanceKrw,
+		&i.CashBalanceUsd,
 	)
 	return i, err
 }
@@ -334,7 +340,7 @@ func (q *Queries) DeleteStockPriceByTickerAndDate(ctx context.Context, arg Delet
 }
 
 const getAccountByID = `-- name: GetAccountByID :one
-SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq FROM accounts WHERE id = ?
+SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq, cash_balance_krw, cash_balance_usd FROM accounts WHERE id = ?
 `
 
 func (q *Queries) GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, error) {
@@ -350,6 +356,8 @@ func (q *Queries) GetAccountByID(ctx context.Context, id uuidx.UUID) (Account, e
 		&i.KisApiKeyID,
 		&i.AccountType,
 		&i.TossAccountSeq,
+		&i.CashBalanceKrw,
+		&i.CashBalanceUsd,
 	)
 	return i, err
 }
@@ -552,7 +560,7 @@ func (q *Queries) GetStockPriceOnOrBeforeDate(ctx context.Context, arg GetStockP
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq FROM accounts
+SELECT id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq, cash_balance_krw, cash_balance_usd FROM accounts
 `
 
 func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
@@ -574,6 +582,8 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 			&i.KisApiKeyID,
 			&i.AccountType,
 			&i.TossAccountSeq,
+			&i.CashBalanceKrw,
+			&i.CashBalanceUsd,
 		); err != nil {
 			return nil, err
 		}
@@ -941,14 +951,17 @@ func (q *Queries) ListStocksByGroup(ctx context.Context, groupID uuidx.UUID) ([]
 
 const updateAccount = `-- name: UpdateAccount :one
 UPDATE accounts
-SET name = ?, cash_balance = ?, kis_account_no = ?, kis_api_key_id = ?, account_type = ?, toss_account_seq = ?, updated_at = ?
+SET name = ?, cash_balance = ?, cash_balance_krw = ?, cash_balance_usd = ?,
+    kis_account_no = ?, kis_api_key_id = ?, account_type = ?, toss_account_seq = ?, updated_at = ?
 WHERE id = ?
-RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq, cash_balance_krw, cash_balance_usd
 `
 
 type UpdateAccountParams struct {
 	Name           string
 	CashBalance    numeric.Decimal
+	CashBalanceKrw *numeric.Decimal
+	CashBalanceUsd *numeric.Decimal
 	KisAccountNo   sql.NullString
 	KisApiKeyID    sql.NullInt64
 	AccountType    sql.NullString
@@ -961,6 +974,8 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 	row := q.db.QueryRowContext(ctx, updateAccount,
 		arg.Name,
 		arg.CashBalance,
+		arg.CashBalanceKrw,
+		arg.CashBalanceUsd,
 		arg.KisAccountNo,
 		arg.KisApiKeyID,
 		arg.AccountType,
@@ -979,26 +994,34 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		&i.KisApiKeyID,
 		&i.AccountType,
 		&i.TossAccountSeq,
+		&i.CashBalanceKrw,
+		&i.CashBalanceUsd,
 	)
 	return i, err
 }
 
-const updateAccountNameCash = `-- name: UpdateAccountNameCash :one
-UPDATE accounts SET name = ?, cash_balance = ?, updated_at = ? WHERE id = ?
-RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq
+const updateAccountCashBalances = `-- name: UpdateAccountCashBalances :one
+UPDATE accounts
+SET name = ?, cash_balance = ?, cash_balance_krw = ?, cash_balance_usd = ?, updated_at = ?
+WHERE id = ?
+RETURNING id, name, cash_balance, created_at, updated_at, kis_account_no, kis_api_key_id, account_type, toss_account_seq, cash_balance_krw, cash_balance_usd
 `
 
-type UpdateAccountNameCashParams struct {
-	Name        string
-	CashBalance numeric.Decimal
-	UpdatedAt   ktime.Time
-	ID          uuidx.UUID
+type UpdateAccountCashBalancesParams struct {
+	Name           string
+	CashBalance    numeric.Decimal
+	CashBalanceKrw *numeric.Decimal
+	CashBalanceUsd *numeric.Decimal
+	UpdatedAt      ktime.Time
+	ID             uuidx.UUID
 }
 
-func (q *Queries) UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNameCashParams) (Account, error) {
-	row := q.db.QueryRowContext(ctx, updateAccountNameCash,
+func (q *Queries) UpdateAccountCashBalances(ctx context.Context, arg UpdateAccountCashBalancesParams) (Account, error) {
+	row := q.db.QueryRowContext(ctx, updateAccountCashBalances,
 		arg.Name,
 		arg.CashBalance,
+		arg.CashBalanceKrw,
+		arg.CashBalanceUsd,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -1013,6 +1036,8 @@ func (q *Queries) UpdateAccountNameCash(ctx context.Context, arg UpdateAccountNa
 		&i.KisApiKeyID,
 		&i.AccountType,
 		&i.TossAccountSeq,
+		&i.CashBalanceKrw,
+		&i.CashBalanceUsd,
 	)
 	return i, err
 }

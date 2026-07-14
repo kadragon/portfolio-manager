@@ -23,6 +23,8 @@ type Account struct {
 	KisApiKeyID    sql.NullInt64
 	AccountType    sql.NullString
 	TossAccountSeq sql.NullInt64
+	CashBalanceKrw *numeric.Decimal
+	CashBalanceUsd *numeric.Decimal
 }
 
 type Deposit struct {

@@ -26,13 +26,15 @@ func ValidAccountType(s string) bool {
 }
 
 type Account struct {
-	ID           uuidx.UUID
-	Name         string
-	CashBalance  numeric.Decimal
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	KisAccountNo *string
-	KisAPIKeyID  *int64
+	ID             uuidx.UUID
+	Name           string
+	CashBalance    numeric.Decimal
+	CashBalanceKRW *numeric.Decimal
+	CashBalanceUSD *numeric.Decimal
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	KisAccountNo   *string
+	KisAPIKeyID    *int64
 	// AccountType is the tax/eligibility class: "brokerage", "irp", "pension"
 	// (연금저축), or "isa". nil = unclassified (treated strictly: buys blocked).
 	AccountType    *string

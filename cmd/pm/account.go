@@ -26,6 +26,8 @@ type accountOutput struct {
 	ID             uuidx.UUID
 	Name           string
 	CashBalance    numeric.Decimal
+	CashBalanceKRW *numeric.Decimal
+	CashBalanceUSD *numeric.Decimal
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	KisAccountNo   *string
@@ -38,6 +40,8 @@ func toAccountOutput(a models.Account) accountOutput {
 		ID:             a.ID,
 		Name:           a.Name,
 		CashBalance:    a.CashBalance,
+		CashBalanceKRW: a.CashBalanceKRW,
+		CashBalanceUSD: a.CashBalanceUSD,
 		CreatedAt:      a.CreatedAt,
 		UpdatedAt:      a.UpdatedAt,
 		KisAccountNo:   a.KisAccountNo,
@@ -163,12 +167,17 @@ func accountUpdate(ctx context.Context, c *container.Container, args []string) e
 	}
 
 	newCash := existing.CashBalance
+	newCashKRW := existing.CashBalanceKRW
+	newCashUSD := existing.CashBalanceUSD
 	if seen["cash"] {
 		d, err := numeric.FromString(*cash)
 		if err != nil {
 			return fmt.Errorf("invalid -cash: %w", err)
 		}
 		newCash = d
+		newCashKRW = &d
+		usd := numeric.Zero
+		newCashUSD = &usd
 	}
 
 	kisNo := sql.NullString{}
@@ -221,7 +230,10 @@ func accountUpdate(ctx context.Context, c *container.Container, args []string) e
 		tossAccountSeq = parsed
 	}
 
-	updated, err := c.Accounts.Update(ctx, id, newName, newCash, kisNo, kisKey, acctType, tossAccountSeq)
+	updated, err := c.Accounts.Update(
+		ctx, id, newName, newCash, newCashKRW, newCashUSD,
+		kisNo, kisKey, acctType, tossAccountSeq,
+	)
 	if err != nil {
 		return fmt.Errorf("update account: %w", err)
 	}

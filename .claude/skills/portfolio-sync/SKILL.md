@@ -33,9 +33,11 @@ go run ./cmd/pm sync -account "<name or unique substring>"
   if it errors "ambiguous", list the matches and ask which one.
 - Routing (KIS vs Toss) is automatic based on which link the account has (`KisAccountNo` vs
   `TossAccountSeq`) — you don't choose it.
-- On success, the JSON result (`KisAccountSyncResult`) reports `CashBalance`, `OldCashBalance`,
-  `HoldingCount`, `CreatedStockCount`, and a `HoldingChanges` list — summarize the deltas for
-  the user (what changed, not just "synced").
+- On success, the JSON result (`KisAccountSyncResult`) reports the KRW-converted aggregate
+  `CashBalance`, raw `CashBalanceKRW` / `CashBalanceUSD`, optional `USDKRWRate`,
+  `OldCashBalance`, `HoldingCount`, `CreatedStockCount`, and a `HoldingChanges` list — summarize
+  the deltas for the user (what changed, not just "synced"). A `null` currency component means
+  a legacy balance that has not yet been split by a broker sync; zero means a confirmed zero.
 - **Empty-snapshot guard**: if the broker returns zero holdings while the account has existing
   ones on file, the sync stops with an error asking for confirmation, to avoid silently wiping
   real positions on a transient API hiccup. Ask the user: "정말 전량 매도해서 비어 있는 게 맞나요?"

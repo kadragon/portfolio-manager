@@ -69,8 +69,8 @@ DELETE FROM stocks WHERE id = ?;
 -- Account queries (Phase 3).
 
 -- name: CreateAccount :one
-INSERT INTO accounts (id, name, cash_balance, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO accounts (id, name, cash_balance, cash_balance_krw, cash_balance_usd, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ListAccounts :many
@@ -79,13 +79,16 @@ SELECT * FROM accounts;
 -- name: GetAccountByID :one
 SELECT * FROM accounts WHERE id = ?;
 
--- name: UpdateAccountNameCash :one
-UPDATE accounts SET name = ?, cash_balance = ?, updated_at = ? WHERE id = ?
+-- name: UpdateAccountCashBalances :one
+UPDATE accounts
+SET name = ?, cash_balance = ?, cash_balance_krw = ?, cash_balance_usd = ?, updated_at = ?
+WHERE id = ?
 RETURNING *;
 
 -- name: UpdateAccount :one
 UPDATE accounts
-SET name = ?, cash_balance = ?, kis_account_no = ?, kis_api_key_id = ?, account_type = ?, toss_account_seq = ?, updated_at = ?
+SET name = ?, cash_balance = ?, cash_balance_krw = ?, cash_balance_usd = ?,
+    kis_account_no = ?, kis_api_key_id = ?, account_type = ?, toss_account_seq = ?, updated_at = ?
 WHERE id = ?
 RETURNING *;
 

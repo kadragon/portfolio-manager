@@ -106,7 +106,7 @@ func (c *Client) FetchAccountSnapshot(accountSeq, _ string) (models.KisAccountSn
 	if err != nil {
 		return models.KisAccountSnapshot{}, err
 	}
-	cashBalance, err := c.fetchCashBalanceKRW(token, accountSeq)
+	cashBalance, cashBalanceKRW, cashBalanceUSD, usdKRWRate, err := c.fetchCashBalances(token, accountSeq)
 	if err != nil {
 		return models.KisAccountSnapshot{}, err
 	}
@@ -116,8 +116,11 @@ func (c *Client) FetchAccountSnapshot(accountSeq, _ string) (models.KisAccountSn
 		return models.KisAccountSnapshot{}, err
 	}
 	return models.KisAccountSnapshot{
-		CashBalance: cashBalance,
-		Holdings:    holdings,
+		CashBalance:    cashBalance,
+		CashBalanceKRW: &cashBalanceKRW,
+		CashBalanceUSD: &cashBalanceUSD,
+		USDKRWRate:     usdKRWRate,
+		Holdings:       holdings,
 	}, nil
 }
 
@@ -241,23 +244,26 @@ func (c *Client) fetchHoldings(token, accountSeq string) ([]models.KisHoldingPos
 	return holdings, nil
 }
 
-func (c *Client) fetchCashBalanceKRW(token, accountSeq string) (numeric.Decimal, error) {
+func (c *Client) fetchCashBalances(
+	token, accountSeq string,
+) (numeric.Decimal, numeric.Decimal, numeric.Decimal, *numeric.Decimal, error) {
 	krw, err := c.fetchBuyingPower(token, accountSeq, "KRW")
 	if err != nil {
-		return numeric.Decimal{}, err
+		return numeric.Decimal{}, numeric.Decimal{}, numeric.Decimal{}, nil, err
 	}
 	usd, err := c.fetchBuyingPower(token, accountSeq, "USD")
 	if err != nil {
-		return numeric.Decimal{}, err
+		return numeric.Decimal{}, numeric.Decimal{}, numeric.Decimal{}, nil, err
 	}
 	if usd.IsZero() {
-		return krw, nil
+		return krw, krw, usd, nil, nil
 	}
 	rate, err := c.fetchUSDKRWRate(token)
 	if err != nil {
-		return numeric.Decimal{}, err
+		return numeric.Decimal{}, numeric.Decimal{}, numeric.Decimal{}, nil, err
 	}
-	return numeric.Wrap(krw.Decimal.Add(usd.Decimal.Mul(rate.Decimal))), nil
+	total := numeric.Wrap(krw.Decimal.Add(usd.Decimal.Mul(rate.Decimal)))
+	return total, krw, usd, &rate, nil
 }
 
 func (c *Client) fetchBuyingPower(token, accountSeq, currency string) (numeric.Decimal, error) {
