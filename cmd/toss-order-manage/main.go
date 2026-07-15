@@ -27,6 +27,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/container"
 	"github.com/kadragon/portfolio-manager/internal/models"
@@ -36,23 +37,27 @@ import (
 const usage = `usage:
   toss-order-manage -account NAME -action modify -order-id ID -order-type LIMIT|MARKET [-quantity N] [-price P] [-confirm-high-value-order] [-yes]
   toss-order-manage -account NAME -action cancel -order-id ID [-yes]
-  toss-order-manage -account NAME -action create-conditional -symbol T -type SINGLE|OCO|OTO -quantity N -order-type LIMIT|MARKET -expire-date YYYY-MM-DD -first-side BUY|SELL -first-trigger-price P [-first-order-price P] [-second-side BUY|SELL] [-second-trigger-price P] [-second-order-price P] [-client-order-id ID] [-confirm-high-value-order] [-yes]
+  toss-order-manage -account NAME -action create-conditional -symbol T -type SINGLE|OCO|OTO -quantity N [-order-type LIMIT|MARKET] [-expire-date YYYY-MM-DD] -first-side BUY|SELL -first-trigger-price P [-first-order-price P] [-second-side BUY|SELL] [-second-trigger-price P] [-second-order-price P] [-client-order-id ID] [-confirm-high-value-order] [-yes]
   toss-order-manage -account NAME -action modify-conditional -conditional-order-id ID -type SINGLE|OCO|OTO -quantity N -order-type LIMIT|MARKET -expire-date YYYY-MM-DD -first-side BUY|SELL -first-trigger-price P [-first-order-price P] [-second-side BUY|SELL] [-second-trigger-price P] [-second-order-price P] [-confirm-high-value-order] [-yes]
   toss-order-manage -account NAME -action cancel-conditional -conditional-order-id ID [-yes]
+
+create-conditional defaults: order-type=MARKET, expire-date=tomorrow in KST
 `
+
+var koreaStandardTime = time.FixedZone("KST", 9*60*60)
 
 func main() {
 	account := flag.String("account", "", "account name, exact or unique substring match; must be linked to a Toss accountSeq")
 	action := flag.String("action", "", "modify|cancel|create-conditional|modify-conditional|cancel-conditional")
 	orderID := flag.String("order-id", "", "existing order ID (modify/cancel)")
 	conditionalOrderID := flag.String("conditional-order-id", "", "existing conditional order ID (modify-conditional/cancel-conditional)")
-	orderType := flag.String("order-type", "", "LIMIT or MARKET")
+	orderType := flag.String("order-type", "", "LIMIT or MARKET (create-conditional default: MARKET)")
 	quantity := flag.String("quantity", "", "share quantity")
 	price := flag.String("price", "", "limit price (modify only)")
 	confirmHighValueOrder := flag.Bool("confirm-high-value-order", false, "acknowledge Toss's high-value-order confirmation requirement")
 	symbol := flag.String("symbol", "", "ticker symbol (create-conditional)")
 	condType := flag.String("type", "", "SINGLE|OCO|OTO (conditional orders)")
-	expireDate := flag.String("expire-date", "", "YYYY-MM-DD (conditional orders)")
+	expireDate := flag.String("expire-date", "", "YYYY-MM-DD (create-conditional default: tomorrow in KST)")
 	clientOrderID := flag.String("client-order-id", "", "optional client-supplied order ID (create-conditional)")
 	firstSide := flag.String("first-side", "", "BUY|SELL (conditional orders, first leg)")
 	firstTriggerPrice := flag.String("first-trigger-price", "", "trigger price for the first leg")
@@ -70,6 +75,7 @@ func main() {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
+	*orderType, *expireDate = applyCreateConditionalDefaults(*action, *orderType, *expireDate, time.Now())
 
 	if strings.TrimSpace(*account) == "" {
 		fail("-account is required")
@@ -216,6 +222,19 @@ func main() {
 		}
 		fmt.Printf("conditional order %s canceled\n", *conditionalOrderID)
 	}
+}
+
+func applyCreateConditionalDefaults(action, orderType, expireDate string, now time.Time) (string, string) {
+	if action != "create-conditional" {
+		return orderType, expireDate
+	}
+	if strings.TrimSpace(orderType) == "" {
+		orderType = "MARKET"
+	}
+	if strings.TrimSpace(expireDate) == "" {
+		expireDate = now.In(koreaStandardTime).AddDate(0, 0, 1).Format(time.DateOnly)
+	}
+	return orderType, expireDate
 }
 
 // buildSecondLeg builds the second ConditionRequest leg from flags, or
