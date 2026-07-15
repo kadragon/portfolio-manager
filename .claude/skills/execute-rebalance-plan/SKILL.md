@@ -1,6 +1,6 @@
 ---
 name: execute-rebalance-plan
-description: Execute TOSS and ISA orders from a rebalance plan or deposit-allocation list as real market orders, create Toss conditional/reserved orders, and place Toss USD amount-based US stock orders. Use whenever the user asks to place trades — "리밸런싱 지시서대로 주문 넣어줘", "TOSS 계좌 매매 실행해줘", "ISA 매매 해줘", "예치금 매매해줘", "예약 매수", "조건부 주문", "달러로 미국주식 사줘", "금액 주문", or "장이 닫혔는데 주문 걸어줘". Sells finish before buys; every live action needs an exact dry-run preview and explicit final confirmation. Programmatic execution covers ISA and TOSS only; Toss alone supports conditional and USD amount orders.
+description: Place real ISA/TOSS market orders, Toss conditional orders (SINGLE/OCO/OTO — Korean 예약 매수), and Toss USD amount-based US stock orders from a rebalance plan or deposit-allocation list. Use when the user asks to place trades — "리밸런싱 지시서대로 주문 넣어줘", "TOSS 계좌 매매 실행해줘", "ISA 매매 해줘", "예치금 매매해줘", "예약 매수", "조건부 주문", "달러로 미국주식 사줘", "금액 주문", "장이 닫혔는데 주문 걸어줘". Sells finish before buys; every live action needs a dry-run preview and explicit confirmation. Programmatic support: ISA + TOSS only; conditional and USD-amount orders are Toss-only.
 ---
 
 # Execute Rebalance Plan
@@ -34,36 +34,62 @@ exact dollar amount; Toss determines fractional share quantity at execution time
 
 1. Resolve the US ticker, side, and USD amount. If the user says to use available USD, read live
    buying power with `go run ./cmd/pm toss buying-power -account TOSS -currency USD`.
-2. Confirm the US regular session is open with `pm toss market-calendar-us`; amount orders are
+2. State the environment before touching anything: `toss-order-manage` prints the resolved Toss
+   base URL to stderr on every invocation as a live-money warning. Unlike KIS, Toss has no
+   demo/live split to route between — there's one production URL, only overridable by
+   `TOSS_BASE_URL` in `.env` — so this banner is confirming "nothing overrode the default,"
+   not choosing between environments. Show it to the user once before any dry-run or live call;
+   if `TOSS_BASE_URL` is set to something other than the default, stop and confirm that's
+   intentional before proceeding (see kis-debug §13 if the value looks wrong).
+3. Confirm the US regular session is open with `pm toss market-calendar-us`; amount orders are
    rejected outside regular hours. Do not represent this as a queued or conditional order.
-3. Preview without `-yes`:
+4. Preview without `-yes`:
    ```bash
    go run ./cmd/toss-order-manage -account TOSS -action create-amount \
      -symbol <ticker> -side BUY -order-amount <usd>
    ```
    Use one stable `-client-order-id` in both preview and live calls when retry safety matters.
-4. Show ticker, side, exact USD amount, `MARKET`, the regular-hours-only constraint, and live
-   Toss base URL. Require explicit confirmation for this exact order.
-5. Rerun the identical command with `-yes`. Read `orderId`, then verify it with:
+5. Show ticker, side, exact USD amount, `MARKET`, and the regular-hours-only constraint (the
+   base URL was already shown in step 2). Require explicit confirmation for this exact order.
+6. Rerun the identical command with `-yes`. Read `orderId`, then verify it with:
    ```bash
    go run ./cmd/pm toss order -account TOSS -order-id <id>
    ```
    Report the broker's returned status; do not equate order acceptance with full execution.
 
-## Toss conditional buy mode
+## Toss conditional order mode (SINGLE / OCO / OTO)
 
-This mode does not require a rebalance-plan document. For a single price-triggered buy:
+This mode does not require a rebalance-plan document.
 
-1. Resolve symbol, quantity, and trigger price. Apply the defaults above without questions.
-2. Preview without `-yes`; omit the defaulted flags so the CLI itself supplies them:
+1. Resolve symbol, quantity, and trigger price(s). Apply the defaults above without questions —
+   for `OCO`/`OTO`, that also means a second leg (`-second-side`, `-second-trigger-price`, and,
+   because the default order type is `LIMIT` for these two types, `-first-order-price` /
+   `-second-order-price` for each leg's limit price).
+2. State the environment before touching anything — same as USD amount-order mode step 2:
+   show the Toss base-URL banner once before any dry-run or live call, and stop if
+   `TOSS_BASE_URL` looks unexpectedly overridden.
+3. Preview without `-yes`; omit the defaulted flags so the CLI itself supplies them.
+
+   Single price-triggered buy:
    ```bash
    go run ./cmd/toss-order-manage -account TOSS -action create-conditional \
      -symbol <ticker> -type SINGLE -quantity <n> \
      -first-side BUY -first-trigger-price <price>
    ```
-3. Show symbol, quantity, trigger price, `MARKET`, computed expiry, and live Toss base URL.
-4. After explicit confirmation, rerun the identical command with `-yes`.
-5. Read `conditionalOrderId` from the response, then verify it with:
+
+   OCO (two exit legs on an existing position, e.g. take-profit + stop-loss — both require an
+   explicit limit price since the type defaults to `LIMIT`):
+   ```bash
+   go run ./cmd/toss-order-manage -account TOSS -action create-conditional \
+     -symbol <ticker> -type OCO -quantity <n> \
+     -first-side SELL -first-trigger-price <take_profit_trigger> -first-order-price <take_profit_limit> \
+     -second-side SELL -second-trigger-price <stop_loss_trigger> -second-order-price <stop_loss_limit>
+   ```
+4. Show symbol, quantity, trigger price(s) (both legs for OCO/OTO), `LIMIT`/`MARKET` per the
+   defaults, computed expiry — the base URL was already shown in step 2. Require explicit
+   confirmation for this exact order.
+5. After explicit confirmation, rerun the identical command with `-yes`.
+6. Read `conditionalOrderId` from the response, then verify it with:
    ```bash
    go run ./cmd/pm toss conditional-order -account TOSS \
      -conditional-order-id <id>
@@ -128,14 +154,28 @@ So split into two hard phases, never interleaved:
 skip — before starting Phase B.
 
 **Phase B — all buy orders.** Before Phase B starts, re-check each account against what Phase A
-actually delivered, not what the plan assumed:
-- If every sell in an account succeeded as planned, that account's buys proceed as written.
-- If a sell in an account failed or was skipped, that account now has less cash than the plan
-  assumed. Tell the user which buys in that account are at risk of exceeding available cash,
-  and ask whether to reduce/drop specific buy lines or proceed anyway (brokerage buying power
-  may already cover it) — never silently shrink or silently execute an oversized buy.
-- Buys in an account with no sells this run (or in the other account) aren't affected by another
-  account's sell outcome — cash doesn't move between accounts, so don't hold them up unnecessarily.
+actually delivered, not what the plan assumed. `OrderExecutionRecord.Status == "success"` proves
+the broker *accepted* the order, not that proceeds settled at a known price — the record carries
+no fill price or amount, so don't derive `sell_proceeds_krw` by multiplying the plan's estimated
+price by quantity for successful lines. Instead, for each account that had a sell in Phase A, run
+`go run ./cmd/pm sync -account "<name>"` (portfolio-sync skill) to pull the broker's actual
+post-sell cash balance, and use that synced value as the account's `existing_cash_krw` input
+below with `sell_proceeds_krw: 0` (the sync already folds proceeds into cash — don't add them a
+second time). An account with no sells this run doesn't need a re-sync; use its existing cash
+as-is.
+Sum the buy lines still to execute per account, then run:
+
+```bash
+python3 .claude/skills/execute-rebalance-plan/scripts/check_cash_availability.py --file <accounts.json>
+```
+
+`PASS` — every account's buys proceed as written. `FAIL` names the account and the shortfall
+amount; tell the user which buys in that account are at risk of exceeding available cash, and ask
+whether to reduce/drop specific buy lines or proceed anyway (brokerage buying power may already
+cover it) — never silently shrink or silently execute an oversized buy based on the script's
+verdict alone. An account with no sells this run isn't affected by another account's outcome —
+cash doesn't move between accounts, so it simply reports `PASS` off its existing cash alone; don't
+hold its buys up unnecessarily.
 
 **Per-order loop** (used identically in both phases):
 
@@ -201,6 +241,7 @@ deposit is clutter, per that skill's own guidance). So:
   was already approved — each order is independent money movement.
 - Interleaving a buy with sells still in flight, or starting Phase B without checking whether
   Phase A's sells actually delivered the cash the plan assumed.
+- Computing the Phase B cash re-check by hand instead of running `check_cash_availability.py`.
 - Running against 연금저축 or any account outside TOSS/ISA scope.
 - Guessing a quantity for a "주문 시점 재계산" new-position line instead of skipping it.
 - Proceeding past a `"failed"` result without telling the user and asking how to continue.
