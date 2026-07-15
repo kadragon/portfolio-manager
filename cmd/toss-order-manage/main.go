@@ -46,7 +46,7 @@ const usage = `usage:
   toss-order-manage -account NAME -action cancel-conditional -conditional-order-id ID [-yes]
 
 create-amount: US market orders only; accepted during US regular market hours only
-create-conditional defaults: order-type=MARKET, expire-date=tomorrow in KST
+create-conditional defaults: order-type=MARKET (SINGLE) or LIMIT (OCO/OTO), expire-date=tomorrow in KST
 `
 
 var koreaStandardTime = time.FixedZone("KST", 9*60*60)
@@ -58,7 +58,7 @@ func main() {
 	action := flag.String("action", "", "create-amount|modify|cancel|create-conditional|modify-conditional|cancel-conditional")
 	orderID := flag.String("order-id", "", "existing order ID (modify/cancel)")
 	conditionalOrderID := flag.String("conditional-order-id", "", "existing conditional order ID (modify-conditional/cancel-conditional)")
-	orderType := flag.String("order-type", "", "LIMIT or MARKET (create-conditional default: MARKET)")
+	orderType := flag.String("order-type", "", "LIMIT or MARKET (create-conditional default: MARKET for SINGLE, LIMIT for OCO/OTO)")
 	quantity := flag.String("quantity", "", "share quantity")
 	price := flag.String("price", "", "limit price (modify only)")
 	confirmHighValueOrder := flag.Bool("confirm-high-value-order", false, "acknowledge Toss's high-value-order confirmation requirement")
@@ -84,7 +84,7 @@ func main() {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
-	*orderType, *expireDate = applyCreateConditionalDefaults(*action, *orderType, *expireDate, time.Now())
+	*orderType, *expireDate = applyCreateConditionalDefaults(*action, *condType, *orderType, *expireDate, time.Now())
 
 	if strings.TrimSpace(*account) == "" {
 		fail("-account is required")
@@ -102,7 +102,7 @@ func main() {
 			*confirmHighValueOrder,
 		)
 	} else {
-		validationErr = validateAction(*action, *orderID, conditionalOrderID, *orderType, *quantity, *symbol, *condType,
+		validationErr = validateAction(*action, *orderID, *conditionalOrderID, *orderType, *quantity, *symbol, *condType,
 			*expireDate, *firstSide, *firstTriggerPrice, second)
 	}
 	if validationErr != nil {
@@ -327,12 +327,18 @@ func validateAmountOrderStock(stocks []toss.StockInfo, symbol string) error {
 	return fmt.Errorf("toss stock lookup did not return symbol %q", symbol)
 }
 
-func applyCreateConditionalDefaults(action, orderType, expireDate string, now time.Time) (string, string) {
+func applyCreateConditionalDefaults(action, condType, orderType, expireDate string, now time.Time) (string, string) {
 	if action != "create-conditional" {
 		return orderType, expireDate
 	}
 	if strings.TrimSpace(orderType) == "" {
-		orderType = "MARKET"
+		switch strings.ToUpper(strings.TrimSpace(condType)) {
+		case "OCO", "OTO":
+			// validateConditionalOrderLegs requires LIMIT for OCO/OTO groups.
+			orderType = "LIMIT"
+		default:
+			orderType = "MARKET"
+		}
 	}
 	if strings.TrimSpace(expireDate) == "" {
 		expireDate = now.In(koreaStandardTime).AddDate(0, 0, 1).Format(time.DateOnly)
@@ -362,7 +368,7 @@ func buildSecondLeg(side, triggerPrice, orderPrice string) *toss.ConditionReques
 // truth for leg-shape rules (SINGLE/OCO/OTO side and orderType constraints);
 // this just catches missing-flag typos early.
 func validateAction(
-	action, orderID string, conditionalOrderID *string, orderType, quantity, symbol, condType,
+	action, orderID, conditionalOrderID, orderType, quantity, symbol, condType,
 	expireDate, firstSide, firstTriggerPrice string, second *toss.ConditionRequest,
 ) error {
 	switch action {
@@ -381,7 +387,7 @@ func validateAction(
 		if action == "create-conditional" && strings.TrimSpace(symbol) == "" {
 			return fmt.Errorf("-symbol is required for -action create-conditional")
 		}
-		if action == "modify-conditional" && strings.TrimSpace(*conditionalOrderID) == "" {
+		if action == "modify-conditional" && strings.TrimSpace(conditionalOrderID) == "" {
 			return fmt.Errorf("-conditional-order-id is required for -action modify-conditional")
 		}
 		normType := strings.ToUpper(strings.TrimSpace(condType))
@@ -414,7 +420,7 @@ func validateAction(
 			}
 		}
 	case "cancel-conditional":
-		if strings.TrimSpace(*conditionalOrderID) == "" {
+		if strings.TrimSpace(conditionalOrderID) == "" {
 			return fmt.Errorf("-conditional-order-id is required for -action cancel-conditional")
 		}
 	}

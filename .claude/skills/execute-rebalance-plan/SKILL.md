@@ -17,9 +17,10 @@ this skill doesn't cover.
 - Ordinary TOSS/ISA execution uses market orders. Do not ask market vs limit.
 - Toss USD amount orders use `MARKET`. Do not ask order type; no expiry applies because this is
   an immediate US regular-session order, not a conditional order.
-- Toss conditional-order creation defaults to `MARKET` and KST tomorrow's calendar date as
-  `expireDate`. Do not ask either value; state both in the dry-run preview. A user-provided
-  order type or expiry overrides the defaults.
+- Toss conditional-order creation defaults order type to `MARKET` for `SINGLE`, `LIMIT` for
+  `OCO`/`OTO` (the API requires LIMIT for those), and expiry to KST tomorrow's calendar date. Do
+  not ask either value; state both in the dry-run preview. A user-provided order type or expiry
+  overrides the defaults.
 - Ask only for genuinely missing trade intent: symbol, quantity/amount, and trigger price.
   Reuse values already resolved in the conversation.
 - Never default away the final live-action confirmation. A Toss conditional order can fire

@@ -15,20 +15,37 @@ func TestApplyCreateConditionalDefaults(t *testing.T) {
 	tests := []struct {
 		name           string
 		action         string
+		condType       string
 		orderType      string
 		expireDate     string
 		wantOrderType  string
 		wantExpireDate string
 	}{
 		{
-			name:           "defaults conditional create",
+			name:           "defaults conditional create for SINGLE",
 			action:         "create-conditional",
+			condType:       "SINGLE",
 			wantOrderType:  "MARKET",
+			wantExpireDate: "2026-07-16",
+		},
+		{
+			name:           "defaults conditional create for OCO to LIMIT",
+			action:         "create-conditional",
+			condType:       "OCO",
+			wantOrderType:  "LIMIT",
+			wantExpireDate: "2026-07-16",
+		},
+		{
+			name:           "defaults conditional create for OTO to LIMIT",
+			action:         "create-conditional",
+			condType:       "OTO",
+			wantOrderType:  "LIMIT",
 			wantExpireDate: "2026-07-16",
 		},
 		{
 			name:           "preserves explicit create values",
 			action:         "create-conditional",
+			condType:       "SINGLE",
 			orderType:      "LIMIT",
 			expireDate:     "2026-07-31",
 			wantOrderType:  "LIMIT",
@@ -37,6 +54,7 @@ func TestApplyCreateConditionalDefaults(t *testing.T) {
 		{
 			name:           "does not default conditional modify",
 			action:         "modify-conditional",
+			condType:       "SINGLE",
 			wantOrderType:  "",
 			wantExpireDate: "",
 		},
@@ -48,6 +66,7 @@ func TestApplyCreateConditionalDefaults(t *testing.T) {
 
 			gotOrderType, gotExpireDate := applyCreateConditionalDefaults(
 				tt.action,
+				tt.condType,
 				tt.orderType,
 				tt.expireDate,
 				now,
