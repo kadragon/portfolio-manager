@@ -292,6 +292,15 @@ Read-only Toss queries (prices, orderbook, holdings, order/conditional-order his
 power, commissions, etc.) landed in `pm toss <verb>` — those carry no execution risk and fit
 `cmd/pm`'s existing data/query surface.
 
+## Revision (2026-07-15): Toss USD amount-based US stock orders
+
+`cmd/toss-order-manage` also exposes `create-amount` for Toss's US-only amount order: the user
+specifies a ticker, side, and exact USD `orderAmount`; Toss fixes the spend amount and determines
+the fractional share quantity at execution. The command always sends `orderType=MARKET`, defaults
+to dry-run, and requires `-yes` for the live call. Toss accepts amount orders only during the US
+regular session, so this is an immediate order path, not a queued or conditional-order substitute.
+The returned `orderId` remains verifiable through `pm toss order`.
+
 ## References
 - Phase 1 + 2 implementation: `internal/db/db.go`, `internal/db/schema.sql`,
   `internal/services/rebalance_service.go` (`canHold`, `_placementScore`;

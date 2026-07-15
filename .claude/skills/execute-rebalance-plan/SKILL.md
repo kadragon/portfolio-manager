@@ -1,6 +1,6 @@
 ---
 name: execute-rebalance-plan
-description: Execute TOSS and ISA orders from a rebalance plan or deposit-allocation list as real market orders, and create Toss conditional/reserved orders, via the KIS/Toss APIs. Use whenever the user asks to place trades — "리밸런싱 지시서대로 주문 넣어줘", "TOSS 계좌 매매 실행해줘", "ISA 매매 해줘", "예치금 매매해줘", "예약 매수", "조건부 주문", or "장이 닫혔는데 주문 걸어줘". Sells finish before buys; every live action needs an exact dry-run preview and explicit final confirmation. Programmatic execution covers ISA and TOSS only; conditional orders cover Toss only.
+description: Execute TOSS and ISA orders from a rebalance plan or deposit-allocation list as real market orders, create Toss conditional/reserved orders, and place Toss USD amount-based US stock orders. Use whenever the user asks to place trades — "리밸런싱 지시서대로 주문 넣어줘", "TOSS 계좌 매매 실행해줘", "ISA 매매 해줘", "예치금 매매해줘", "예약 매수", "조건부 주문", "달러로 미국주식 사줘", "금액 주문", or "장이 닫혔는데 주문 걸어줘". Sells finish before buys; every live action needs an exact dry-run preview and explicit final confirmation. Programmatic execution covers ISA and TOSS only; Toss alone supports conditional and USD amount orders.
 ---
 
 # Execute Rebalance Plan
@@ -15,6 +15,8 @@ this skill doesn't cover.
 ## Defaults — do not ask unless overridden
 
 - Ordinary TOSS/ISA execution uses market orders. Do not ask market vs limit.
+- Toss USD amount orders use `MARKET`. Do not ask order type; no expiry applies because this is
+  an immediate US regular-session order, not a conditional order.
 - Toss conditional-order creation defaults to `MARKET` and KST tomorrow's calendar date as
   `expireDate`. Do not ask either value; state both in the dry-run preview. A user-provided
   order type or expiry overrides the defaults.
@@ -23,6 +25,29 @@ this skill doesn't cover.
 - Never default away the final live-action confirmation. A Toss conditional order can fire
   later without a human present, so preview the complete request and require one explicit
   confirmation before `-yes`.
+
+## Toss USD amount-order mode
+
+This mode does not require a rebalance-plan document. Use it to buy or sell a US ticker by an
+exact dollar amount; Toss determines fractional share quantity at execution time.
+
+1. Resolve the US ticker, side, and USD amount. If the user says to use available USD, read live
+   buying power with `go run ./cmd/pm toss buying-power -account TOSS -currency USD`.
+2. Confirm the US regular session is open with `pm toss market-calendar-us`; amount orders are
+   rejected outside regular hours. Do not represent this as a queued or conditional order.
+3. Preview without `-yes`:
+   ```bash
+   go run ./cmd/toss-order-manage -account TOSS -action create-amount \
+     -symbol <ticker> -side BUY -order-amount <usd>
+   ```
+   Use one stable `-client-order-id` in both preview and live calls when retry safety matters.
+4. Show ticker, side, exact USD amount, `MARKET`, the regular-hours-only constraint, and live
+   Toss base URL. Require explicit confirmation for this exact order.
+5. Rerun the identical command with `-yes`. Read `orderId`, then verify it with:
+   ```bash
+   go run ./cmd/pm toss order -account TOSS -order-id <id>
+   ```
+   Report the broker's returned status; do not equate order acceptance with full execution.
 
 ## Toss conditional buy mode
 
