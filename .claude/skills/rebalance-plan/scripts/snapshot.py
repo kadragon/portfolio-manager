@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from datetime import date
@@ -28,6 +29,9 @@ def main() -> None:
     ap.add_argument("--stale-days", type=int, default=7,
                     help="warn when latest price is older than this many days")
     args = ap.parse_args()
+
+    if not os.path.exists(args.db):
+        raise SystemExit(f"db not found: {args.db} (run from repo root, or pass --db)")
 
     con = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
@@ -66,7 +70,7 @@ def main() -> None:
         p = con.execute(LATEST_PRICE_SQL, (r["ticker"],)).fetchone()
         if p is None:
             warnings.append(f"no price for {r['ticker']} — value set to 0")
-            price, currency, value = 0.0, "KRW", 0.0
+            price, currency, value = 0.0, None, 0.0
         elif float(p["price"]) <= 0:
             warnings.append(
                 f"non-positive price {p['price']} for {r['ticker']} ({p['price_date'][:10]}) "

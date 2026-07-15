@@ -2,15 +2,14 @@
 name: portfolio-data
 description: >-
   Create, read, update, and delete accounts, groups, stocks, deposits, and
-  holdings in the portfolio-manager DB, and show the portfolio dashboard —
-  via `go run ./cmd/pm`, the CLI that replaced the app's web UI. Use whenever
-  the user wants to manage portfolio data directly: "계좌 추가해줘", "계좌 목록
-  보여줘", "예수금 얼마로 바꿔줘", "입금 기록해줘", "이번 달 적립금 입력", "종목 추가해줘",
-  "종목을 다른 그룹으로 옮겨줘", "보유수량 수정해줘", "이 종목 삭제해줘", "그룹 목표비중 바꿔줘",
-  "지금 포트폴리오 어때?", "대시보드 보여줘", "총 자산 얼마야", or any request to view or edit
-  accounts/groups/stocks/deposits/holdings that isn't about rebalancing trades
-  (use rebalance-plan/execute-rebalance-plan for those) or broker sync/price
-  refresh (use portfolio-sync for those).
+  holdings in the portfolio-manager DB, and show the dashboard — via
+  `go run ./cmd/pm`, the CLI that replaced the web UI. Use for direct
+  portfolio data edits: "계좌 추가해줘", "계좌 목록 보여줘", "예수금 얼마로 바꿔줘", "입금
+  기록해줘", "이번 달 적립금 입력", "종목 추가해줘", "종목을 다른 그룹으로 옮겨줘", "보유수량
+  수정해줘", "이 종목 삭제해줘", "그룹 목표비중 바꿔줘", "지금 포트폴리오 어때?", "대시보드
+  보여줘", "총 자산 얼마야" — excluding rebalancing trades (→
+  rebalance-plan/execute-rebalance-plan) and broker sync/price refresh (→
+  portfolio-sync).
 ---
 
 # Portfolio Data
@@ -62,8 +61,13 @@ without re-reading the full collection. Never guess or fabricate a UUID.
 - Account JSON never exposes the KIS API key slot value or credentials — there is no field
   derived from it at all (not even a presence flag), to avoid retripping a CodeQL
   clear-text-logging alert this repo has hit before.
-- `pm deposit update -id X -note "/clear"` nulls an existing note. An empty/omitted `-note` on
-  `update` leaves the existing note untouched — it is *not* the same as clearing it.
+- **`/clear` semantics differ by command — check which one you're on before passing an empty
+  value:**
+  - `account update` on `-kis-account-no`/`-kis-api-key-id`/`-account-type`/`-toss-account-seq`:
+    **empty string or `/clear` both clear** the field.
+  - `deposit update -note`: **only the literal `/clear` clears** it — an empty or omitted
+    `-note` leaves the existing note **untouched** (not cleared). Passing `-note ""` on a
+    deposit update is a no-op, not a clear, unlike the account fields above.
 - `update`/`account`/`group`/`stock` verbs only touch the flags you actually pass — every other
   field on the row is preserved as-is. Don't re-pass unrelated fields "just in case".
 - `holding bulk -updates "id1:qty1,id2:qty2"` takes a comma-separated list of `holdingID:qty`

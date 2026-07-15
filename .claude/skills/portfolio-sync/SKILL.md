@@ -3,17 +3,14 @@ name: portfolio-sync
 description: >-
   Sync an account's holdings/cash from its linked broker (KIS or Toss),
   refresh stock prices, or backfill stock asset-class classification — via
-  `go run ./cmd/pm`, the CLI that replaced the app's web UI (and its removed
-  15-minute background price-sync job; everything here is now on-demand
-  only). Use whenever the user asks to sync/refresh broker or price data:
-  "ISA 동기화해줘", "TOSS 계좌 동기화", "계좌 동기화해줘", "가격 갱신해줘", "가격 동기화",
-  "시세 업데이트", "가격이 오래됐어", "자산분류 채워줘", "ETF인지 주식인지 분류해줘", or when
-  another skill (e.g. rebalance-plan) reports stale prices and needs them
-  refreshed before it can proceed. For sync/price/classification *failures*
-  (auth errors, empty snapshots, KIS not configured, wrong environment), use
-  this skill to run the command and read the error, then hand off to
-  kis-debug for root-cause diagnosis if the fix isn't obvious from the error
-  text alone.
+  `go run ./cmd/pm`, the CLI that replaced the web UI and its removed
+  background price-sync job (everything here is on-demand). Use for: "ISA
+  동기화해줘", "TOSS 계좌 동기화", "계좌 동기화해줘", "가격 갱신해줘", "가격 동기화", "시세
+  업데이트", "가격이 오래됐어", "자산분류 채워줘", "ETF인지 주식인지 분류해줘", or when another
+  skill reports stale prices needing refresh. For sync/price/classification
+  failures (auth errors, empty snapshots, KIS not configured, wrong
+  environment), run the command here, then hand off to kis-debug if the fix
+  isn't obvious.
 ---
 
 # Portfolio Sync

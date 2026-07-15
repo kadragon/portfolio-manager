@@ -1,20 +1,23 @@
 ---
 name: kis-debug
 description: >-
-  Diagnose KIS Open Trading API failures in the portfolio-manager Go app —
-  auth/token errors (EGW00123, 500), wrong-environment routing, overseas price
-  returning empty/zero, account-sync errors (OPSQ2000 INVALID_CHECK_ACNO),
-  multi-API-key sets (KIS_APP_KEY_2) not taking effect, and missing FX/exchange
-  rates. Use this whenever a `pm sync` call fails, prices don't render, a
-  KIS-related error code or stack trace appears, exchange rates look wrong, or
-  the user reports "동기화 실패", "가격 조회 안됨", "해외 주식", "환율", or pastes a
-  koreainvestment.com / koreaexim.go.kr error — even if they don't name KIS
-  explicitly. Maps symptom → root cause → check command or fix.
+  Diagnose KIS Open Trading API and Toss Invest API failures in the
+  portfolio-manager Go app — KIS auth/token errors (EGW00123, 500),
+  wrong-environment routing, overseas price returning empty/zero, account-sync
+  errors (OPSQ2000 INVALID_CHECK_ACNO), multi-API-key sets (KIS_APP_KEY_2) not
+  taking effect, missing FX/exchange rates; Toss client silently nil (missing
+  TOSS_CLIENT_ID/SECRET), Toss OAuth/order errors, TossAccountSeq not linked.
+  Use when a `pm sync`/`pm toss`/`toss-order-manage`/`rebalance-order` call
+  fails, prices don't render, a KIS or Toss error code or stack trace appears,
+  exchange rates look wrong, or the user reports "동기화 실패", "가격 조회 안됨",
+  "해외 주식", "환율", "토스 주문 실패", "토스 동기화 안됨", or pastes a
+  koreainvestment.com / koreaexim.go.kr / tossinvest.com error — even without
+  naming KIS or Toss. Maps symptom → root cause → fix.
 ---
 
-# KIS API Debug
+# KIS / Toss API Debug
 
-Diagnostic decision-tree for KIS Open Trading API failures. Match the symptom, find the cause, run the check or apply the fix. Scoped to **debugging** — not a feature tutorial.
+Diagnostic decision-tree for KIS Open Trading API and Toss Invest API failures. Match the symptom, find the cause, run the check or apply the fix. Scoped to **debugging** — not a feature tutorial. KIS sections are below; Toss sections are under [Toss API failures](#toss-api-failures) further down.
 
 ## Hard safety rule — read first
 
@@ -146,6 +149,88 @@ sqlite3 .data/portfolio.db "select ticker, price_date, price from stock_prices w
 ```
 If the two rows are identical and the earlier date was a non-trading day for that ticker's market, the `0%` is expected; re-run `price-sync` on the next trading day to get a real `1d` value.
 
+## Toss API failures
+
+Toss has a much thinner error surface than KIS: no file-cached token, no env-name routing to
+typo, and no code-to-action dispatch table in `internal/toss` (unlike KIS's `error_handler.go`).
+Most Toss diagnosis is "read the wrapped error text" rather than "match a known code."
+
+### 9. Toss client silently `nil` — every Toss call fails with "not configured"
+
+`buildTossClient` (`internal/container/container.go:620-629`) reads `TOSS_CLIENT_ID` /
+`TOSS_CLIENT_SECRET`; if either is blank, it returns `nil` **without raising an error** —
+`Container.TossClient` stays nil and `TossAccountSync` is never built. The error only surfaces
+later at the call site, not at startup:
+
+- `pm toss <verb>`: `"toss client not configured (.env TOSS_CLIENT_ID/TOSS_CLIENT_SECRET)"` (`cmd/pm/toss.go:112-116`)
+- `toss-order-manage`: `"Toss is not configured (.env TOSS_CLIENT_ID/TOSS_CLIENT_SECRET)"` (`cmd/toss-order-manage/main.go:121`)
+- `rebalance-order` / order execution: `"account %q is Toss-linked but no Toss client is configured"` (`internal/services/order_execution_service.go:109`)
+
+```bash
+grep -E '^TOSS_(CLIENT_ID|CLIENT_SECRET)=' .env   # both must be non-empty
+```
+
+### 10. Account not linked to Toss
+
+`"account %q is not linked to a Toss accountSeq"` (`cmd/pm/toss.go:126-128`,
+`cmd/toss-order-manage/main.go:481-483`) means the account row has no `TossAccountSeq` set —
+that's a portfolio-data `account update -toss-account-seq` task, not a Toss API problem.
+
+### 11. Toss auth/OAuth errors
+
+OAuth2 client-credentials flow, `internal/toss/client.go:179-221`. POSTs to
+`{TOSS_BASE_URL}/oauth2/token`; the token is cached **in-memory only** for the process lifetime
+(no `.data/*.json` file like KIS) and reused until ~1 minute before expiry (`client.go:184`).
+Auth failure format: `"toss auth HTTP {status}: {error}: {error_description}"`
+(`parseOAuthError`, `internal/toss/http.go:144-156`) — e.g. an `invalid_client` error means the
+client ID/secret pair itself is wrong, not an expired token.
+
+Token issuance is documented as **rate-limited to ~1/min** at the API level
+(`internal/toss/client_live_test.go:58`), same caution as KIS: don't loop live Toss auth calls
+to "verify" a fix.
+
+### 12. Toss API errors (orders, market data, account)
+
+Non-auth failures go through `parseAPIError` (`internal/toss/http.go:132-142`):
+`"{prefix} HTTP {status}: {code}: {message} (request_id={id})"` — `{prefix}` is a call-site
+string like `"toss conditional order"` or `"toss price-limits"`, so the prefix itself tells you
+which endpoint failed. Read `{code}`/`{message}` as the actual signal; there's no app-side
+code-to-action table to consult, unlike KIS's `EGW00123`. Codes seen in this repo's tests only
+(not a documented exhaustive list) include `INVALID_ACCOUNT`, `RATE_LIMIT_EXCEEDED` — treat
+`RATE_LIMIT_EXCEEDED` as "back off and retry later," not as a config problem.
+
+There's no client-side pre-check for market-closed or insufficient-balance conditions (e.g.
+`create-amount` outside US regular hours) — those come back as a Toss server error through
+`parseAPIError`, not a distinct app error path. Confirm market hours with
+`pm toss market-calendar-us` before assuming the error text is wrong.
+
+### 13. Wrong Toss base URL
+
+Unlike `KIS_ENV`, Toss has **no sandbox/live split to route between** — there is one
+`defaultBaseURL = "https://openapi.tossinvest.com"` (`internal/toss/client.go:23`), only
+overridable via `TOSS_BASE_URL` (`container.go:626`). So a "wrong environment" symptom here
+almost always means `TOSS_BASE_URL` is explicitly (and probably accidentally) set to something
+else, not a typo silently falling back to production the way `KIS_ENV` does:
+
+```bash
+grep -E '^TOSS_BASE_URL=' .env   # unset is normal; if set, confirm it's intentional
+```
+`toss-order-manage` prints the resolved base URL as a live-money warning on every run
+(`"Toss base URL=%q — this places a LIVE order-management action against real money"`,
+`main.go:123`) — treat that banner the same way as the `KIS_ENV` banner in
+execute-rebalance-plan: read it before confirming any `-yes` run.
+
+### 14. Live Toss check
+
+```bash
+TOSS_LIVE=1 go test ./internal/toss -run TestLiveFetchAccountSnapshot -count=1 -v
+```
+Documented in `docs/runbook.md:52`, gated by `internal/toss/client_live_test.go:18-19`. Needs
+`TOSS_CLIENT_ID`/`TOSS_CLIENT_SECRET` (optional `TOSS_ACCOUNT_SEQ`/`TOSS_BASE_URL`). Read-only —
+`TestLiveTossReadEndpoints` sweeps read endpoints only; live tests never place a real order
+(`client_live_test.go:61-63`). Same rule as KIS: don't write a throwaway script that hits
+`/oauth2/token` in a loop.
+
 ## Output contract
 
-Always close a diagnosis with **(a) the named root cause** and **(b) a concrete next step** — a check command to confirm or the exact fix. Don't stop at "it's probably the env"; state which env value, what it should be, and the command to verify. If live verification is needed, use the `KIS_LIVE=1` test — never loop auth.
+Always close a diagnosis with **(a) the named root cause** and **(b) a concrete next step** — a check command to confirm or the exact fix. Don't stop at "it's probably the env"; state which env value, what it should be, and the command to verify. If live verification is needed, use the `KIS_LIVE=1` (KIS) or `TOSS_LIVE=1` (Toss) test — never loop auth.

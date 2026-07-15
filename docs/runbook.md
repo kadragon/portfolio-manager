@@ -43,6 +43,16 @@ go test -tags integration ./...   # 통합 테스트 포함
 go test ./internal/arch/   # 아키텍처 가드 (레이어 경계)
 ```
 
+### rebalance-plan / execute-rebalance-plan 스킬 스크립트 (Python)
+
+`.claude/skills/{rebalance-plan,execute-rebalance-plan}/scripts/*.py`는 Go 빌드에 포함되지 않는
+독립 유틸리티 — 표준 라이브러리 `unittest`로 커버:
+
+```bash
+python3 -m unittest discover -s .claude/skills/rebalance-plan/scripts -p 'test_*.py'
+python3 -m unittest discover -s .claude/skills/execute-rebalance-plan/scripts -p 'test_*.py'
+```
+
 ### Live API smoke tests
 
 Live tests are opt-in and must never run in CI by default.

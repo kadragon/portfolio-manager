@@ -66,11 +66,15 @@ def main() -> None:
         cash, buys, sells = D(a["cash_krw"]), D(a["buys_krw"]), D(a["sells_krw"])
         pre_value = D(a["pre_value_krw"])
         available = sells + cash
+        remainder = available - buys
         if buys > available:
             failures.append(
                 f"[account:{a['name']}] buys {buys} exceed sells+cash {available}"
             )
-        remainder = available - buys
+            # Don't let a negative remainder from this failure deflate post_total below —
+            # it would understate every group's denominator and manufacture unrelated
+            # downstream group-band failures on top of the real cash-overrun failure.
+            remainder = D(0)
         post_cash_total += remainder
         limit = pre_value * D(args.remainder_pct) / D(100)
         if pre_value > 0 and remainder > limit:
