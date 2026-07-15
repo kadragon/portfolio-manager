@@ -72,17 +72,6 @@ func runSync(ctx context.Context, c *container.Container, args []string) error {
 		}
 		return printJSON(result)
 
-	case c.KisCano != "":
-		syncSvc := c.SyncServiceForKeyID(acct.KisAPIKeyID)
-		if syncSvc == nil {
-			return fmt.Errorf("KIS sync service not configured (.env KIS_CANO/KIS_ACNT_PRDT_CD)")
-		}
-		result, err := syncSvc.SyncAccount(ctx, acct, c.KisCano, c.KisAcntPrdtCd, *confirmEmpty)
-		if err != nil {
-			return syncErr(err)
-		}
-		return printJSON(result)
-
 	default:
 		return fmt.Errorf("account %q has no KIS account number or Toss accountSeq linked", acct.Name)
 	}
