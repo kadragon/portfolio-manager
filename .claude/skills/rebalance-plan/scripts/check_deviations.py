@@ -83,7 +83,7 @@ def main() -> None:
         print(f"TRADE-NEEDED [placement violation] {v}")
 
     print()
-    print("some groups need trades" if any_trade else "no groups need trades — 이번 점검 매매 불필요")
+    print("some groups need trades" if any_trade else "no groups need trades")
 
 
 if __name__ == "__main__":

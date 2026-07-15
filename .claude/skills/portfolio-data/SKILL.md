@@ -55,19 +55,23 @@ without re-reading the full collection. Never guess or fabricate a UUID.
 - Dates (`-date` on `deposit`) are ISO `YYYY-MM-DD`.
 - Tickers are case-insensitive on input — `cmd/pm` upper-cases them itself.
 - `account-type` is one of `brokerage|irp|pension|isa`; anything else is rejected.
-- On `account update`, an empty string or `/clear` on `-kis-account-no`, `-kis-api-key-id`,
-  `-account-type`, or `-toss-account-seq` resets the corresponding nullable broker metadata.
-  Clear each field explicitly; clearing one does not silently clear another.
+- On `account update`, `-kis-account-no`/`-kis-api-key-id`/`-toss-account-seq` reset to null on
+  either an empty string or `/clear`. Clear each field explicitly; clearing one does not silently
+  clear another.
 - Account JSON never exposes the KIS API key slot value or credentials — there is no field
   derived from it at all (not even a presence flag), to avoid retripping a CodeQL
   clear-text-logging alert this repo has hit before.
-- **`/clear` semantics differ by command — check which one you're on before passing an empty
-  value:**
-  - `account update` on `-kis-account-no`/`-kis-api-key-id`/`-account-type`/`-toss-account-seq`:
-    **empty string or `/clear` both clear** the field.
+- **`/clear` semantics differ by field/command — check which one you're on before passing an
+  empty value:**
+  - `account update -kis-account-no`/`-kis-api-key-id`/`-toss-account-seq`: **empty string or
+    `/clear` both clear** the field.
+  - `account update -account-type`: **only the literal `/clear` clears** it — an empty string
+    (`-account-type ""`) is **not** treated as a clear signal and instead fails validation
+    (`invalid -account-type ""`), because it falls through to the same
+    `brokerage|irp|pension|isa` check as any other value.
   - `deposit update -note`: **only the literal `/clear` clears** it — an empty or omitted
-    `-note` leaves the existing note **untouched** (not cleared). Passing `-note ""` on a
-    deposit update is a no-op, not a clear, unlike the account fields above.
+    `-note` leaves the existing note **untouched** (not cleared, and not an error). Passing
+    `-note ""` on a deposit update is a silent no-op.
 - `update`/`account`/`group`/`stock` verbs only touch the flags you actually pass — every other
   field on the row is preserved as-is. Don't re-pass unrelated fields "just in case".
 - `holding bulk -updates "id1:qty1,id2:qty2"` takes a comma-separated list of `holdingID:qty`

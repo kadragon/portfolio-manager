@@ -225,7 +225,7 @@ execute-rebalance-plan: read it before confirming any `-yes` run.
 ```bash
 TOSS_LIVE=1 go test ./internal/toss -run TestLiveFetchAccountSnapshot -count=1 -v
 ```
-Documented in `docs/runbook.md:52`, gated by `internal/toss/client_live_test.go:18-19`. Needs
+Documented in `docs/runbook.md` §Live API smoke tests, gated by `internal/toss/client_live_test.go:18-19`. Needs
 `TOSS_CLIENT_ID`/`TOSS_CLIENT_SECRET` (optional `TOSS_ACCOUNT_SEQ`/`TOSS_BASE_URL`). Read-only —
 `TestLiveTossReadEndpoints` sweeps read endpoints only; live tests never place a real order
 (`client_live_test.go:61-63`). Same rule as KIS: don't write a throwaway script that hits

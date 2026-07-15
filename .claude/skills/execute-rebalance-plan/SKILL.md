@@ -154,9 +154,16 @@ So split into two hard phases, never interleaved:
 skip — before starting Phase B.
 
 **Phase B — all buy orders.** Before Phase B starts, re-check each account against what Phase A
-actually delivered, not what the plan assumed. For each account, sum only the **successful**
-sells' proceeds (skip failed/skipped lines), add existing cash, and sum the buy lines still to
-execute; run:
+actually delivered, not what the plan assumed. `OrderExecutionRecord.Status == "success"` proves
+the broker *accepted* the order, not that proceeds settled at a known price — the record carries
+no fill price or amount, so don't derive `sell_proceeds_krw` by multiplying the plan's estimated
+price by quantity for successful lines. Instead, for each account that had a sell in Phase A, run
+`go run ./cmd/pm sync -account "<name>"` (portfolio-sync skill) to pull the broker's actual
+post-sell cash balance, and use that synced value as the account's `existing_cash_krw` input
+below with `sell_proceeds_krw: 0` (the sync already folds proceeds into cash — don't add them a
+second time). An account with no sells this run doesn't need a re-sync; use its existing cash
+as-is.
+Sum the buy lines still to execute per account, then run:
 
 ```bash
 python3 .claude/skills/execute-rebalance-plan/scripts/check_cash_availability.py --file <accounts.json>

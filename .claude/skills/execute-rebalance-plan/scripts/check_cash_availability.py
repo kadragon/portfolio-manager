@@ -14,9 +14,15 @@ Input: JSON on stdin or --file, shaped as:
   ]
 }
 
-sell_proceeds_krw: sum of only the sells that actually succeeded this run
-(skip failed/skipped lines). planned_buys_krw: sum of the buy lines still to
-execute in Phase B for that account.
+existing_cash_krw should be a freshly-synced broker balance (`pm sync -account`),
+taken *after* Phase A's sells for any account that sold — not the plan's
+pre-trade cash plus an estimated sell_proceeds_krw. An order's success status
+proves the broker accepted it, not what it actually settled for, so
+sell_proceeds_krw should normally be 0 (proceeds are already folded into the
+synced existing_cash_krw); only pass a nonzero sell_proceeds_krw as an
+explicit, clearly-labeled estimate when a resync genuinely isn't possible.
+planned_buys_krw: sum of the buy lines still to execute in Phase B for that
+account.
 
 Exit 0 = every account's buys fit; exit 1 = at least one account is short
 (see printed detail) — this gates Phase B, it does not decide what to do

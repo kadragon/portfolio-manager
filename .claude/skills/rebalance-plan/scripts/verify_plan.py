@@ -71,10 +71,13 @@ def main() -> None:
             failures.append(
                 f"[account:{a['name']}] buys {buys} exceed sells+cash {available}"
             )
-            # Don't let a negative remainder from this failure deflate post_total below —
-            # it would understate every group's denominator and manufacture unrelated
-            # downstream group-band failures on top of the real cash-overrun failure.
-            remainder = D(0)
+        # Sum the raw (possibly negative) remainder, not a clamped one: post_total below is
+        # only a correct portfolio-wide denominator (== pre_total + sum of all pre-trade cash,
+        # an identity that holds whenever check 3's money-conservation passes) because the
+        # buys/sells terms cancel out in aggregate. Clamping any single account's remainder to
+        # zero would break that cancellation and silently distort post_pct for every group, not
+        # just the offending account's — the account-level failure above is the correct signal
+        # for this case, and check 2 below is expected to look unusual alongside it.
         post_cash_total += remainder
         limit = pre_value * D(args.remainder_pct) / D(100)
         if pre_value > 0 and remainder > limit:
