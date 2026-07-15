@@ -1,5 +1,6 @@
-// Command toss-order-manage modifies or cancels an existing Toss order, and
-// creates/modifies/cancels Toss conditional orders (SINGLE/OCO/OTO).
+// Command toss-order-manage creates USD amount-based US stock orders,
+// modifies or cancels an existing Toss order, and creates/modifies/cancels
+// Toss conditional orders (SINGLE/OCO/OTO).
 //
 // Conditional orders are a deliberate, scoped exception to this codebase's
 // "no unattended/scheduled execution" guarantee: once created, Toss's
@@ -26,34 +27,47 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/container"
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/toss"
 )
 
 const usage = `usage:
+  toss-order-manage -account NAME -action create-amount -symbol US_TICKER -side BUY|SELL -order-amount USD_AMOUNT [-client-order-id ID] [-confirm-high-value-order] [-yes]
   toss-order-manage -account NAME -action modify -order-id ID -order-type LIMIT|MARKET [-quantity N] [-price P] [-confirm-high-value-order] [-yes]
   toss-order-manage -account NAME -action cancel -order-id ID [-yes]
-  toss-order-manage -account NAME -action create-conditional -symbol T -type SINGLE|OCO|OTO -quantity N -order-type LIMIT|MARKET -expire-date YYYY-MM-DD -first-side BUY|SELL -first-trigger-price P [-first-order-price P] [-second-side BUY|SELL] [-second-trigger-price P] [-second-order-price P] [-client-order-id ID] [-confirm-high-value-order] [-yes]
+  toss-order-manage -account NAME -action create-conditional -symbol T -type SINGLE|OCO|OTO -quantity N [-order-type LIMIT|MARKET] [-expire-date YYYY-MM-DD] -first-side BUY|SELL -first-trigger-price P [-first-order-price P] [-second-side BUY|SELL] [-second-trigger-price P] [-second-order-price P] [-client-order-id ID] [-confirm-high-value-order] [-yes]
   toss-order-manage -account NAME -action modify-conditional -conditional-order-id ID -type SINGLE|OCO|OTO -quantity N -order-type LIMIT|MARKET -expire-date YYYY-MM-DD -first-side BUY|SELL -first-trigger-price P [-first-order-price P] [-second-side BUY|SELL] [-second-trigger-price P] [-second-order-price P] [-confirm-high-value-order] [-yes]
   toss-order-manage -account NAME -action cancel-conditional -conditional-order-id ID [-yes]
+
+create-amount: US market orders only; accepted during US regular market hours only
+create-conditional defaults: order-type=MARKET (SINGLE) or LIMIT (OCO/OTO), expire-date=tomorrow in KST
 `
+
+var koreaStandardTime = time.FixedZone("KST", 9*60*60)
+
+var decimalAmountPattern = regexp.MustCompile(`^\d+(\.\d+)?$`)
 
 func main() {
 	account := flag.String("account", "", "account name, exact or unique substring match; must be linked to a Toss accountSeq")
-	action := flag.String("action", "", "modify|cancel|create-conditional|modify-conditional|cancel-conditional")
+	action := flag.String("action", "", "create-amount|modify|cancel|create-conditional|modify-conditional|cancel-conditional")
 	orderID := flag.String("order-id", "", "existing order ID (modify/cancel)")
 	conditionalOrderID := flag.String("conditional-order-id", "", "existing conditional order ID (modify-conditional/cancel-conditional)")
-	orderType := flag.String("order-type", "", "LIMIT or MARKET")
+	orderType := flag.String("order-type", "", "LIMIT or MARKET (create-conditional default: MARKET for SINGLE, LIMIT for OCO/OTO)")
 	quantity := flag.String("quantity", "", "share quantity")
 	price := flag.String("price", "", "limit price (modify only)")
 	confirmHighValueOrder := flag.Bool("confirm-high-value-order", false, "acknowledge Toss's high-value-order confirmation requirement")
-	symbol := flag.String("symbol", "", "ticker symbol (create-conditional)")
+	symbol := flag.String("symbol", "", "ticker symbol (create-amount/create-conditional)")
+	side := flag.String("side", "", "BUY or SELL (create-amount)")
+	orderAmount := flag.String("order-amount", "", "USD amount (create-amount, US MARKET only)")
 	condType := flag.String("type", "", "SINGLE|OCO|OTO (conditional orders)")
-	expireDate := flag.String("expire-date", "", "YYYY-MM-DD (conditional orders)")
-	clientOrderID := flag.String("client-order-id", "", "optional client-supplied order ID (create-conditional)")
+	expireDate := flag.String("expire-date", "", "YYYY-MM-DD (create-conditional default: tomorrow in KST)")
+	clientOrderID := flag.String("client-order-id", "", "optional client-supplied order ID (create-amount/create-conditional)")
 	firstSide := flag.String("first-side", "", "BUY|SELL (conditional orders, first leg)")
 	firstTriggerPrice := flag.String("first-trigger-price", "", "trigger price for the first leg")
 	firstOrderPrice := flag.String("first-order-price", "", "order price for the first leg (required iff order-type LIMIT)")
@@ -65,20 +79,34 @@ func main() {
 
 	*action = strings.ToLower(strings.TrimSpace(*action))
 	switch *action {
-	case "modify", "cancel", "create-conditional", "modify-conditional", "cancel-conditional":
+	case "create-amount", "modify", "cancel", "create-conditional", "modify-conditional", "cancel-conditional":
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
+	*orderType, *expireDate = applyCreateConditionalDefaults(*action, *condType, *orderType, *expireDate, time.Now())
 
 	if strings.TrimSpace(*account) == "" {
 		fail("-account is required")
 	}
 
 	second := buildSecondLeg(*secondSide, *secondTriggerPrice, *secondOrderPrice)
-	if err := validateAction(*action, *orderID, conditionalOrderID, *orderType, *quantity, *symbol, *condType,
-		*expireDate, *firstSide, *firstTriggerPrice, second); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	var amountReq toss.OrderCreateRequest
+	var validationErr error
+	if *action == "create-amount" {
+		amountReq, validationErr = buildAmountOrderRequest(
+			*symbol,
+			*side,
+			*orderAmount,
+			*clientOrderID,
+			*confirmHighValueOrder,
+		)
+	} else {
+		validationErr = validateAction(*action, *orderID, *conditionalOrderID, *orderType, *quantity, *symbol, *condType,
+			*expireDate, *firstSide, *firstTriggerPrice, second)
+	}
+	if validationErr != nil {
+		fmt.Fprintln(os.Stderr, validationErr)
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
@@ -100,6 +128,15 @@ func main() {
 		log.Fatalf("resolve account: %v", err)
 	}
 	accountSeq := fmt.Sprintf("%d", *acct.TossAccountSeq)
+	if *action == "create-amount" {
+		stocks, err := c.TossClient.GetStocks(ctx, []string{amountReq.Symbol})
+		if err != nil {
+			log.Fatalf("look up amount-order stock: %v", err)
+		}
+		if err := validateAmountOrderStock(stocks, amountReq.Symbol); err != nil {
+			log.Fatalf("validate amount-order stock: %v", err)
+		}
+	}
 
 	first := toss.ConditionRequest{
 		OrderSide:    strings.ToUpper(strings.TrimSpace(*firstSide)),
@@ -108,6 +145,20 @@ func main() {
 	}
 
 	switch *action {
+	case "create-amount":
+		if !*yes {
+			printDryRun("create-amount", *account, accountSeq, map[string]any{
+				"request":    amountReq,
+				"constraint": "US regular market hours only",
+			})
+			return
+		}
+		resp, err := c.TossClient.CreateOrder(ctx, accountSeq, amountReq)
+		if err != nil {
+			log.Fatalf("create amount order: %v", err)
+		}
+		printJSON(resp)
+
 	case "modify":
 		// Fetch the order being changed so the preview shows what it IS, not
 		// just what it will become — without this, a human confirming -yes
@@ -218,6 +269,83 @@ func main() {
 	}
 }
 
+func buildAmountOrderRequest(
+	symbol, side, orderAmount, clientOrderID string,
+	confirmHighValueOrder bool,
+) (toss.OrderCreateRequest, error) {
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if symbol == "" {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-symbol is required for -action create-amount")
+	}
+
+	side = strings.ToUpper(strings.TrimSpace(side))
+	if side != "BUY" && side != "SELL" {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-side must be BUY or SELL, got %q", side)
+	}
+
+	orderAmount = strings.TrimSpace(orderAmount)
+	if orderAmount == "" {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-order-amount is required for -action create-amount")
+	}
+	if len(orderAmount) > 30 {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-order-amount must be at most 30 characters")
+	}
+	if !decimalAmountPattern.MatchString(orderAmount) {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-order-amount must be a positive decimal, got %q", orderAmount)
+	}
+	amount, err := numeric.FromString(orderAmount)
+	if err != nil {
+		return toss.OrderCreateRequest{}, fmt.Errorf("parse -order-amount: %w", err)
+	}
+	if !amount.IsPositive() {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-order-amount must be greater than zero")
+	}
+
+	return toss.OrderCreateRequest{
+		ClientOrderID:         strings.TrimSpace(clientOrderID),
+		Symbol:                symbol,
+		Side:                  side,
+		OrderType:             "MARKET",
+		OrderAmount:           orderAmount,
+		ConfirmHighValueOrder: confirmHighValueOrder,
+	}, nil
+}
+
+func validateAmountOrderStock(stocks []toss.StockInfo, symbol string) error {
+	for _, stock := range stocks {
+		if !strings.EqualFold(stock.Symbol, symbol) {
+			continue
+		}
+		if !strings.EqualFold(stock.Currency, "USD") {
+			return fmt.Errorf("symbol %q must be a USD stock for amount orders, got currency %q", symbol, stock.Currency)
+		}
+		if !strings.EqualFold(stock.Status, "ACTIVE") {
+			return fmt.Errorf("symbol %q is not active, got status %q", symbol, stock.Status)
+		}
+		return nil
+	}
+	return fmt.Errorf("toss stock lookup did not return symbol %q", symbol)
+}
+
+func applyCreateConditionalDefaults(action, condType, orderType, expireDate string, now time.Time) (string, string) {
+	if action != "create-conditional" {
+		return orderType, expireDate
+	}
+	if strings.TrimSpace(orderType) == "" {
+		switch strings.ToUpper(strings.TrimSpace(condType)) {
+		case "OCO", "OTO":
+			// validateConditionalOrderLegs requires LIMIT for OCO/OTO groups.
+			orderType = "LIMIT"
+		default:
+			orderType = "MARKET"
+		}
+	}
+	if strings.TrimSpace(expireDate) == "" {
+		expireDate = now.In(koreaStandardTime).AddDate(0, 0, 1).Format(time.DateOnly)
+	}
+	return orderType, expireDate
+}
+
 // buildSecondLeg builds the second ConditionRequest leg from flags, or
 // returns nil if none of the second-leg flags were set (SINGLE orders have
 // no second leg).
@@ -240,7 +368,7 @@ func buildSecondLeg(side, triggerPrice, orderPrice string) *toss.ConditionReques
 // truth for leg-shape rules (SINGLE/OCO/OTO side and orderType constraints);
 // this just catches missing-flag typos early.
 func validateAction(
-	action, orderID string, conditionalOrderID *string, orderType, quantity, symbol, condType,
+	action, orderID, conditionalOrderID, orderType, quantity, symbol, condType,
 	expireDate, firstSide, firstTriggerPrice string, second *toss.ConditionRequest,
 ) error {
 	switch action {
@@ -259,7 +387,7 @@ func validateAction(
 		if action == "create-conditional" && strings.TrimSpace(symbol) == "" {
 			return fmt.Errorf("-symbol is required for -action create-conditional")
 		}
-		if action == "modify-conditional" && strings.TrimSpace(*conditionalOrderID) == "" {
+		if action == "modify-conditional" && strings.TrimSpace(conditionalOrderID) == "" {
 			return fmt.Errorf("-conditional-order-id is required for -action modify-conditional")
 		}
 		normType := strings.ToUpper(strings.TrimSpace(condType))
@@ -292,7 +420,7 @@ func validateAction(
 			}
 		}
 	case "cancel-conditional":
-		if strings.TrimSpace(*conditionalOrderID) == "" {
+		if strings.TrimSpace(conditionalOrderID) == "" {
 			return fmt.Errorf("-conditional-order-id is required for -action cancel-conditional")
 		}
 	}
