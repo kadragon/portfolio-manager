@@ -129,3 +129,38 @@ func TestCmdHasNoDirectDBAccess(t *testing.T) {
 		t.Fatalf("walk %s: %v", dir, err)
 	}
 }
+
+// GP-1 (skill-script variant): Claude Code skill scripts under .claude/skills
+// must not read the app database directly — they invoke `pm` subcommands, which
+// go through the repository layer. snapshot.py used to `import sqlite3` and query
+// .data/portfolio.db, duplicating repository logic and coupling to the schema;
+// it was replaced by `pm snapshot`. This keeps that bypass from creeping back.
+func TestSkillScriptsHaveNoDirectDBAccess(t *testing.T) {
+	root := repoRoot(t)
+	dir := filepath.Join(root, ".claude", "skills")
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return // no skills checked out — nothing to enforce
+	}
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(path, ".py") {
+			return nil
+		}
+		src, rerr := os.ReadFile(path) //nolint:gosec // path is walked under the repo tree
+		if rerr != nil {
+			return rerr
+		}
+		rel, _ := filepath.Rel(root, path)
+		for _, marker := range []string{"import sqlite3", "sqlite3.connect", "portfolio.db"} {
+			if strings.Contains(string(src), marker) {
+				t.Errorf("%s references %q (GP-1: skill scripts must call `pm`, not read the DB directly)", rel, marker)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", dir, err)
+	}
+}

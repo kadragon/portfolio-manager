@@ -19,6 +19,7 @@
 - `go vet` 통과 필수
 - 에러는 `fmt.Errorf(..., %w)`로 래핑, `errors.Is`/`errors.As`로 검사 (errorlint)
 - 외부 IO·비결정 의존성만 모킹; 그 외 통합 테스트 우선
+- `datex.Date` 날짜 차이: raw `time.Sub(...).Hours()/24` 금지 — DB에서 스캔된 값은 KST-midnight 정렬이 보장되지 않아(드라이버가 붙인 zone에 따라) off-by-one 발생. 두 날짜의 `Year()/Month()/Day()`를 같은 zone(예: UTC) midnight로 재고정 후 차이 계산 (`cmd/pm/snapshot.go` `daysBetween`)
 
 ## 네이밍
 

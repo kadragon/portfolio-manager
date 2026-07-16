@@ -51,6 +51,8 @@ func main() {
 		runErr = runClassifyStocks(ctx, c, args)
 	case "dashboard":
 		runErr = runDashboard(ctx, c, args)
+	case "snapshot":
+		runErr = runSnapshot(ctx, c, args)
 	case "price":
 		runErr = runPrice(ctx, c, args)
 	case "order-execution":
@@ -87,6 +89,7 @@ resources:
   sync             -account NAME [-confirm-empty]   (KIS/Toss account sync, routed by account link)
   classify-stocks  backfill asset_class via KIS
   dashboard        [-no-change-rates] [-sort {value,1d,1m,6m,1y}] [-asc]   (portfolio summary)
+  snapshot         -fx RATE [-stale-days N]   (rebalance-plan snapshot: holdings valued + grouped, JSON)
   price            list -ticker T [-from DATE] [-to DATE] [-limit N] | set -ticker T -date DATE -price P [-currency C -name N -exchange E] | delete -ticker T -date DATE
   order-execution  list [-limit N] [-ticker T] [-status STATUS]   (read append-only order history)
   price-sync       refresh stock prices once

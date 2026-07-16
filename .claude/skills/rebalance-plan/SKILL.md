@@ -18,10 +18,10 @@ Generate a per-account trade instruction document. The policy (targets, tax rule
   not the §Target Allocation value. State which groups are mid-transition and the interim
   target in effect before computing anything.
 - Get current USD/KRW (WebSearch or ask). State the rate used; never silently reuse an old one.
-- Run the snapshot script from the repo root:
+- Run the snapshot from the repo root:
 
 ```bash
-python3 .claude/skills/rebalance-plan/scripts/snapshot.py --fx <rate>
+go run ./cmd/pm snapshot -fx <rate>
 ```
 
 - Surface every `warnings` entry (stale prices, missing prices, non-positive prices) to the
