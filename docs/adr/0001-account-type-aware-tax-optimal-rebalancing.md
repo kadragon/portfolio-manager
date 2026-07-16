@@ -224,7 +224,7 @@ The in-app planner (RebalanceService), KIS auto-order execution
 (RebalanceExecutionService), the /rebalance UI, and the dashboard
 deposit-suggestion form were removed. Planning now happens in the
 `.claude/skills/rebalance-plan` skill: it reads the DB read-only
-(`scripts/snapshot.py`), applies the user-owned policy file
+(`pm snapshot`, via the repository layer), applies the user-owned policy file
 (`.data/rebalance-policy.md`, gitignored), and emits a per-account trade
 instruction document. Orders are executed manually at the brokerage.
 
