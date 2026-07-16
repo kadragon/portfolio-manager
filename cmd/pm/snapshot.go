@@ -11,6 +11,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/datex"
 	"github.com/kadragon/portfolio-manager/internal/ktime"
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/uuidx"
 	"github.com/shopspring/decimal"
 )
 
@@ -102,25 +103,29 @@ func buildSnapshot(ctx context.Context, c *container.Container, fx float64, stal
 		return snapshotOutput{}, fmt.Errorf("list holdings: %w", err)
 	}
 
-	stockByID := make(map[string]models.Stock, len(stocks))
+	// uuidx.UUID is a comparable fixed-size array, so it keys these maps directly
+	// — no per-lookup string allocation.
+	stockByID := make(map[uuidx.UUID]models.Stock, len(stocks))
 	for _, s := range stocks {
-		stockByID[s.ID.String()] = s
+		stockByID[s.ID] = s
 	}
-	groupByID := make(map[string]models.Group, len(groups))
+	groupByID := make(map[uuidx.UUID]models.Group, len(groups))
 	for _, g := range groups {
-		groupByID[g.ID.String()] = g
+		groupByID[g.ID] = g
 	}
 
-	// Preserve account order (ListAll orders by name) so per-account holdings
-	// accumulate deterministically before the value sort below.
-	acctIndex := make(map[string]int, len(accounts))
+	// acctIndex maps an account ID to its slot in out.Accounts, populated in
+	// accounts (repository) order; holdings are attached to their slot below.
+	acctIndex := make(map[uuidx.UUID]int, len(accounts))
 	out := snapshotOutput{
 		AsOf:     datex.FromTime(ktime.NowKST()).ISO(),
 		FxUSDKRW: fx,
+		Accounts: []snapshotAccount{},
+		Groups:   []snapshotGroup{},
 		Warnings: []string{},
 	}
 	for _, a := range accounts {
-		acctIndex[a.ID.String()] = len(out.Accounts)
+		acctIndex[a.ID] = len(out.Accounts)
 		out.Accounts = append(out.Accounts, snapshotAccount{
 			Name:     a.Name,
 			Type:     a.AccountType,
@@ -141,11 +146,22 @@ func buildSnapshot(ctx context.Context, c *container.Container, fx float64, stal
 	today := datex.FromTime(ktime.NowKST())
 
 	for _, h := range holdings {
-		stock, ok := stockByID[h.StockID.String()]
+		// Skip holdings whose stock/group/account rows are absent, mirroring the
+		// former snapshot.py's INNER JOINs (FK constraints make this unreachable
+		// in a consistent DB; the guards keep a transient inconsistency from
+		// panicking or silently misattributing a holding to the wrong account).
+		stock, ok := stockByID[h.StockID]
 		if !ok {
 			continue
 		}
-		grp := groupByID[stock.GroupID.String()]
+		grp, ok := groupByID[stock.GroupID]
+		if !ok {
+			continue
+		}
+		acctSlot, ok := acctIndex[h.AccountID]
+		if !ok {
+			continue
+		}
 
 		var priceF float64
 		var currency *string
@@ -187,8 +203,8 @@ func buildSnapshot(ctx context.Context, c *container.Container, fx float64, stal
 		}
 
 		valueKRW := value.Round(0).IntPart()
-		out.Accounts[acctIndex[h.AccountID.String()]].Holdings = append(
-			out.Accounts[acctIndex[h.AccountID.String()]].Holdings, snapshotHolding{
+		out.Accounts[acctSlot].Holdings = append(
+			out.Accounts[acctSlot].Holdings, snapshotHolding{
 				Ticker:   stock.Ticker,
 				Name:     stock.Name,
 				Exchange: stock.Exchange,
@@ -215,22 +231,33 @@ func buildSnapshot(ctx context.Context, c *container.Container, fx float64, stal
 	out.TotalHoldingsKRW = totalHoldings.Round(0).IntPart()
 	out.TotalCashKRW = totalCash.Round(0).IntPart()
 
-	// Accounts: largest holdings value first.
+	// Accounts: largest holdings value first, name-tiebroken so equal-value
+	// accounts keep a stable order run-to-run (accounts ListAll has no ORDER BY).
 	sort.SliceStable(out.Accounts, func(i, j int) bool {
-		return accountHoldingsValue(out.Accounts[i]) > accountHoldingsValue(out.Accounts[j])
+		vi, vj := accountHoldingsValue(out.Accounts[i]), accountHoldingsValue(out.Accounts[j])
+		if vi != vj {
+			return vi > vj
+		}
+		return out.Accounts[i].Name < out.Accounts[j].Name
 	})
 
 	// Groups: largest value first, carrying each group's DB target and weight.
+	// Iterate the groups slice (not the groupTotals map, whose iteration order
+	// Go randomizes) so equal-valued groups — e.g. target-only groups all at 0 —
+	// keep a deterministic order; name-tiebreak the value sort for the same reason.
 	type gv struct {
 		name string
 		val  decimal.Decimal
 	}
-	ordered := make([]gv, 0, len(groupTotals))
-	for name, v := range groupTotals {
-		ordered = append(ordered, gv{name, v})
+	ordered := make([]gv, 0, len(groups))
+	for _, g := range groups {
+		ordered = append(ordered, gv{g.Name, groupTotals[g.Name]})
 	}
 	sort.SliceStable(ordered, func(i, j int) bool {
-		return ordered[i].val.GreaterThan(ordered[j].val)
+		if !ordered[i].val.Equal(ordered[j].val) {
+			return ordered[i].val.GreaterThan(ordered[j].val)
+		}
+		return ordered[i].name < ordered[j].name
 	})
 	hundred := decimal.NewFromInt(100)
 	for _, g := range ordered {

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -195,8 +197,53 @@ func TestBuildSnapshotMissingAndStalePriceWarnings(t *testing.T) {
 	if !sawStale {
 		t.Errorf("missing stale warning; warnings = %v", out.Warnings)
 	}
-	// STALE still valued (10 days old is stale but priced): 5 * 1000 = 5000.
+	// STALE still valued (30 days old is stale but priced): 5 * 1000 = 5000.
 	if out.TotalHoldingsKRW != 5000 {
 		t.Errorf("TotalHoldingsKRW = %d, want 5000", out.TotalHoldingsKRW)
+	}
+}
+
+// TestBuildSnapshotEmptyDBEmitsEmptyArrays guards the JSON shape: an empty DB
+// must serialize accounts/groups as [] (not null), matching the former
+// snapshot.py so downstream consumers can iterate them unconditionally.
+func TestBuildSnapshotEmptyDBEmitsEmptyArrays(t *testing.T) {
+	ctx := context.Background()
+	c := newSnapshotContainer(t)
+
+	out, err := buildSnapshot(ctx, c, 1400, 7)
+	if err != nil {
+		t.Fatalf("buildSnapshot: %v", err)
+	}
+	blob, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, want := range []string{`"accounts":[]`, `"groups":[]`, `"warnings":[]`} {
+		if !strings.Contains(string(blob), want) {
+			t.Errorf("empty-DB snapshot missing %s; got %s", want, blob)
+		}
+	}
+}
+
+// TestBuildSnapshotGroupOrderDeterministicForEqualValues guards against the
+// map-iteration nondeterminism a review caught: groups tied on value (here two
+// target-only groups at 0) must order by name every run, not flap.
+func TestBuildSnapshotGroupOrderDeterministicForEqualValues(t *testing.T) {
+	ctx := context.Background()
+	c := newSnapshotContainer(t)
+	for _, name := range []string{"채권", "금", "현금"} { // all target-only → value 0
+		if _, err := c.Groups.Create(ctx, name, 10); err != nil {
+			t.Fatalf("group %s: %v", name, err)
+		}
+	}
+
+	out, err := buildSnapshot(ctx, c, 1400, 7)
+	if err != nil {
+		t.Fatalf("buildSnapshot: %v", err)
+	}
+	got := []string{out.Groups[0].Name, out.Groups[1].Name, out.Groups[2].Name}
+	// All three tie at value 0, so they must come out strictly name-sorted.
+	if got[0] > got[1] || got[1] > got[2] {
+		t.Errorf("equal-value groups not name-ordered: %v", got)
 	}
 }
