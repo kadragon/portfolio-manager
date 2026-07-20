@@ -203,6 +203,14 @@ func accountUpdate(ctx context.Context, c *container.Container, args []string) e
 		}
 		kisKey = parsed
 	}
+	// kis_api_key_id selects which KIS API key set services the account's KIS
+	// number (see sync.go's SyncServiceForKeyID call, reachable only when
+	// kis_account_no is set), so it is meaningless without one. When the caller
+	// clears kis-account-no without addressing kis-api-key-id, cascade the clear
+	// so no orphaned key id is left behind. An explicit -kis-api-key-id wins.
+	if seen["kis-account-no"] && !kisNo.Valid && !seen["kis-api-key-id"] {
+		kisKey = sql.NullInt64{}
+	}
 
 	acctType := sql.NullString{}
 	if existing.AccountType != nil {

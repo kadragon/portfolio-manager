@@ -16,11 +16,6 @@ Schema / lifecycle:
 
 - [ ] [debt] `hasExecutableWholeShare` applies a blanket ≥1 whole-share floor to all currencies including USD, where some brokers support fractional shares; if fractional trading is ever enabled for overseas stocks, this guard will need per-currency / per-account-type gating (source: agy) — `internal/services/rebalance_service.go:961`
 
-### PR #145 — [FEAT] add cmd/pm CLI, replace web UI with CLI + skills (2026-07-11)
-
-- [ ] [debt] `pm sync -account NAME` silently falls back to the `.env` default `KIS_CANO`/`KIS_ACNT_PRDT_CD` when the account has no `kis_account_no` linked, overwriting the account's local holdings/cash with a different (default) KIS account's snapshot instead of erroring — pre-existing behavior ported unchanged from the removed `AccountHandler.syncAccount` (same fallback existed at `internal/web/handlers/accounts.go:250-254` on `main`), not introduced by this PR, but worth hardening now that it's exposed via a scriptable CLI (source: agy) — `cmd/pm/sync.go:75-84`
-- [ ] [debt] `pm account update -kis-account-no ""` (clearing the KIS account number) does not also clear `-kis-api-key-id`, leaving a stale `kis_api_key_id` set with no `kis_account_no` — pre-existing coupling gap ported unchanged from the removed `AccountHandler.update` (same gap on `main` at `internal/web/handlers/accounts.go:166-181`), not introduced by this PR (source: review) — `cmd/pm/account.go:123-129`
-
 ### PR #147 — [FEAT] add pm price list command and dashboard -sort flag (2026-07-11)
 
 - [ ] [debt] `GetStockChangeRates` intentionally stores a literal `0` (not an absent key) when a stock lacks cached history far enough back for a period (see `TestGetStockChangeRatesZeroForMissingHistory`); `pm dashboard -sort` can't distinguish that from a genuine flat return, so a recently-added ticker sorts as if flat rather than excluded/last. Fixing properly requires changing `GetStockChangeRates`'s return contract (e.g. a parallel "has data" map or `*Decimal`), which ripples to its one caller and existing tests — architectural change beyond this PR's scope (source: codex) — `internal/services/price_service.go:104`, `cmd/pm/dashboard.go:73`

@@ -209,6 +209,73 @@ func TestAccountUpdateClearsNullableLinkage(t *testing.T) {
 	}
 }
 
+func TestAccountUpdateClearingKisAccountNoCascadesKeyID(t *testing.T) {
+	ctx := context.Background()
+	c := newAccountContainer(t)
+	acc, err := c.Accounts.Create(ctx, "ISA", numeric.Zero)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := runAccount(ctx, c, []string{
+		"update", "-id", acc.ID.String(),
+		"-kis-account-no", "1234567801",
+		"-kis-api-key-id", "2",
+	}); err != nil {
+		t.Fatalf("set linkage: %v", err)
+	}
+
+	// Clearing kis-account-no without mentioning kis-api-key-id must cascade,
+	// leaving no orphaned key id behind.
+	if err := runAccount(ctx, c, []string{
+		"update", "-id", acc.ID.String(),
+		"-kis-account-no", "/clear",
+	}); err != nil {
+		t.Fatalf("clear kis-account-no: %v", err)
+	}
+	got, err := c.Accounts.GetByID(ctx, acc.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.KisAccountNo != nil {
+		t.Fatalf("kis_account_no not cleared: %+v", got.KisAccountNo)
+	}
+	if got.KisAPIKeyID != nil {
+		t.Fatalf("kis_api_key_id left orphaned after clearing kis-account-no: %+v", got.KisAPIKeyID)
+	}
+}
+
+func TestAccountUpdateExplicitKeyIDWinsOverCascade(t *testing.T) {
+	ctx := context.Background()
+	c := newAccountContainer(t)
+	acc, err := c.Accounts.Create(ctx, "ISA", numeric.Zero)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := runAccount(ctx, c, []string{
+		"update", "-id", acc.ID.String(),
+		"-kis-account-no", "1234567801",
+		"-kis-api-key-id", "2",
+	}); err != nil {
+		t.Fatalf("set linkage: %v", err)
+	}
+
+	// An explicit -kis-api-key-id in the same call wins over the cascade.
+	if err := runAccount(ctx, c, []string{
+		"update", "-id", acc.ID.String(),
+		"-kis-account-no", "/clear",
+		"-kis-api-key-id", "5",
+	}); err != nil {
+		t.Fatalf("clear kis-account-no with explicit key id: %v", err)
+	}
+	got, err := c.Accounts.GetByID(ctx, acc.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.KisAPIKeyID == nil || *got.KisAPIKeyID != 5 {
+		t.Fatalf("explicit kis_api_key_id not applied: %+v", got.KisAPIKeyID)
+	}
+}
+
 func TestAccountDelete(t *testing.T) {
 	ctx := context.Background()
 	c := newAccountContainer(t)
