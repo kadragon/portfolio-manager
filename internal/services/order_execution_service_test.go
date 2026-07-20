@@ -49,11 +49,13 @@ func (f *fakeExecutionRecorder) Create(
 }
 
 type fakeKISOrderClient struct {
-	resp map[string]any
-	err  error
+	resp        map[string]any
+	err         error
+	calledPrice string
 }
 
-func (f *fakeKISOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string) (map[string]any, error) {
+func (f *fakeKISOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange, price string) (map[string]any, error) {
+	f.calledPrice = price
 	return f.resp, f.err
 }
 
@@ -95,7 +97,7 @@ func TestOrderExecutionService_PlaceOrder_RoutesKISWithParsedCANO(t *testing.T) 
 	}
 
 	svc := NewOrderExecutionService(accounts, executions, factory, nil)
-	record, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW")
+	record, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder returned error: %v", err)
 	}
@@ -120,7 +122,7 @@ func TestOrderExecutionService_PlaceOrder_RoutesToss(t *testing.T) {
 	toss := &fakeTossOrderClient{resp: map[string]any{"result": map[string]any{"orderId": "abc"}}}
 
 	svc := NewOrderExecutionService(accounts, executions, nil, toss)
-	record, err := svc.PlaceOrder(context.Background(), "TOSS", "AAPL", "sell", 3, "", "USD")
+	record, err := svc.PlaceOrder(context.Background(), "TOSS", "AAPL", "sell", 3, "", "USD", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder returned error: %v", err)
 	}
@@ -142,7 +144,7 @@ func TestOrderExecutionService_PlaceOrder_NormalizesTickerCase(t *testing.T) {
 	toss := &fakeTossOrderClient{resp: map[string]any{"result": map[string]any{"orderId": "abc"}}}
 
 	svc := NewOrderExecutionService(accounts, executions, nil, toss)
-	if _, err := svc.PlaceOrder(context.Background(), "TOSS", "aapl", "sell", 3, "", "USD"); err != nil {
+	if _, err := svc.PlaceOrder(context.Background(), "TOSS", "aapl", "sell", 3, "", "USD", ""); err != nil {
 		t.Fatalf("PlaceOrder returned error: %v", err)
 	}
 	if toss.calledIntent.Ticker != "AAPL" {
@@ -156,7 +158,7 @@ func TestOrderExecutionService_PlaceOrder_NormalizesTickerCase(t *testing.T) {
 func TestOrderExecutionService_PlaceOrder_UnknownAccount(t *testing.T) {
 	accounts := &fakeAccountLister{accounts: []models.Account{kisAccount("ISA", nil)}}
 	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, nil, nil)
-	_, err := svc.PlaceOrder(context.Background(), "NOPE", "069500", "buy", 1, "", "KRW")
+	_, err := svc.PlaceOrder(context.Background(), "NOPE", "069500", "buy", 1, "", "KRW", "")
 	if err == nil {
 		t.Fatal("expected error for unknown account, got nil")
 	}
@@ -168,7 +170,7 @@ func TestOrderExecutionService_PlaceOrder_AmbiguousAccount(t *testing.T) {
 		kisAccount("ISA 중개형", nil),
 	}}
 	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, nil, nil)
-	_, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 1, "", "KRW")
+	_, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 1, "", "KRW", "")
 	if err == nil {
 		t.Fatal("expected ambiguous-match error, got nil")
 	}
@@ -177,7 +179,7 @@ func TestOrderExecutionService_PlaceOrder_AmbiguousAccount(t *testing.T) {
 func TestOrderExecutionService_PlaceOrder_NoBrokerLinked(t *testing.T) {
 	accounts := &fakeAccountLister{accounts: []models.Account{{ID: uuidx.New(), Name: "연금저축"}}}
 	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, nil, nil)
-	_, err := svc.PlaceOrder(context.Background(), "연금저축", "069500", "buy", 1, "", "KRW")
+	_, err := svc.PlaceOrder(context.Background(), "연금저축", "069500", "buy", 1, "", "KRW", "")
 	if err == nil {
 		t.Fatal("expected error for account with no broker link, got nil")
 	}
@@ -191,7 +193,7 @@ func TestOrderExecutionService_PlaceOrder_KISFailureStillRecorded(t *testing.T) 
 	factory := func(keyID *int64, cano, acntPrdtCd string) (KISOrderClient, error) { return kisClient, nil }
 
 	svc := NewOrderExecutionService(accounts, executions, factory, nil)
-	record, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW")
+	record, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder returned error: %v", err)
 	}
@@ -208,7 +210,7 @@ func TestOrderExecutionService_PlaceOrder_TransportErrorStillRecorded(t *testing
 	factory := func(keyID *int64, cano, acntPrdtCd string) (KISOrderClient, error) { return kisClient, nil }
 
 	svc := NewOrderExecutionService(accounts, executions, factory, nil)
-	record, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW")
+	record, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder returned error: %v", err)
 	}
@@ -219,10 +221,10 @@ func TestOrderExecutionService_PlaceOrder_TransportErrorStillRecorded(t *testing
 
 func TestOrderExecutionService_PlaceOrder_InvalidSideOrQuantity(t *testing.T) {
 	svc := NewOrderExecutionService(&fakeAccountLister{}, &fakeExecutionRecorder{}, nil, nil)
-	if _, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "hold", 1, "", "KRW"); err == nil {
+	if _, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "hold", 1, "", "KRW", ""); err == nil {
 		t.Error("expected error for invalid side")
 	}
-	if _, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 0, "", "KRW"); err == nil {
+	if _, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 0, "", "KRW", ""); err == nil {
 		t.Error("expected error for non-positive quantity")
 	}
 }
@@ -233,7 +235,7 @@ func TestOrderExecutionService_PlaceOrder_EmptyAccountNameRejected(t *testing.T)
 	// (or error ambiguous) essentially at random.
 	accounts := &fakeAccountLister{accounts: []models.Account{kisAccount("ISA", nil)}}
 	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, nil, nil)
-	if _, err := svc.PlaceOrder(context.Background(), "   ", "069500", "buy", 1, "", "KRW"); err == nil {
+	if _, err := svc.PlaceOrder(context.Background(), "   ", "069500", "buy", 1, "", "KRW", ""); err == nil {
 		t.Fatal("expected error for blank account name, got nil")
 	}
 }
@@ -246,7 +248,7 @@ func TestOrderExecutionService_PlaceOrder_UnlinkedAccountNeverRoutesToKIS(t *tes
 	// panics instead of passing quietly.
 	accounts := &fakeAccountLister{accounts: []models.Account{{ID: uuidx.New(), Name: "연금저축", KisAPIKeyID: ptrInt64OES(1)}}}
 	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, nil, nil)
-	_, err := svc.PlaceOrder(context.Background(), "연금저축", "069500", "buy", 1, "", "KRW")
+	_, err := svc.PlaceOrder(context.Background(), "연금저축", "069500", "buy", 1, "", "KRW", "")
 	if err == nil {
 		t.Fatal("expected 'not linked to KIS or Toss' error, got nil")
 	}
@@ -260,7 +262,7 @@ func TestOrderExecutionService_PlaceOrder_PersistFailureStillReportsOutcome(t *t
 	factory := func(keyID *int64, cano, acntPrdtCd string) (KISOrderClient, error) { return kisClient, nil }
 
 	svc := NewOrderExecutionService(accounts, executions, factory, nil)
-	record, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW")
+	record, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder returned error: %v (order succeeded — losing that fact risks a duplicate resubmission)", err)
 	}
@@ -269,6 +271,36 @@ func TestOrderExecutionService_PlaceOrder_PersistFailureStillReportsOutcome(t *t
 	}
 	if !strings.Contains(record.Message, "db locked") {
 		t.Errorf("record.Message = %q, want it to mention the persist failure", record.Message)
+	}
+}
+
+func TestOrderExecutionService_PlaceOrder_LimitPriceReachesKIS(t *testing.T) {
+	acct := kisAccount("ISA", nil)
+	accounts := &fakeAccountLister{accounts: []models.Account{acct}}
+	kisClient := &fakeKISOrderClient{resp: map[string]any{"rt_cd": "0"}}
+	factory := func(keyID *int64, cano, acntPrdtCd string) (KISOrderClient, error) { return kisClient, nil }
+
+	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, factory, nil)
+	if _, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW", "27470"); err != nil {
+		t.Fatalf("PlaceOrder returned error: %v", err)
+	}
+	if kisClient.calledPrice != "27470" {
+		t.Errorf("KIS client received price = %q, want 27470", kisClient.calledPrice)
+	}
+}
+
+func TestOrderExecutionService_PlaceOrder_LimitPriceRejectedForToss(t *testing.T) {
+	acct := tossAccount("TOSS", 42)
+	accounts := &fakeAccountLister{accounts: []models.Account{acct}}
+	toss := &fakeTossOrderClient{resp: map[string]any{"result": map[string]any{"orderId": "abc"}}}
+
+	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, nil, toss)
+	_, err := svc.PlaceOrder(context.Background(), "TOSS", "AAPL", "buy", 1, "", "USD", "150.00")
+	if err == nil {
+		t.Fatal("expected error for limit order on Toss account, got nil")
+	}
+	if toss.calledSeq != "" {
+		t.Errorf("Toss client should not have been called for a rejected limit order, got seq %q", toss.calledSeq)
 	}
 }
 

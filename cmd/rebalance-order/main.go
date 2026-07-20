@@ -27,6 +27,7 @@ func main() {
 	qty := flag.Int("qty", 0, "share quantity (market order, no price)")
 	exchange := flag.String("exchange", "", "overseas exchange order-code (NASD/NYSE/AMEX); leave empty for domestic")
 	currency := flag.String("currency", "KRW", "currency recorded on the execution log (KRW/USD)")
+	price := flag.String("price", "", "limit price; empty places a market order. A limit buy reserves exactly price×qty, unlike a market buy which reserves at the daily upper limit (KIS only; not supported for Toss)")
 	yes := flag.Bool("yes", false, "actually place the order; without this flag, only prints a dry-run preview")
 	flag.Parse()
 
@@ -42,9 +43,14 @@ func main() {
 	}
 	fmt.Fprintf(os.Stderr, "KIS_ENV=%q — %s\n", env, envWarning(env))
 
+	orderType := "market"
+	if strings.TrimSpace(*price) != "" {
+		orderType = "limit @ " + strings.TrimSpace(*price)
+	}
+
 	if !*yes {
-		fmt.Printf("[DRY RUN] account=%s ticker=%s side=%s qty=%d exchange=%s currency=%s\n(rerun with -yes to actually place this order)\n",
-			*account, *ticker, *side, *qty, *exchange, *currency)
+		fmt.Printf("[DRY RUN] account=%s ticker=%s side=%s qty=%d exchange=%s currency=%s type=%s\n(rerun with -yes to actually place this order)\n",
+			*account, *ticker, *side, *qty, *exchange, *currency, orderType)
 		return
 	}
 
@@ -68,7 +74,7 @@ func main() {
 		tossClient,
 	)
 
-	record, err := svc.PlaceOrder(context.Background(), *account, *ticker, *side, *qty, *exchange, *currency)
+	record, err := svc.PlaceOrder(context.Background(), *account, *ticker, *side, *qty, *exchange, *currency, strings.TrimSpace(*price))
 	if err != nil {
 		log.Fatalf("order not placed: %v", err)
 	}

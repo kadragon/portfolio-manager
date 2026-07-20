@@ -10,9 +10,11 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
-// KISOrderClient places a single market order through KIS (domestic or overseas).
+// KISOrderClient places a single order through KIS (domestic or overseas).
+// price is the limit price: empty places a market order, a non-empty value
+// places a limit order at that price.
 type KISOrderClient interface {
-	PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string) (map[string]any, error)
+	PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange, price string) (map[string]any, error)
 }
 
 // TossOrderClient places a single market order through Toss.
@@ -84,7 +86,7 @@ func (s *OrderExecutionService) PlaceOrder(
 	ctx context.Context,
 	accountName, ticker, side string,
 	quantity int,
-	exchange, currency string,
+	exchange, currency, price string,
 ) (models.OrderExecutionRecord, error) {
 	side = strings.ToLower(strings.TrimSpace(side))
 	if side != "buy" && side != "sell" {
@@ -108,6 +110,9 @@ func (s *OrderExecutionService) PlaceOrder(
 		if s.toss == nil {
 			return models.OrderExecutionRecord{}, fmt.Errorf("account %q is Toss-linked but no Toss client is configured", account.Name)
 		}
+		if strings.TrimSpace(price) != "" {
+			return models.OrderExecutionRecord{}, fmt.Errorf("limit orders (-price) are not supported for Toss accounts via rebalance-order yet; omit -price for a market order")
+		}
 		seq := strconv.FormatInt(*account.TossAccountSeq, 10)
 		raw, placeErr = s.toss.PlaceOrder(ctx, seq, models.OrderIntent{
 			Ticker: ticker, Side: side, Quantity: quantity, Currency: currency,
@@ -123,7 +128,7 @@ func (s *OrderExecutionService) PlaceOrder(
 		if ferr != nil {
 			return models.OrderExecutionRecord{}, ferr
 		}
-		raw, placeErr = client.PlaceOrder(ctx, ticker, side, quantity, exchange)
+		raw, placeErr = client.PlaceOrder(ctx, ticker, side, quantity, exchange, price)
 
 	default:
 		return models.OrderExecutionRecord{}, fmt.Errorf("account %q is not linked to KIS or Toss", account.Name)

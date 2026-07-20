@@ -31,7 +31,7 @@ func TestOverseasOrderClient_PlaceOrder_SendsAccountNumber(t *testing.T) {
 		Manager:    makeManager(t, "token"),
 	}
 
-	if _, err := client.PlaceOrder(context.Background(), "AAPL", "buy", 1, "NASD"); err != nil {
+	if _, err := client.PlaceOrder(context.Background(), "AAPL", "buy", 1, "NASD", ""); err != nil {
 		t.Fatalf("PlaceOrder: %v", err)
 	}
 

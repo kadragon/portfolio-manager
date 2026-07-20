@@ -1189,7 +1189,7 @@ func TestDomesticOrderClientPlaceOrderBuy(t *testing.T) {
 		CustType: "P", Env: "real",
 		Manager: mgr,
 	}
-	result, err := oc.PlaceOrder(context.Background(), "005930", "buy", 5, "")
+	result, err := oc.PlaceOrder(context.Background(), "005930", "buy", 5, "", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder buy: %v", err)
 	}
@@ -1207,6 +1207,33 @@ func TestDomesticOrderClientPlaceOrderBuy(t *testing.T) {
 	}
 }
 
+func TestDomesticOrderClientPlaceOrderLimit(t *testing.T) {
+	var received map[string]string
+	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		fmt.Fprintf(w, `{"rt_cd":"0","output":{"ORD_NO":"12345"}}`)
+	}))
+	mgr := makeManager(t, "tok")
+	oc := &DomesticOrderClient{
+		HTTP: client, BaseURL: baseURL,
+		AppKey: "k", AppSecret: "s",
+		CANO: "12345678", AcntPrdtCd: "01",
+		CustType: "P", Env: "real",
+		Manager: mgr,
+	}
+	if _, err := oc.PlaceOrder(context.Background(), "360750", "buy", 642, "", "27470"); err != nil {
+		t.Fatalf("PlaceOrder limit: %v", err)
+	}
+	if received["ORD_DVSN"] != "00" {
+		t.Errorf("ORD_DVSN = %q, want 00 (limit)", received["ORD_DVSN"])
+	}
+	if received["ORD_UNPR"] != "27470" {
+		t.Errorf("ORD_UNPR = %q, want 27470", received["ORD_UNPR"])
+	}
+}
+
 func TestDomesticOrderClientPlaceOrderSell(t *testing.T) {
 	client, baseURL := makeClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"rt_cd":"0"}`)
@@ -1219,7 +1246,7 @@ func TestDomesticOrderClientPlaceOrderSell(t *testing.T) {
 		CustType: "P", Env: "real",
 		Manager: mgr,
 	}
-	result, err := oc.PlaceOrder(context.Background(), "005930", "sell", 3, "")
+	result, err := oc.PlaceOrder(context.Background(), "005930", "sell", 3, "", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder sell: %v", err)
 	}
@@ -1241,7 +1268,7 @@ func TestDomesticOrderClientHTTPError(t *testing.T) {
 		CustType: "P", Env: "real",
 		Manager: mgr,
 	}
-	_, err := oc.PlaceOrder(context.Background(), "005930", "buy", 1, "")
+	_, err := oc.PlaceOrder(context.Background(), "005930", "buy", 1, "", "")
 	if err == nil {
 		t.Fatal("expected error for HTTP 500")
 	}
@@ -1539,7 +1566,7 @@ func TestOverseasOrderClientPlaceOrderBuy(t *testing.T) {
 		CustType: "P", Env: "real",
 		Manager: mgr,
 	}
-	result, err := oc.PlaceOrder(context.Background(), "AAPL", "buy", 2, "NASD")
+	result, err := oc.PlaceOrder(context.Background(), "AAPL", "buy", 2, "NASD", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder buy: %v", err)
 	}
@@ -1571,7 +1598,7 @@ func TestOverseasOrderClientPlaceOrderSell(t *testing.T) {
 		CustType: "P", Env: "real",
 		Manager: mgr,
 	}
-	result, err := oc.PlaceOrder(context.Background(), "AAPL", "sell", 1, "NYSE")
+	result, err := oc.PlaceOrder(context.Background(), "AAPL", "sell", 1, "NYSE", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder sell: %v", err)
 	}
@@ -1910,7 +1937,7 @@ func TestUnifiedOrderClientPlaceOrderDomestic(t *testing.T) {
 		Manager: mgr,
 	}
 	uc := &UnifiedOrderClient{Domestic: domestic}
-	result, err := uc.PlaceOrder(context.Background(), "005930", "buy", 5, "")
+	result, err := uc.PlaceOrder(context.Background(), "005930", "buy", 5, "", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder domestic: %v", err)
 	}
@@ -1935,7 +1962,7 @@ func TestUnifiedOrderClientPlaceOrderOverseas(t *testing.T) {
 		Manager: mgr,
 	}
 	uc := &UnifiedOrderClient{Overseas: overseas}
-	result, err := uc.PlaceOrder(context.Background(), "AAPL", "buy", 2, "NAS")
+	result, err := uc.PlaceOrder(context.Background(), "AAPL", "buy", 2, "NAS", "")
 	if err != nil {
 		t.Fatalf("PlaceOrder overseas: %v", err)
 	}
@@ -1950,7 +1977,7 @@ func TestUnifiedOrderClientPlaceOrderOverseas(t *testing.T) {
 
 func TestUnifiedOrderClientPlaceOrderNilDomestic(t *testing.T) {
 	uc := &UnifiedOrderClient{Domestic: nil}
-	_, err := uc.PlaceOrder(context.Background(), "005930", "buy", 1, "")
+	_, err := uc.PlaceOrder(context.Background(), "005930", "buy", 1, "", "")
 	if err == nil {
 		t.Fatal("expected error for nil domestic client")
 	}
@@ -1958,7 +1985,7 @@ func TestUnifiedOrderClientPlaceOrderNilDomestic(t *testing.T) {
 
 func TestUnifiedOrderClientPlaceOrderNilOverseas(t *testing.T) {
 	uc := &UnifiedOrderClient{Overseas: nil}
-	_, err := uc.PlaceOrder(context.Background(), "AAPL", "buy", 1, "NASD")
+	_, err := uc.PlaceOrder(context.Background(), "AAPL", "buy", 1, "NASD", "")
 	if err == nil {
 		t.Fatal("expected error for nil overseas client")
 	}

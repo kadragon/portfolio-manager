@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // OverseasOrderClient places buy/sell orders on overseas exchanges via KIS.
@@ -21,8 +22,10 @@ type OverseasOrderClient struct {
 }
 
 // PlaceOrder places an overseas order and returns the raw KIS response.
-// exchange must be the KIS order-form code: NASD, NYSE, AMEX.
-func (c *OverseasOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string) (map[string]any, error) {
+// exchange must be the KIS order-form code: NASD, NYSE, AMEX. price is the
+// limit price: empty places a market order (ORD_DVSN 01, OVRS_ORD_UNPR 0); a
+// non-empty value places a limit order (ORD_DVSN 00, OVRS_ORD_UNPR price).
+func (c *OverseasOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string, price string) (map[string]any, error) {
 	trID, err := TrIDForEnv(c.Env, overseasOrderTrID(side, false), overseasOrderTrID(side, true))
 	if err != nil {
 		return nil, err
@@ -33,14 +36,19 @@ func (c *OverseasOrderClient) PlaceOrder(ctx context.Context, ticker, side strin
 		return nil, err
 	}
 
+	ordDvsn, ordUnpr := "01", "0"
+	if strings.TrimSpace(price) != "" {
+		ordDvsn, ordUnpr = "00", strings.TrimSpace(price)
+	}
+
 	payload := map[string]string{
 		"CANO":          c.CANO,
 		"ACNT_PRDT_CD":  c.AcntPrdtCd,
 		"OVRS_EXCG_CD":  exchange,
 		"PDNO":          ticker,
 		"ORD_QTY":       fmt.Sprintf("%d", quantity),
-		"OVRS_ORD_UNPR": "0",
-		"ORD_DVSN":      "01",
+		"OVRS_ORD_UNPR": ordUnpr,
+		"ORD_DVSN":      ordDvsn,
 	}
 
 	headers := BuildHeaders(token, c.AppKey, c.AppSecret, trID, c.CustType)
