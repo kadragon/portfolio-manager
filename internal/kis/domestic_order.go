@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // DomesticOrderClient places buy/sell orders on KOSPI/KOSDAQ via KIS.
@@ -21,8 +22,13 @@ type DomesticOrderClient struct {
 }
 
 // PlaceOrder places a domestic order and returns the raw KIS response.
-// exchange is ignored for domestic orders (always KRX).
-func (c *DomesticOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, _ string) (map[string]any, error) {
+// exchange is ignored for domestic orders (always KRX). price is the limit
+// price: empty places a market order (ORD_DVSN 01, ORD_UNPR 0); a non-empty
+// value places a limit order (ORD_DVSN 00, ORD_UNPR price). A limit order
+// reserves exactly price×qty of buying power, whereas a market buy reserves at
+// the daily upper limit — so a buy sized to fit available cash must be a limit
+// order to clear KIS's "주문가능금액 초과" check.
+func (c *DomesticOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, _ string, price string) (map[string]any, error) {
 	trID, err := TrIDForEnv(c.Env, domesticOrderTrID(side, false), domesticOrderTrID(side, true))
 	if err != nil {
 		return nil, err
@@ -33,13 +39,18 @@ func (c *DomesticOrderClient) PlaceOrder(ctx context.Context, ticker, side strin
 		return nil, err
 	}
 
+	ordDvsn, ordUnpr := "01", "0"
+	if strings.TrimSpace(price) != "" {
+		ordDvsn, ordUnpr = "00", strings.TrimSpace(price)
+	}
+
 	payload := map[string]string{
 		"CANO":            c.CANO,
 		"ACNT_PRDT_CD":    c.AcntPrdtCd,
 		"PDNO":            ticker,
-		"ORD_DVSN":        "01",
+		"ORD_DVSN":        ordDvsn,
 		"ORD_QTY":         fmt.Sprintf("%d", quantity),
-		"ORD_UNPR":        "0",
+		"ORD_UNPR":        ordUnpr,
 		"EXCG_ID_DVSN_CD": "KRX",
 	}
 

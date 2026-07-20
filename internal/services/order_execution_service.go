@@ -8,11 +8,14 @@ import (
 
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
+	"github.com/shopspring/decimal"
 )
 
-// KISOrderClient places a single market order through KIS (domestic or overseas).
+// KISOrderClient places a single order through KIS (domestic or overseas).
+// price is the limit price: empty places a market order, a non-empty value
+// places a limit order at that price.
 type KISOrderClient interface {
-	PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string) (map[string]any, error)
+	PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange, price string) (map[string]any, error)
 }
 
 // TossOrderClient places a single market order through Toss.
@@ -84,7 +87,7 @@ func (s *OrderExecutionService) PlaceOrder(
 	ctx context.Context,
 	accountName, ticker, side string,
 	quantity int,
-	exchange, currency string,
+	exchange, currency, price string,
 ) (models.OrderExecutionRecord, error) {
 	side = strings.ToLower(strings.TrimSpace(side))
 	if side != "buy" && side != "sell" {
@@ -93,6 +96,20 @@ func (s *OrderExecutionService) PlaceOrder(
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
 	if quantity <= 0 {
 		return models.OrderExecutionRecord{}, fmt.Errorf("quantity must be positive, got %d", quantity)
+	}
+	// A non-empty price makes this a limit order; reject a malformed or
+	// non-positive value here rather than passing the raw string to the broker,
+	// where a typo would be spent as a live order attempt and surface only as a
+	// broker rejection. An empty price keeps the market-order path unchanged.
+	price = strings.TrimSpace(price)
+	if price != "" {
+		p, perr := decimal.NewFromString(price)
+		if perr != nil {
+			return models.OrderExecutionRecord{}, fmt.Errorf("price must be a valid number, got %q", price)
+		}
+		if !p.IsPositive() {
+			return models.OrderExecutionRecord{}, fmt.Errorf("price must be positive, got %q", price)
+		}
 	}
 
 	account, err := s.findAccount(ctx, accountName)
@@ -107,6 +124,9 @@ func (s *OrderExecutionService) PlaceOrder(
 	case account.TossAccountSeq != nil:
 		if s.toss == nil {
 			return models.OrderExecutionRecord{}, fmt.Errorf("account %q is Toss-linked but no Toss client is configured", account.Name)
+		}
+		if strings.TrimSpace(price) != "" {
+			return models.OrderExecutionRecord{}, fmt.Errorf("limit orders (-price) are not supported for Toss accounts via rebalance-order yet; omit -price for a market order")
 		}
 		seq := strconv.FormatInt(*account.TossAccountSeq, 10)
 		raw, placeErr = s.toss.PlaceOrder(ctx, seq, models.OrderIntent{
@@ -123,7 +143,7 @@ func (s *OrderExecutionService) PlaceOrder(
 		if ferr != nil {
 			return models.OrderExecutionRecord{}, ferr
 		}
-		raw, placeErr = client.PlaceOrder(ctx, ticker, side, quantity, exchange)
+		raw, placeErr = client.PlaceOrder(ctx, ticker, side, quantity, exchange, price)
 
 	default:
 		return models.OrderExecutionRecord{}, fmt.Errorf("account %q is not linked to KIS or Toss", account.Name)

@@ -63,6 +63,8 @@ func main() {
 		runErr = runPriceBackfill(ctx, c, args)
 	case "toss":
 		runErr = runToss(ctx, c, args)
+	case "kis":
+		runErr = runKis(ctx, c, args)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown resource %q\n\n", resource)
 		usage()
@@ -95,6 +97,7 @@ resources:
   price-sync       refresh stock prices once
   price-backfill   -ticker T -from YYYY-MM-DD -to YYYY-MM-DD   (backfill historical closes for one ticker)
   toss             market data / account / order queries via Toss Open API (see 'pm toss help')
+  kis              order-cash -account NAME [-ticker T -price P]   (KIS 매수가능금액 조회)
 
 Every subcommand prints indented JSON to stdout and exits non-zero on error.`)
 }

@@ -22,18 +22,19 @@ type UnifiedOrderClient struct {
 
 // PlaceOrder routes to domestic or overseas client based on ticker length.
 // exchange should be the order-form code (NASD/NYSE/AMEX) or price-form (NAS/NYS/AMS).
-func (c *UnifiedOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string) (map[string]any, error) {
+// price is the limit price (empty = market order); see the underlying clients.
+func (c *UnifiedOrderClient) PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange string, price string) (map[string]any, error) {
 	if IsDomesticTicker(ticker) {
 		if c.Domestic == nil {
 			return nil, fmt.Errorf("domestic order client not configured")
 		}
-		return c.Domestic.PlaceOrder(ctx, ticker, side, quantity, "")
+		return c.Domestic.PlaceOrder(ctx, ticker, side, quantity, "", price)
 	}
 	if c.Overseas == nil {
 		return nil, fmt.Errorf("overseas order client not configured")
 	}
 	ex := normalizeOrderExchange(exchange)
-	return c.Overseas.PlaceOrder(ctx, ticker, side, quantity, ex)
+	return c.Overseas.PlaceOrder(ctx, ticker, side, quantity, ex, price)
 }
 
 func normalizeOrderExchange(exchange string) string {

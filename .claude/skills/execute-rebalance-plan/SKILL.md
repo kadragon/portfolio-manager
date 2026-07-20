@@ -14,7 +14,14 @@ this skill doesn't cover.
 
 ## Defaults — do not ask unless overridden
 
-- Ordinary TOSS/ISA execution uses market orders. Do not ask market vs limit.
+- Ordinary TOSS/ISA execution uses market orders. Do not ask market vs limit. The one
+  exception is a **KIS buy sized to fit available cash**: a KIS market buy reserves buying power
+  at the daily upper-limit price, so it can be rejected with "주문가능금액을 초과 했습니다" even
+  when cash covers the actual fill. In that case place a **limit order** via `-price` (see the
+  per-order loop) — this reserves exactly price×qty. Don't ask; switch to a marketable limit
+  (current price, or +1 tick to make it marketable) automatically and say so. A marketable limit
+  is not a guaranteed fill — the ask can move or lack depth — so verify the fill afterward rather
+  than assuming the order completed.
 - Toss USD amount orders use `MARKET`. Do not ask order type; no expiry applies because this is
   an immediate US regular-session order, not a conditional order.
 - Toss conditional-order creation defaults order type to `MARKET` for `SINGLE`, `LIMIT` for
@@ -177,17 +184,36 @@ verdict alone. An account with no sells this run isn't affected by another accou
 cash doesn't move between accounts, so it simply reports `PASS` off its existing cash alone; don't
 hold its buys up unnecessarily.
 
+**Synced cash ≠ orderable cash (KIS).** The synced `CashBalance` can include unsettled sell
+proceeds and other amounts KIS won't let you spend yet, so `check_cash_availability.py` passing
+off the synced number does not guarantee the broker will accept the buy. For a KIS account, read
+the real figure before a large buy with:
+
+```bash
+go run ./cmd/pm kis order-cash -account "<ISA|여유금>" -ticker <code> -price <limit>
+```
+
+`orderable_cash` is the spendable cash; with `-ticker`/`-price` it also returns `max_buy_qty`
+(passing `-price` sizes it for a **limit** order at that price, which is what you'll actually
+place). Size the buy to `max_buy_qty` rather than to the synced balance. This is KIS-only —
+Toss buys wait on their own settlement/FX and `kis order-cash` doesn't apply.
+
 **Per-order loop** (used identically in both phases):
 
 1. Run the dry-run (default, no `-yes`):
    ```bash
-   go run ./cmd/rebalance-order -account "<ISA|TOSS>" -ticker <code> -side <buy|sell> -qty <n> -currency <KRW|USD>
+   go run ./cmd/rebalance-order -account "<ISA|TOSS>" -ticker <code> -side <buy|sell> -qty <n> -currency <KRW|USD> [-price <limit>]
    ```
    (Add `-exchange NASD|NYSE|AMEX` only if the plan names an actual overseas exchange for a
    KIS-routed ticker — most ISA holdings are KR-listed ETFs and TOSS orders don't need it, Toss
-   doesn't take an exchange parameter at all.)
-2. Show the user exactly what will be sent: account, ticker, side, quantity, and the KIS_ENV
-   banner. Remind them it's a **market order** — no limit price, no partial-fill control.
+   doesn't take an exchange parameter at all.) Omit `-price` for a market order; add it to place
+   a KIS limit order (see the Defaults note — used when a market buy won't fit orderable cash).
+   `-price` is KIS-only; it is rejected for Toss accounts. The dry-run preview prints
+   `type=market` or `type=limit @ <price>` so you can confirm which was resolved.
+2. Show the user exactly what will be sent: account, ticker, side, quantity, order type
+   (market, or limit @ price), and the KIS_ENV banner. For a market order remind them there's no
+   limit price or partial-fill control; for a limit order state the price and that only the
+   marketable portion fills.
 3. Wait for an explicit yes for *this specific order* before doing anything else. A blanket
    "다 실행해" up front does not count as per-order confirmation — still confirm each one,
    since a single wrong line (wrong side, wrong quantity) is real money and each is independent.
@@ -242,6 +268,11 @@ deposit is clutter, per that skill's own guidance). So:
 - Interleaving a buy with sells still in flight, or starting Phase B without checking whether
   Phase A's sells actually delivered the cash the plan assumed.
 - Computing the Phase B cash re-check by hand instead of running `check_cash_availability.py`.
+- Re-submitting a KIS market buy at the same quantity after a "주문가능금액 초과" rejection
+  instead of switching to a `-price` limit order — the market order reserves at the upper limit,
+  so retrying it unchanged just fails again.
+- Sizing a large KIS buy off the synced `CashBalance` instead of `pm kis order-cash`'s
+  `orderable_cash` / `max_buy_qty`, when the synced number may include unsettled proceeds.
 - Running against 연금저축 or any account outside TOSS/ISA scope.
 - Guessing a quantity for a "주문 시점 재계산" new-position line instead of skipping it.
 - Proceeding past a `"failed"` result without telling the user and asking how to continue.

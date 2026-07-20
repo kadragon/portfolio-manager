@@ -31,3 +31,6 @@ coverage.txt
 .agents/
 after-*.png
 rebalance-*.png
+
+# repo-quiz local progress (personal, not shared)
+.repo-quiz/

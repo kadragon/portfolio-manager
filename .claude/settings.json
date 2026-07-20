@@ -2,6 +2,8 @@
   "enabledPlugins": {
     "pyright-lsp@claude-plugins-official": false,
     "typescript-lsp@claude-plugins-official": false,
-    "productivity@kadragon": false
+    "productivity@kadragon": false,
+    "frontend-design@claude-plugins-official": false,
+    "playwright@claude-plugins-official": false
   }
 }
