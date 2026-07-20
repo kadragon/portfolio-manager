@@ -8,6 +8,7 @@ import (
 
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
+	"github.com/shopspring/decimal"
 )
 
 // KISOrderClient places a single order through KIS (domestic or overseas).
@@ -95,6 +96,20 @@ func (s *OrderExecutionService) PlaceOrder(
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
 	if quantity <= 0 {
 		return models.OrderExecutionRecord{}, fmt.Errorf("quantity must be positive, got %d", quantity)
+	}
+	// A non-empty price makes this a limit order; reject a malformed or
+	// non-positive value here rather than passing the raw string to the broker,
+	// where a typo would be spent as a live order attempt and surface only as a
+	// broker rejection. An empty price keeps the market-order path unchanged.
+	price = strings.TrimSpace(price)
+	if price != "" {
+		p, perr := decimal.NewFromString(price)
+		if perr != nil {
+			return models.OrderExecutionRecord{}, fmt.Errorf("price must be a valid number, got %q", price)
+		}
+		if !p.IsPositive() {
+			return models.OrderExecutionRecord{}, fmt.Errorf("price must be positive, got %q", price)
+		}
 	}
 
 	account, err := s.findAccount(ctx, accountName)

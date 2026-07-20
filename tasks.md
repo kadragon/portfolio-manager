@@ -8,6 +8,10 @@ Schema / lifecycle:
 
 ## Review Backlog
 
+### PR #159 — [FEAT] add limit-order support + pm kis order-cash (2026-07-20)
+
+- [ ] [debt] Order execution records don't persist order type or limit price — a limit order is indistinguishable from a market order in `pm order-execution list`, and the submitted price can't be reconstructed (KIS success responses return an order number, not the price). Fix needs an `order_executions` schema column (order_type/price) → sqlc regen → repository signature change (source: codex) — `internal/services/order_execution_service.go:137`
+
 ### PR #129 — [REFACTOR] centralize asset-class vocabulary via models.ValidAssetClass (2026-06-19)
 
 - [ ] [refactor] `AssetClassUnknown = "unknown"` sentinel lives in `services` while the new valid-class consts (`AssetClassETF`/`AssetClassStock`) live in `models`; co-locating the sentinel in `models/stock.go` would unify the asset_class value space, but ripples to external `services.AssetClassUnknown` references in test files (out of PR #129 scope) (source: review) — `internal/services/stock_classification.go:20`

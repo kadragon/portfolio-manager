@@ -49,6 +49,15 @@ func kisOrderCash(ctx context.Context, c *container.Container, args []string) er
 		return err
 	}
 
+	pdno := strings.TrimSpace(*ticker)
+	unpr := strings.TrimSpace(*price)
+	// -price sizes a 지정가 max-buy quantity for a specific ticker; without a
+	// ticker the PDNO is blank, so a 지정가 (ORD_DVSN 00) inquire-psbl-order is a
+	// malformed request. Reject it up front, before touching KIS.
+	if unpr != "" && pdno == "" {
+		return fmt.Errorf("-price requires -ticker (a limit price only sizes a max-buy quantity for a specific ticker)")
+	}
+
 	acct, err := resolveAccountByName(ctx, c, *account)
 	if err != nil {
 		return err
@@ -66,8 +75,6 @@ func kisOrderCash(ctx context.Context, c *container.Container, args []string) er
 		return fmt.Errorf("build kis buyable client: %w", err)
 	}
 
-	pdno := strings.TrimSpace(*ticker)
-	unpr := strings.TrimSpace(*price)
 	// A price is only honoured by KIS under 지정가 (ORD_DVSN 00); under the
 	// default 시장가 (01) the ORD_UNPR is ignored, so max-buy-qty would reflect
 	// a market order regardless. Query as limit whenever a price is supplied so

@@ -19,7 +19,9 @@ this skill doesn't cover.
   at the daily upper-limit price, so it can be rejected with "주문가능금액을 초과 했습니다" even
   when cash covers the actual fill. In that case place a **limit order** via `-price` (see the
   per-order loop) — this reserves exactly price×qty. Don't ask; switch to a marketable limit
-  (current price, or +1 tick to guarantee the fill) automatically and say so.
+  (current price, or +1 tick to make it marketable) automatically and say so. A marketable limit
+  is not a guaranteed fill — the ask can move or lack depth — so verify the fill afterward rather
+  than assuming the order completed.
 - Toss USD amount orders use `MARKET`. Do not ask order type; no expiry applies because this is
   an immediate US regular-session order, not a conditional order.
 - Toss conditional-order creation defaults order type to `MARKET` for `SINGLE`, `LIMIT` for

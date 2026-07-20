@@ -289,6 +289,20 @@ func TestOrderExecutionService_PlaceOrder_LimitPriceReachesKIS(t *testing.T) {
 	}
 }
 
+func TestOrderExecutionService_PlaceOrder_InvalidLimitPriceRejected(t *testing.T) {
+	// A malformed or non-positive -price must be rejected before any broker
+	// call, so a typo can't be spent as a live order attempt. A nil kisFactory
+	// means any accidental broker-branch call would panic instead of passing.
+	acct := kisAccount("ISA", nil)
+	accounts := &fakeAccountLister{accounts: []models.Account{acct}}
+	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, nil, nil)
+	for _, bad := range []string{"abc", "0", "-5", "1O0"} {
+		if _, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW", bad); err == nil {
+			t.Errorf("expected error for invalid price %q, got nil", bad)
+		}
+	}
+}
+
 func TestOrderExecutionService_PlaceOrder_LimitPriceRejectedForToss(t *testing.T) {
 	acct := tossAccount("TOSS", 42)
 	accounts := &fakeAccountLister{accounts: []models.Account{acct}}

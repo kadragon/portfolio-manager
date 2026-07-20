@@ -51,6 +51,13 @@ func main() {
 	if !*yes {
 		fmt.Printf("[DRY RUN] account=%s ticker=%s side=%s qty=%d exchange=%s currency=%s type=%s\n(rerun with -yes to actually place this order)\n",
 			*account, *ticker, *side, *qty, *exchange, *currency, orderType)
+		if strings.TrimSpace(*price) != "" {
+			// The dry-run runs before account resolution, so it can't tell KIS
+			// from Toss; warn that a limit price is KIS-only and -yes will reject
+			// it for a Toss account, rather than letting the limit preview imply
+			// the real run would go through.
+			fmt.Println("(note: -price is KIS-only; a Toss-linked account will reject this on -yes)")
+		}
 		return
 	}
 

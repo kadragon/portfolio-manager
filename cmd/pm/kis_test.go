@@ -30,6 +30,17 @@ func TestRunKisOrderCashRejectsAccountWithoutKisLink(t *testing.T) {
 	}
 }
 
+func TestRunKisOrderCashPriceRequiresTicker(t *testing.T) {
+	ctx := context.Background()
+	c := newAccountContainer(t)
+	// -price without -ticker is a malformed limit query; it must be rejected up
+	// front, before any account resolution or KIS call.
+	err := runKis(ctx, c, []string{"order-cash", "-account", "isa", "-price", "27470"})
+	if err == nil || !strings.Contains(err.Error(), "-price requires -ticker") {
+		t.Fatalf("runKis order-cash error = %v; want -price requires -ticker", err)
+	}
+}
+
 func TestRunKisOrderCashRequiresConfiguredKIS(t *testing.T) {
 	ctx := context.Background()
 	c := newAccountContainer(t)
