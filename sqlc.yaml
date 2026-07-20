@@ -35,6 +35,7 @@ sql:
           - { column: "holdings.quantity", go_type: *decimal }
           - { column: "deposits.amount", go_type: *decimal }
           - { column: "stock_prices.price", go_type: *decimal }
+          - { column: "order_executions.price", go_type: *nullable_decimal }
           # UUID primary keys and foreign keys (TEXT, stored as 32-char hex).
           - column: "groups.id"
             go_type: &uuid

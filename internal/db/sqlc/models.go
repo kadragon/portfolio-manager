@@ -63,6 +63,8 @@ type OrderExecution struct {
 	Status      string
 	Message     string
 	RawResponse sql.NullString
+	OrderType   sql.NullString
+	Price       *numeric.Decimal
 	CreatedAt   ktime.Time
 }
 

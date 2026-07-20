@@ -8,6 +8,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/db/sqlc"
 	"github.com/kadragon/portfolio-manager/internal/ktime"
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
@@ -21,18 +22,27 @@ func NewOrderExecutionRepository(q *sqlc.Queries) *OrderExecutionRepository {
 	return &OrderExecutionRepository{q: q}
 }
 
-// Create inserts a new order execution record.
+// Create inserts a new order execution record. orderType is "limit" or
+// "market" (empty stored as NULL); price is the limit price, nil for market
+// orders.
 func (r *OrderExecutionRepository) Create(
 	ctx context.Context,
 	ticker, side string,
 	quantity int,
 	currency, status, message string,
 	exchange string,
+	orderType string,
+	price *numeric.Decimal,
 	rawResponse map[string]any,
 ) (models.OrderExecutionRecord, error) {
 	var exch sql.NullString
 	if exchange != "" {
 		exch = sql.NullString{String: exchange, Valid: true}
+	}
+
+	var ordType sql.NullString
+	if orderType != "" {
+		ordType = sql.NullString{String: orderType, Valid: true}
 	}
 
 	var rawJSON sql.NullString
@@ -53,6 +63,8 @@ func (r *OrderExecutionRepository) Create(
 		Exchange:    exch,
 		Status:      status,
 		Message:     message,
+		OrderType:   ordType,
+		Price:       price,
 		RawResponse: rawJSON,
 		CreatedAt:   ktime.Now(),
 	})
@@ -103,6 +115,11 @@ func toDomainOrderExecution(row sqlc.OrderExecution) models.OrderExecutionRecord
 		exchange = row.Exchange.String
 	}
 
+	orderType := ""
+	if row.OrderType.Valid {
+		orderType = row.OrderType.String
+	}
+
 	return models.OrderExecutionRecord{
 		ID:          row.ID,
 		Ticker:      row.Ticker,
@@ -112,6 +129,8 @@ func toDomainOrderExecution(row sqlc.OrderExecution) models.OrderExecutionRecord
 		Exchange:    exchange,
 		Status:      row.Status,
 		Message:     row.Message,
+		OrderType:   orderType,
+		Price:       row.Price,
 		RawResponse: raw,
 		CreatedAt:   row.CreatedAt,
 	}

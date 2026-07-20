@@ -34,12 +34,24 @@ var addedColumns = []struct{ table, column, columnType string }{
 	{"accounts", "toss_account_seq", "INTEGER"},
 	{"accounts", "cash_balance_krw", "DECIMAL(10, 10)"},
 	{"accounts", "cash_balance_usd", "DECIMAL(10, 10)"},
+	{"order_executions", "order_type", "TEXT"},
+	{"order_executions", "price", "DECIMAL(10, 10)"},
 }
 
 // migrate applies idempotent ALTER TABLE ADD COLUMN for every entry in
 // addedColumns that is not already present. Safe to run on every Open.
 func migrate(ctx context.Context, db *sql.DB) error {
 	for _, ac := range addedColumns {
+		// A Go-era table (e.g. order_executions) is absent from a legacy
+		// Peewee-only DB; schema.sql creates it with the new columns already on
+		// Open, so there is nothing to ALTER. Skip rather than error.
+		present, err := hasTable(ctx, db, ac.table)
+		if err != nil {
+			return err
+		}
+		if !present {
+			continue
+		}
 		has, err := hasColumn(ctx, db, ac.table, ac.column)
 		if err != nil {
 			return err
@@ -53,6 +65,21 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+// hasTable reports whether the named table exists in the database.
+func hasTable(ctx context.Context, db *sql.DB, table string) (bool, error) {
+	var name string
+	err := db.QueryRowContext(ctx,
+		"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
+	).Scan(&name)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("db: lookup table %s: %w", table, err)
+	}
+	return true, nil
 }
 
 // hasColumn reports whether table already has the named column.

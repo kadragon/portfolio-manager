@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 	"github.com/shopspring/decimal"
 )
@@ -40,6 +41,8 @@ type orderExecutionRecorder interface {
 		quantity int,
 		currency, status, message string,
 		exchange string,
+		orderType string,
+		price *numeric.Decimal,
 		rawResponse map[string]any,
 	) (models.OrderExecutionRecord, error)
 }
@@ -102,6 +105,8 @@ func (s *OrderExecutionService) PlaceOrder(
 	// where a typo would be spent as a live order attempt and surface only as a
 	// broker rejection. An empty price keeps the market-order path unchanged.
 	price = strings.TrimSpace(price)
+	orderType := "market"
+	var priceDec *numeric.Decimal
 	if price != "" {
 		p, perr := decimal.NewFromString(price)
 		if perr != nil {
@@ -110,6 +115,9 @@ func (s *OrderExecutionService) PlaceOrder(
 		if !p.IsPositive() {
 			return models.OrderExecutionRecord{}, fmt.Errorf("price must be positive, got %q", price)
 		}
+		orderType = "limit"
+		d := numeric.Wrap(p)
+		priceDec = &d
 	}
 
 	account, err := s.findAccount(ctx, accountName)
@@ -150,7 +158,7 @@ func (s *OrderExecutionService) PlaceOrder(
 	}
 
 	status, message := classifyOrderResult(raw, placeErr)
-	record, cerr := s.executions.Create(ctx, ticker, side, quantity, currency, status, message, exchange, raw)
+	record, cerr := s.executions.Create(ctx, ticker, side, quantity, currency, status, message, exchange, orderType, priceDec, raw)
 	if cerr != nil {
 		// The order attempt itself (status/message) already happened and must not
 		// be lost or mistaken for "never attempted" — a caller that saw a bare
@@ -161,6 +169,8 @@ func (s *OrderExecutionService) PlaceOrder(
 		return models.OrderExecutionRecord{
 			ID: uuidx.New(), Ticker: ticker, Side: side, Quantity: quantity,
 			Currency: currency, Exchange: exchange, Status: status,
+			OrderType:   orderType,
+			Price:       priceDec,
 			Message:     fmt.Sprintf("%s (WARNING: execution record was NOT persisted: %v)", message, cerr),
 			RawResponse: raw,
 		}, nil

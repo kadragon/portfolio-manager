@@ -153,4 +153,69 @@ func TestOpenMemoryHasNewColumns(t *testing.T) {
 	if n := countCol(columnNames(t, sqlDB, "stocks"), "asset_class"); n != 1 {
 		t.Errorf("fresh stocks.asset_class count = %d, want 1", n)
 	}
+	for _, column := range []string{"order_type", "price"} {
+		if n := countCol(columnNames(t, sqlDB, "order_executions"), column); n != 1 {
+			t.Errorf("fresh order_executions.%s count = %d, want 1", column, n)
+		}
+	}
+}
+
+// TestMigrateAddsOrderExecutionColumns exercises the production upgrade path: a
+// DB whose order_executions table predates order_type/price gains both columns
+// on migrate, and an existing row survives with NULL values.
+func TestMigrateAddsOrderExecutionColumns(t *testing.T) {
+	sqlDB, err := sql.Open("sqlite", "file::memory:?_pragma=foreign_keys(1)&cache=shared")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer sqlDB.Close()
+	sqlDB.SetMaxOpenConns(1)
+	ctx := context.Background()
+	rowID := uuidx.New()
+
+	const oldSchema = `
+CREATE TABLE "order_executions" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "ticker" TEXT NOT NULL,
+    "side" TEXT NOT NULL,
+    "quantity" INTEGER NOT NULL,
+    "currency" TEXT NOT NULL,
+    "exchange" TEXT,
+    "status" TEXT NOT NULL,
+    "message" TEXT NOT NULL,
+    "raw_response" TEXT,
+    "created_at" DATETIME NOT NULL
+);`
+	if _, err := sqlDB.ExecContext(ctx, oldSchema); err != nil {
+		t.Fatalf("old schema: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx,
+		`INSERT INTO order_executions (id, ticker, side, quantity, currency, status, message, created_at) VALUES (?,?,?,?,?,?,?,?)`,
+		rowID, "005930", "buy", 10, "KRW", "filled", "ok", "2026-01-01 00:00:00+00:00",
+	); err != nil {
+		t.Fatalf("seed order execution: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := migrate(ctx, sqlDB); err != nil {
+			t.Fatalf("migrate pass %d: %v", i, err)
+		}
+	}
+
+	cols := columnNames(t, sqlDB, "order_executions")
+	for _, column := range []string{"order_type", "price"} {
+		if n := countCol(cols, column); n != 1 {
+			t.Errorf("order_executions.%s count = %d, want 1 (cols: %v)", column, n, cols)
+		}
+	}
+
+	var orderType, price any
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT order_type, price FROM order_executions WHERE id = ?`, rowID,
+	).Scan(&orderType, &price); err != nil {
+		t.Fatalf("read migrated row: %v", err)
+	}
+	if orderType != nil || price != nil {
+		t.Fatalf("migrated legacy order_type/price = %v, %v; want NULL, NULL", orderType, price)
+	}
 }
