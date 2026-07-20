@@ -16,12 +16,6 @@ Schema / lifecycle:
 
 - [ ] [debt] `hasExecutableWholeShare` applies a blanket ≥1 whole-share floor to all currencies including USD, where some brokers support fractional shares; if fractional trading is ever enabled for overseas stocks, this guard will need per-currency / per-account-type gating (source: agy) — `internal/services/rebalance_service.go:961`
 
-### PR #136 — [FEAT] add dashboard benchmark comparison (2026-06-30)
-
-- [ ] [debt] `computeBenchmarkReturns` skips showing benchmark return rates when `portfolioReturn == nil` (shows "-" for all values); benchmark rates could be shown without the diff column when portfolio return is unavailable — design decision deferred (source: inline) — `internal/services/portfolio_service.go`
-- [ ] [perf] `syncHistoricalDates` appends `firstDepositDate` to the shared list used for all sync targets; only benchmark tickers need this date for `GetStockChangeSince`. Fix: split into base dates (all targets) and benchmark-only dates (source: open-code-review) — `internal/services/price_sync_service.go:204`
-- [ ] [debt] `computeBenchmarkAverage` returns a partial average when fewer than all benchmarks have a `ReturnRate`; template shows "평균" with no indication of partial coverage. Fix: add `BenchmarkAvailableCount` to `PortfolioSummary` and reflect in template (source: open-code-review) — `internal/services/portfolio_service.go:310`
-
 ### PR #145 — [FEAT] add cmd/pm CLI, replace web UI with CLI + skills (2026-07-11)
 
 - [ ] [debt] `pm sync -account NAME` silently falls back to the `.env` default `KIS_CANO`/`KIS_ACNT_PRDT_CD` when the account has no `kis_account_no` linked, overwriting the account's local holdings/cash with a different (default) KIS account's snapshot instead of erroring — pre-existing behavior ported unchanged from the removed `AccountHandler.syncAccount` (same fallback existed at `internal/web/handlers/accounts.go:250-254` on `main`), not introduced by this PR, but worth hardening now that it's exposed via a scriptable CLI (source: agy) — `cmd/pm/sync.go:75-84`

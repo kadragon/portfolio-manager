@@ -151,6 +151,49 @@ func TestPriceSyncServiceFetchesFirstDepositDateForBenchmarks(t *testing.T) {
 	}
 }
 
+// The first-deposit date is a benchmark-only checkpoint (needed for the
+// benchmark-vs-portfolio comparison); held stocks must not fetch it.
+func TestPriceSyncServiceSkipsFirstDepositDateForHeldStocks(t *testing.T) {
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	g, _ := groupRepo.Create(ctx, "test", 0)
+	_, _ = stockRepo.Create(ctx, "VYM", g.ID) // held stock, not a benchmark
+
+	firstDepositDate := datex.New(2026, time.January, 15)
+	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), firstDepositDate, sql.NullString{})
+
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"VYM":    {Symbol: "VYM", Price: 118.0, Currency: "USD", Exchange: "AMEX"},
+			"SPY":    {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+			"QQQ":    {Symbol: "QQQ", Price: 450.0, Currency: "USD", Exchange: "NASD"},
+			"226490": {Symbol: "226490", Price: 30000.0, Currency: "KRW"},
+		},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	// Precondition: a benchmark did fetch the first-deposit date (guards against a
+	// wall-clock run where firstDepositDate collides with a base checkpoint).
+	spy, err := priceRepo.GetByTickerAndDate(ctx, "SPY", firstDepositDate)
+	if err != nil {
+		t.Fatalf("get SPY first-deposit price: %v", err)
+	}
+	if spy == nil {
+		t.Skip("first-deposit date coincides with a base checkpoint this run; test is inconclusive")
+	}
+
+	// The held stock must NOT have fetched the first-deposit-date price.
+	vym, err := priceRepo.GetByTickerAndDate(ctx, "VYM", firstDepositDate)
+	if err != nil {
+		t.Fatalf("get VYM first-deposit price: %v", err)
+	}
+	if vym != nil {
+		t.Errorf("held stock VYM fetched first-deposit-date price %v, want none (benchmark-only date)", vym.Price)
+	}
+}
+
 func TestPriceSyncServiceSkipsHistoricalWhenPresent(t *testing.T) {
 	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
 	ctx := context.Background()

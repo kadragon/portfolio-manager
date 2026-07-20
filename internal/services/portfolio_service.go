@@ -259,27 +259,38 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChang
 
 	benchmarkReturns := s.computeBenchmarkReturns(ctx, returnRate, firstDate)
 	benchmarkAverage, benchmarkAverageDiff := computeBenchmarkAverage(returnRate, benchmarkReturns)
+	benchmarkAvailable := 0
+	for _, b := range benchmarkReturns {
+		if b.ReturnRate != nil {
+			benchmarkAvailable++
+		}
+	}
 
 	return &models.PortfolioSummary{
-		Holdings:               pairs,
-		TotalValue:             totalStockValue,
-		TotalStockValue:        totalStockValue,
-		TotalCashBalance:       totalCash,
-		TotalAssets:            totalAssets,
-		TotalInvested:          totalInvested,
-		ReturnRate:             returnRate,
-		FirstDepositDate:       firstDate,
-		AnnualizedReturnRate:   annualizedReturn,
-		USDKRWRate:             usdKRW,
-		BenchmarkReturns:       benchmarkReturns,
-		BenchmarkAverageReturn: benchmarkAverage,
-		BenchmarkAverageDiff:   benchmarkAverageDiff,
+		Holdings:                pairs,
+		TotalValue:              totalStockValue,
+		TotalStockValue:         totalStockValue,
+		TotalCashBalance:        totalCash,
+		TotalAssets:             totalAssets,
+		TotalInvested:           totalInvested,
+		ReturnRate:              returnRate,
+		FirstDepositDate:        firstDate,
+		AnnualizedReturnRate:    annualizedReturn,
+		USDKRWRate:              usdKRW,
+		BenchmarkReturns:        benchmarkReturns,
+		BenchmarkAverageReturn:  benchmarkAverage,
+		BenchmarkAverageDiff:    benchmarkAverageDiff,
+		BenchmarkAvailableCount: benchmarkAvailable,
 	}, nil
 }
 
 func (s *PortfolioService) computeBenchmarkReturns(ctx context.Context, portfolioReturn *numeric.Decimal, startDate *datex.Date) []models.BenchmarkReturn {
 	results := make([]models.BenchmarkReturn, 0, len(dashboardBenchmarks))
-	if s.priceService == nil || portfolioReturn == nil || startDate == nil {
+	// Benchmark ReturnRate only needs a start date and a price service; the
+	// portfolio-vs-benchmark Difference additionally needs the portfolio return.
+	// So show benchmark rates even when portfolioReturn is nil (e.g. deposits net
+	// to zero), just without the diff column.
+	if s.priceService == nil || startDate == nil {
 		for _, b := range dashboardBenchmarks {
 			results = append(results, models.BenchmarkReturn{Label: b.label, Ticker: b.ticker})
 		}
@@ -288,7 +299,7 @@ func (s *PortfolioService) computeBenchmarkReturns(ctx context.Context, portfoli
 	for _, b := range dashboardBenchmarks {
 		benchmarkReturn := s.priceService.GetStockChangeSince(ctx, b.ticker, *startDate)
 		var diff *numeric.Decimal
-		if benchmarkReturn != nil {
+		if benchmarkReturn != nil && portfolioReturn != nil {
 			d := numeric.Wrap(portfolioReturn.Sub(benchmarkReturn.Decimal))
 			diff = &d
 		}

@@ -51,6 +51,12 @@ type PortfolioSummary struct {
 	BenchmarkReturns       []BenchmarkReturn
 	BenchmarkAverageReturn *numeric.Decimal
 	BenchmarkAverageDiff   *numeric.Decimal
+	// BenchmarkAvailableCount is how many BenchmarkReturns carry a non-nil
+	// ReturnRate. Compare with len(BenchmarkReturns) to detect a partial-coverage
+	// average (BenchmarkAverageReturn computed from fewer than all benchmarks).
+	// Note: BenchmarkAverageReturn is also nil when the portfolio return is
+	// unavailable, even if this count is non-zero.
+	BenchmarkAvailableCount int
 }
 
 // BenchmarkReturn is one dashboard benchmark compared with the portfolio return.

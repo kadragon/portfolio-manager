@@ -54,7 +54,9 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 	targets := syncTargets(allStocks)
 
 	today := datex.FromTime(ktime.NowKST())
-	historicalDates := s.syncHistoricalDates(ctx, today)
+	baseDates := s.syncHistoricalDates(today)
+	benchmarkDates := s.benchmarkHistoricalDates(ctx, today, baseDates)
+	benchmarkTickers := benchmarkTickerSet()
 
 	for idx, target := range targets {
 		if ctx.Err() != nil {
@@ -109,6 +111,14 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 		}
 
 		// Fetch any missing historical closes (fetch-once: immutable past data).
+		// Only dashboard benchmarks need the first-deposit date (for the
+		// benchmark-vs-portfolio comparison); held stocks sync base dates only.
+		historicalDates := baseDates
+		if len(benchmarkDates) > 0 && benchmarkTickers[target.ticker] {
+			historicalDates = make([]datex.Date, 0, len(baseDates)+len(benchmarkDates))
+			historicalDates = append(historicalDates, baseDates...)
+			historicalDates = append(historicalDates, benchmarkDates...)
+		}
 		for _, targetDate := range historicalDates {
 			if cached, _ := s.stockPrices.GetByTickerAndDate(ctx, target.ticker, targetDate); cached != nil && cached.Price.IsPositive() {
 				continue
@@ -216,30 +226,50 @@ func (s *PriceSyncService) BackfillRange(ctx context.Context, ticker string, sta
 	return result, nil
 }
 
-func (s *PriceSyncService) syncHistoricalDates(ctx context.Context, today datex.Date) []datex.Date {
+// syncHistoricalDates returns the fixed 1y/6m/1m/1d checkpoints synced for every
+// target (held stocks and benchmarks alike).
+func (s *PriceSyncService) syncHistoricalDates(today datex.Date) []datex.Date {
 	targetDates := computeTargetDates(today.Time)
-	dates := make([]datex.Date, 0, len(targetDates)+1)
-	seen := make(map[string]bool, len(targetDates)+1)
+	dates := make([]datex.Date, 0, len(targetDates))
 	for _, label := range []string{"1y", "6m", "1m", "1d"} {
-		d := datex.FromTime(targetDates[label])
-		dates = append(dates, d)
-		seen[d.ISO()] = true
+		dates = append(dates, datex.FromTime(targetDates[label]))
 	}
+	return dates
+}
+
+// benchmarkHistoricalDates returns extra checkpoints only the dashboard
+// benchmarks need — currently the first-deposit date (prev-business-day
+// adjusted), used by GetStockChangeSince for the benchmark-vs-portfolio
+// comparison. Held stocks don't need it, so it's kept out of the base set.
+// Deduped against base; returns nil when there's no usable first-deposit date.
+func (s *PriceSyncService) benchmarkHistoricalDates(ctx context.Context, today datex.Date, base []datex.Date) []datex.Date {
 	if s.deposits == nil {
-		return dates
+		return nil
 	}
 	firstDate, err := s.deposits.GetFirstDepositDate(ctx)
 	if err != nil || firstDate == nil || firstDate.Time.IsZero() {
-		return dates
+		return nil
 	}
 	if firstDate.ISO() >= today.ISO() {
-		return dates
+		return nil
 	}
 	adjusted := datex.FromTime(prevBizDay(firstDate.Time))
-	if seen[adjusted.ISO()] {
-		return dates
+	for _, d := range base {
+		if d.ISO() == adjusted.ISO() {
+			return nil
+		}
 	}
-	return append(dates, adjusted)
+	return []datex.Date{adjusted}
+}
+
+// benchmarkTickerSet is the set of dashboard-benchmark tickers, used to decide
+// which sync targets also need the benchmark-only historical dates.
+func benchmarkTickerSet() map[string]bool {
+	set := make(map[string]bool, len(dashboardBenchmarks))
+	for _, b := range dashboardBenchmarks {
+		set[b.ticker] = true
+	}
+	return set
 }
 
 type priceSyncTarget struct {

@@ -187,6 +187,119 @@ func TestGetPortfolioSummaryBenchmarkReturns(t *testing.T) {
 	}
 }
 
+// When the portfolio return is nil (e.g. deposits net to zero) but a first
+// deposit date exists, benchmark return rates are still shown — only the
+// per-benchmark Difference column is omitted.
+func TestGetPortfolioSummaryBenchmarkReturnsWithoutPortfolioReturn(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	g, _ := c.Groups.Create(ctx, "성장주", 100.0)
+	s, _ := c.Stocks.Create(ctx, "005930", g.ID)
+	acc, _ := c.Accounts.Create(ctx, "내 계좌", numeric.Zero)
+	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(120))
+
+	start := datex.New(2026, time.January, 1)
+	today := datex.New(2026, time.June, 1)
+	// Net-zero deposits: first-deposit date is set but totalInvested is 0, so the
+	// portfolio return rate is nil.
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(100), start, sql.NullString{})
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(-100), datex.New(2026, time.March, 1), sql.NullString{})
+
+	savePrice := func(ticker, price, currency, name, exchange string, d datex.Date) {
+		t.Helper()
+		p, _ := numeric.FromString(price)
+		ex := sql.NullString{}
+		if exchange != "" {
+			ex = sql.NullString{String: exchange, Valid: true}
+		}
+		if _, err := c.StockPrices.Save(ctx, ticker, d, p, currency, name, ex); err != nil {
+			t.Fatalf("save price %s %s: %v", ticker, d.ISO(), err)
+		}
+	}
+
+	savePrice("005930", "1", "KRW", "삼성전자", "", today)
+	savePrice("SPY", "100", "USD", "SPDR S&P 500 ETF", "AMEX", start)
+	savePrice("SPY", "110", "USD", "SPDR S&P 500 ETF", "AMEX", today)
+	savePrice("QQQ", "100", "USD", "Invesco QQQ Trust", "NASD", start)
+	savePrice("QQQ", "130", "USD", "Invesco QQQ Trust", "NASD", today)
+	savePrice("226490", "100", "KRW", "KODEX KOSPI", "", start)
+	savePrice("226490", "90", "KRW", "KODEX KOSPI", "", today)
+
+	priceService := services.NewPriceService(c.StockPrices).WithTodayProvider(func() time.Time { return today.Time })
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
+
+	summary, err := ps.GetPortfolioSummary(ctx, true)
+	if err != nil {
+		t.Fatalf("GetPortfolioSummary: %v", err)
+	}
+	if summary.ReturnRate != nil {
+		t.Fatalf("ReturnRate = %v, want nil (net-zero deposits)", summary.ReturnRate)
+	}
+	if len(summary.BenchmarkReturns) != 3 {
+		t.Fatalf("BenchmarkReturns len = %d, want 3", len(summary.BenchmarkReturns))
+	}
+	for _, b := range summary.BenchmarkReturns {
+		if b.ReturnRate == nil {
+			t.Errorf("benchmark %s: ReturnRate is nil, want a rate", b.Ticker)
+		}
+		if b.Difference != nil {
+			t.Errorf("benchmark %s: Difference = %v, want nil (no portfolio return)", b.Ticker, b.Difference)
+		}
+	}
+	if summary.BenchmarkAvailableCount != 3 {
+		t.Errorf("BenchmarkAvailableCount = %d, want 3", summary.BenchmarkAvailableCount)
+	}
+}
+
+// BenchmarkAvailableCount reflects how many benchmarks have a usable return rate,
+// so a partial-coverage average can be distinguished from full coverage.
+func TestGetPortfolioSummaryBenchmarkAvailableCountPartial(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	g, _ := c.Groups.Create(ctx, "성장주", 100.0)
+	s, _ := c.Stocks.Create(ctx, "005930", g.ID)
+	acc, _ := c.Accounts.Create(ctx, "내 계좌", numeric.Zero)
+	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(120))
+
+	start := datex.New(2026, time.January, 1)
+	today := datex.New(2026, time.June, 1)
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(100), start, sql.NullString{})
+
+	savePrice := func(ticker, price, currency, name, exchange string, d datex.Date) {
+		t.Helper()
+		p, _ := numeric.FromString(price)
+		ex := sql.NullString{}
+		if exchange != "" {
+			ex = sql.NullString{String: exchange, Valid: true}
+		}
+		if _, err := c.StockPrices.Save(ctx, ticker, d, p, currency, name, ex); err != nil {
+			t.Fatalf("save price %s %s: %v", ticker, d.ISO(), err)
+		}
+	}
+
+	savePrice("005930", "1", "KRW", "삼성전자", "", today)
+	// Only SPY has both start and current prices; QQQ and 226490 have none, so
+	// their change-since-start is nil.
+	savePrice("SPY", "100", "USD", "SPDR S&P 500 ETF", "AMEX", start)
+	savePrice("SPY", "110", "USD", "SPDR S&P 500 ETF", "AMEX", today)
+
+	priceService := services.NewPriceService(c.StockPrices).WithTodayProvider(func() time.Time { return today.Time })
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
+
+	summary, err := ps.GetPortfolioSummary(ctx, true)
+	if err != nil {
+		t.Fatalf("GetPortfolioSummary: %v", err)
+	}
+	if len(summary.BenchmarkReturns) != 3 {
+		t.Fatalf("BenchmarkReturns len = %d, want 3", len(summary.BenchmarkReturns))
+	}
+	if summary.BenchmarkAvailableCount != 1 {
+		t.Errorf("BenchmarkAvailableCount = %d, want 1 (only SPY priced)", summary.BenchmarkAvailableCount)
+	}
+}
+
 func TestGetPortfolioSummaryUSDStock(t *testing.T) {
 	c := newPortfolioContainer(t)
 	ctx := context.Background()
