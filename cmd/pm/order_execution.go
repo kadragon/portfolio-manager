@@ -9,6 +9,7 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/container"
 	"github.com/kadragon/portfolio-manager/internal/ktime"
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
@@ -23,6 +24,8 @@ type orderExecutionOutput struct {
 	Exchange  string
 	Status    string
 	Message   string
+	OrderType string
+	Price     *numeric.Decimal
 	CreatedAt ktime.Time
 }
 
@@ -72,6 +75,8 @@ func toOrderExecutionOutputs(records []models.OrderExecutionRecord) []orderExecu
 			Exchange:  record.Exchange,
 			Status:    record.Status,
 			Message:   record.Message,
+			OrderType: record.OrderType,
+			Price:     record.Price,
 			CreatedAt: record.CreatedAt,
 		}
 	}

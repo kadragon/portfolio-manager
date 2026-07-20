@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kadragon/portfolio-manager/internal/models"
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
@@ -20,9 +21,10 @@ func (f *fakeAccountLister) ListAll(ctx context.Context) ([]models.Account, erro
 }
 
 type executionCall struct {
-	ticker, side, currency, status, message, exchange string
-	quantity                                          int
-	rawResponse                                       map[string]any
+	ticker, side, currency, status, message, exchange, orderType string
+	quantity                                                     int
+	price                                                        *numeric.Decimal
+	rawResponse                                                  map[string]any
 }
 
 type fakeExecutionRecorder struct {
@@ -36,15 +38,18 @@ func (f *fakeExecutionRecorder) Create(
 	quantity int,
 	currency, status, message string,
 	exchange string,
+	orderType string,
+	price *numeric.Decimal,
 	rawResponse map[string]any,
 ) (models.OrderExecutionRecord, error) {
 	if f.err != nil {
 		return models.OrderExecutionRecord{}, f.err
 	}
-	f.calls = append(f.calls, executionCall{ticker, side, currency, status, message, exchange, quantity, rawResponse})
+	f.calls = append(f.calls, executionCall{ticker, side, currency, status, message, exchange, orderType, quantity, price, rawResponse})
 	return models.OrderExecutionRecord{
 		ID: uuidx.New(), Ticker: ticker, Side: side, Quantity: quantity,
-		Currency: currency, Exchange: exchange, Status: status, Message: message, RawResponse: rawResponse,
+		Currency: currency, Exchange: exchange, Status: status, Message: message,
+		OrderType: orderType, Price: price, RawResponse: rawResponse,
 	}, nil
 }
 
@@ -280,12 +285,56 @@ func TestOrderExecutionService_PlaceOrder_LimitPriceReachesKIS(t *testing.T) {
 	kisClient := &fakeKISOrderClient{resp: map[string]any{"rt_cd": "0"}}
 	factory := func(keyID *int64, cano, acntPrdtCd string) (KISOrderClient, error) { return kisClient, nil }
 
-	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, factory, nil)
-	if _, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW", "27470"); err != nil {
+	executions := &fakeExecutionRecorder{}
+	svc := NewOrderExecutionService(accounts, executions, factory, nil)
+	record, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW", "27470")
+	if err != nil {
 		t.Fatalf("PlaceOrder returned error: %v", err)
 	}
 	if kisClient.calledPrice != "27470" {
 		t.Errorf("KIS client received price = %q, want 27470", kisClient.calledPrice)
+	}
+	// A -price order must be persisted as a limit order carrying its price, so
+	// it is distinguishable from a market order after the fact.
+	if len(executions.calls) != 1 {
+		t.Fatalf("expected 1 execution recorded, got %d", len(executions.calls))
+	}
+	call := executions.calls[0]
+	if call.orderType != "limit" {
+		t.Errorf("recorded order_type = %q, want limit", call.orderType)
+	}
+	if call.price == nil || call.price.String() != "27470" {
+		t.Errorf("recorded price = %v, want 27470", call.price)
+	}
+	if record.OrderType != "limit" || record.Price == nil {
+		t.Errorf("returned record order_type/price = %q/%v, want limit/27470", record.OrderType, record.Price)
+	}
+}
+
+func TestOrderExecutionService_PlaceOrder_MarketOrderPersistsType(t *testing.T) {
+	acct := kisAccount("ISA", nil)
+	accounts := &fakeAccountLister{accounts: []models.Account{acct}}
+	kisClient := &fakeKISOrderClient{resp: map[string]any{"rt_cd": "0"}}
+	factory := func(keyID *int64, cano, acntPrdtCd string) (KISOrderClient, error) { return kisClient, nil }
+
+	executions := &fakeExecutionRecorder{}
+	svc := NewOrderExecutionService(accounts, executions, factory, nil)
+	record, err := svc.PlaceOrder(context.Background(), "ISA", "069500", "buy", 10, "", "KRW", "")
+	if err != nil {
+		t.Fatalf("PlaceOrder returned error: %v", err)
+	}
+	if len(executions.calls) != 1 {
+		t.Fatalf("expected 1 execution recorded, got %d", len(executions.calls))
+	}
+	call := executions.calls[0]
+	if call.orderType != "market" {
+		t.Errorf("recorded order_type = %q, want market", call.orderType)
+	}
+	if call.price != nil {
+		t.Errorf("recorded price = %v, want nil for market order", call.price)
+	}
+	if record.OrderType != "market" || record.Price != nil {
+		t.Errorf("returned record order_type/price = %q/%v, want market/nil", record.OrderType, record.Price)
 	}
 }
 

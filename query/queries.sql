@@ -187,8 +187,8 @@ RETURNING *;
 -- Phase 7 queries.
 
 -- name: CreateOrderExecution :one
-INSERT INTO order_executions (id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO order_executions (id, ticker, side, quantity, currency, exchange, status, message, raw_response, order_type, price, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ListRecentOrderExecutions :many

@@ -44,6 +44,8 @@ type OrderExecutionRecord struct {
 	Exchange    string
 	Status      string
 	Message     string
+	OrderType   string
+	Price       *numeric.Decimal
 	RawResponse map[string]any
 	CreatedAt   ktime.Time
 }

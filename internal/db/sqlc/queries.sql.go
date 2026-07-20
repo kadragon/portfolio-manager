@@ -173,9 +173,9 @@ func (q *Queries) CreateHolding(ctx context.Context, arg CreateHoldingParams) (H
 
 const createOrderExecution = `-- name: CreateOrderExecution :one
 
-INSERT INTO order_executions (id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at
+INSERT INTO order_executions (id, ticker, side, quantity, currency, exchange, status, message, raw_response, order_type, price, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, ticker, side, quantity, currency, exchange, status, message, raw_response, order_type, price, created_at
 `
 
 type CreateOrderExecutionParams struct {
@@ -188,6 +188,8 @@ type CreateOrderExecutionParams struct {
 	Status      string
 	Message     string
 	RawResponse sql.NullString
+	OrderType   sql.NullString
+	Price       *numeric.Decimal
 	CreatedAt   ktime.Time
 }
 
@@ -203,6 +205,8 @@ func (q *Queries) CreateOrderExecution(ctx context.Context, arg CreateOrderExecu
 		arg.Status,
 		arg.Message,
 		arg.RawResponse,
+		arg.OrderType,
+		arg.Price,
 		arg.CreatedAt,
 	)
 	var i OrderExecution
@@ -216,6 +220,8 @@ func (q *Queries) CreateOrderExecution(ctx context.Context, arg CreateOrderExecu
 		&i.Status,
 		&i.Message,
 		&i.RawResponse,
+		&i.OrderType,
+		&i.Price,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -773,7 +779,7 @@ func (q *Queries) ListHoldingsByAccount(ctx context.Context, accountID uuidx.UUI
 }
 
 const listOrderExecutions = `-- name: ListOrderExecutions :many
-SELECT id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at FROM order_executions
+SELECT id, ticker, side, quantity, currency, exchange, status, message, raw_response, order_type, price, created_at FROM order_executions
 WHERE (CAST(?1 AS TEXT) = '' OR ticker = CAST(?1 AS TEXT))
   AND (CAST(?2 AS TEXT) = '' OR status = CAST(?2 AS TEXT))
 ORDER BY created_at DESC
@@ -805,6 +811,8 @@ func (q *Queries) ListOrderExecutions(ctx context.Context, arg ListOrderExecutio
 			&i.Status,
 			&i.Message,
 			&i.RawResponse,
+			&i.OrderType,
+			&i.Price,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -821,7 +829,7 @@ func (q *Queries) ListOrderExecutions(ctx context.Context, arg ListOrderExecutio
 }
 
 const listRecentOrderExecutions = `-- name: ListRecentOrderExecutions :many
-SELECT id, ticker, side, quantity, currency, exchange, status, message, raw_response, created_at FROM order_executions ORDER BY created_at DESC LIMIT ?
+SELECT id, ticker, side, quantity, currency, exchange, status, message, raw_response, order_type, price, created_at FROM order_executions ORDER BY created_at DESC LIMIT ?
 `
 
 func (q *Queries) ListRecentOrderExecutions(ctx context.Context, limit int64) ([]OrderExecution, error) {
@@ -843,6 +851,8 @@ func (q *Queries) ListRecentOrderExecutions(ctx context.Context, limit int64) ([
 			&i.Status,
 			&i.Message,
 			&i.RawResponse,
+			&i.OrderType,
+			&i.Price,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

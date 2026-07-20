@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS "order_executions" (
     "status" TEXT NOT NULL,
     "message" TEXT NOT NULL,
     "raw_response" TEXT,
+    "order_type" TEXT,
+    "price" DECIMAL(10, 10),
     "created_at" DATETIME NOT NULL
 );
 CREATE INDEX IF NOT EXISTS "orderexecutionmodel_created_at" ON "order_executions" ("created_at");

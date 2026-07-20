@@ -5,15 +5,18 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/kadragon/portfolio-manager/internal/numeric"
 )
 
 func TestOrderExecutionList(t *testing.T) {
 	ctx := context.Background()
 	c := newAccountContainer(t)
-	if _, err := c.OrderExecutions.Create(ctx, "AAPL", "buy", 1, "USD", "filled", "ok", "NASD", nil); err != nil {
+	if _, err := c.OrderExecutions.Create(ctx, "AAPL", "buy", 1, "USD", "filled", "ok", "NASD", "market", nil, nil); err != nil {
 		t.Fatalf("Create filled: %v", err)
 	}
-	if _, err := c.OrderExecutions.Create(ctx, "005930", "sell", 2, "KRW", "failed", "rejected", "KRX", map[string]any{"account": "sensitive"}); err != nil {
+	limitPrice := numeric.FromInt(70000)
+	if _, err := c.OrderExecutions.Create(ctx, "005930", "sell", 2, "KRW", "failed", "rejected", "KRX", "limit", &limitPrice, map[string]any{"account": "sensitive"}); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
@@ -36,6 +39,13 @@ func TestOrderExecutionList(t *testing.T) {
 	}
 	if strings.Contains(string(encoded), "RawResponse") || strings.Contains(string(encoded), "sensitive") {
 		t.Fatalf("order execution output exposed raw response: %s", encoded)
+	}
+	// The limit order's type and price must be recoverable from the output.
+	if !strings.Contains(string(encoded), `"OrderType":"limit"`) {
+		t.Fatalf("order execution output missing limit order type: %s", encoded)
+	}
+	if !strings.Contains(string(encoded), `"Price":"70000"`) {
+		t.Fatalf("order execution output missing limit price: %s", encoded)
 	}
 }
 
