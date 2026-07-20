@@ -224,6 +224,26 @@ func (c *Container) BuildKISOrderClient(keyID *int64, cano, acntPrdtCd string) (
 	}, nil
 }
 
+// BuildKISBuyableClient builds a DomesticBuyableClient for the given
+// kis_api_key_id (nil or unknown falls back to key 1's auth). CANO/AcntPrdtCd
+// are passed per-call to FetchBuyable, so none is baked in. Returns an error if
+// KIS is not configured at all.
+func (c *Container) BuildKISBuyableClient(keyID *int64) (*kis.DomesticBuyableClient, error) {
+	auth := resolveKisAuth(c.kisAuthByKeyID, keyID)
+	if auth == nil {
+		return nil, fmt.Errorf("KIS is not configured (missing KIS_APP_KEY/KIS_APP_SECRET)")
+	}
+	return &kis.DomesticBuyableClient{
+		HTTP:      auth.httpClient,
+		BaseURL:   auth.baseURL,
+		AppKey:    auth.appKey,
+		AppSecret: auth.appSecret,
+		CustType:  auth.custType,
+		Env:       auth.env,
+		Manager:   auth.tokenManager,
+	}, nil
+}
+
 // resolveKisAuth mirrors resolveSyncService's fallback-to-key-1 behaviour for
 // the per-key kisAuth bundles used by order clients.
 func resolveKisAuth(byKeyID map[int64]*kisAuth, keyID *int64) *kisAuth {
