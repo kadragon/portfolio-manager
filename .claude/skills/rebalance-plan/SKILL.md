@@ -82,9 +82,10 @@ KOSPI exit and placement violations cannot be deferred.
 Work account by account. Hard constraints from policy §Tax Placement Rules — the important ones:
 
 - Cash cannot move between accounts: each account's buys ≤ its sells + existing cash.
-- 연금저축 holds defensive only; ISA prefers KR-listed overseas (domestic-equity also allowed);
-  TOSS holds US-listed + domestic-equity. "Prefers" is not a violation — only policy's banned
-  combos count as placement violations.
+- 연금저축 prefers defensive assets but may hold pension-eligible KR-listed equity ETFs when
+  needed to maintain the integrated portfolio; ISA prefers KR-listed overseas
+  (domestic-equity also allowed); TOSS holds US-listed + domestic-equity. "Prefers" is not a
+  violation — only policy's banned combos count as placement violations.
 - Never plan US-listed sells without flagging the estimated gain (양도세 22%) and asking.
 - KR-listed overseas ETF sells in the taxable account are taxable — flag the amount; prefer ISA/연금 sells.
 - 여유금: no trades. Prefer covering underweights with scheduled new contributions over selling.
@@ -149,7 +150,7 @@ plan **buys only — never sells**. New money is the cheapest rebalancing there 
 underweights without tax events, which is why the policy prefers it over selling.
 
 1. Same inputs as step 1 (policy, FX, snapshot). Ask for the account if not given —
-   placement rules differ per account (e.g. cash landing in 연금저축 may only buy 금·채권).
+   placement rules differ per account (e.g. 연금저축 cannot buy US-listed ETFs).
    If this month is a scheduled advance month (February, May, August, or November) and no
    full-plan run has already advanced the schedule this month, perform any due §Transition
    Schedule advancement under `references/policy-revision.md` §Gradual transition mode step 4
