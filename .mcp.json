@@ -6,7 +6,6 @@
         "code-review-graph",
         "serve"
       ],
-      "cwd": "/Users/kadragon/Dev/portfolio-manager",
       "type": "stdio"
     }
   }

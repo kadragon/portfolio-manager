@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat >/dev/null || true; command -v code-review-graph >/dev/null 2>&1 || exit 0; git rev-parse --git-dir >/dev/null 2>&1 && code-review-graph update --skip-flows --repo \"$(git rev-parse --show-toplevel 2>/dev/null)\" || true",
+            "command": "cat >/dev/null || true; if command -v code-review-graph >/dev/null 2>&1; then CRG=code-review-graph; elif command -v uvx >/dev/null 2>&1; then CRG='uvx code-review-graph'; else exit 0; fi; git rev-parse --git-dir >/dev/null 2>&1 && $CRG update --skip-flows --repo \"$(git rev-parse --show-toplevel 2>/dev/null)\" || true",
             "timeout": 30
           }
         ]
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat >/dev/null || true; command -v code-review-graph >/dev/null 2>&1 || exit 0; git rev-parse --git-dir >/dev/null 2>&1 && code-review-graph status --repo \"$(git rev-parse --show-toplevel 2>/dev/null)\" || echo 'Not a git repo, skipping'",
+            "command": "cat >/dev/null || true; if command -v code-review-graph >/dev/null 2>&1; then CRG=code-review-graph; elif command -v uvx >/dev/null 2>&1; then CRG='uvx code-review-graph'; else echo 'code-review-graph unavailable, skipping'; exit 0; fi; git rev-parse --git-dir >/dev/null 2>&1 && $CRG status --repo \"$(git rev-parse --show-toplevel 2>/dev/null)\" || echo 'Not a git repo, skipping'",
             "timeout": 10
           }
         ]
