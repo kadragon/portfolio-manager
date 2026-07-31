@@ -179,25 +179,29 @@ func computeTargetDates(today time.Time) map[string]time.Time {
 }
 
 func shiftYears(t time.Time, years int) time.Time {
-	target := t.AddDate(-years, 0, 0)
-	y, m, _ := target.Date()
-	last := lastDayOfMonth(y, m)
-	d := t.Day()
-	if d > last {
-		d = last
-	}
-	return time.Date(y, m, d, 0, 0, 0, 0, target.Location())
+	return clampDayOfMonth(firstOfMonth(t).AddDate(-years, 0, 0), t.Day())
 }
 
 func shiftMonths(t time.Time, months int) time.Time {
-	target := t.AddDate(0, -months, 0)
-	y, m, _ := target.Date()
-	last := lastDayOfMonth(y, m)
-	d := t.Day()
-	if d > last {
-		d = last
+	return clampDayOfMonth(firstOfMonth(t).AddDate(0, -months, 0), t.Day())
+}
+
+func firstOfMonth(t time.Time) time.Time {
+	y, m, _ := t.Date()
+	return time.Date(y, m, 1, 0, 0, 0, 0, t.Location())
+}
+
+// clampDayOfMonth rebuilds monthStart's month with the given day, capped at that
+// month's last day. Shifting from the first of the month keeps AddDate from
+// overflowing into the next month (2026-07-31 minus one month would otherwise
+// normalize to 2026-07-01, putting the target back in July), so the cap is
+// applied to the intended month.
+func clampDayOfMonth(monthStart time.Time, day int) time.Time {
+	y, m, _ := monthStart.Date()
+	if last := lastDayOfMonth(y, m); day > last {
+		day = last
 	}
-	return time.Date(y, m, d, 0, 0, 0, 0, target.Location())
+	return time.Date(y, m, day, 0, 0, 0, 0, monthStart.Location())
 }
 
 func lastDayOfMonth(year int, month time.Month) int {

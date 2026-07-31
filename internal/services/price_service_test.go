@@ -217,6 +217,78 @@ func TestGetStockChangeRatesZeroForMissingHistory(t *testing.T) {
 	}
 }
 
+// TestGetStockChangeRatesMonthEndTargetDate verifies the historical target date
+// stays inside the intended month when today's day-of-month does not exist in
+// that month (e.g. 2026-07-31 minus one month is June, which has no 31st). Each
+// case seeds a decoy row on the date a naive shift would land on, so picking the
+// wrong month yields a different, detectable rate.
+func TestGetStockChangeRatesMonthEndTargetDate(t *testing.T) {
+	tests := []struct {
+		name     string
+		today    string
+		period   string
+		rows     map[string]string // price_date -> price
+		wantRate string
+	}{
+		{
+			name:   "1m from a 31-day month end",
+			today:  "2026-07-31",
+			period: "1m",
+			// Naive shift lands back on 2026-07-31 (today), making the rate 0.
+			rows:     map[string]string{"2026-07-31": "100", "2026-06-30": "80"},
+			wantRate: "25",
+		},
+		{
+			name:   "6m landing on February",
+			today:  "2026-08-31",
+			period: "6m",
+			// Naive shift overflows Feb 31 into March and picks the decoy.
+			rows:     map[string]string{"2026-08-31": "100", "2026-03-31": "50", "2026-02-20": "80"},
+			wantRate: "25",
+		},
+		{
+			name:   "1y from a leap day",
+			today:  "2024-02-29",
+			period: "1y",
+			// Naive shift overflows into 2023-03-29 and picks the decoy.
+			rows:     map[string]string{"2024-02-29": "100", "2023-03-29": "50", "2023-02-20": "80"},
+			wantRate: "25",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newPriceRepo(t)
+			ctx := context.Background()
+
+			for iso, price := range tc.rows {
+				d, err := datex.ParseDate(iso)
+				if err != nil {
+					t.Fatalf("parse %s: %v", iso, err)
+				}
+				p, err := numeric.FromString(price)
+				if err != nil {
+					t.Fatalf("parse price %s: %v", price, err)
+				}
+				if _, err := r.Save(ctx, "005930", d, p, "KRW", "삼성전자", sql.NullString{}); err != nil {
+					t.Fatalf("save %s: %v", iso, err)
+				}
+			}
+
+			today, err := time.Parse("2006-01-02", tc.today)
+			if err != nil {
+				t.Fatalf("parse today: %v", err)
+			}
+			svc := services.NewPriceService(r).WithTodayProvider(func() time.Time { return today })
+
+			result := svc.GetStockChangeRates(ctx, "005930", "", []string{tc.period})
+			if got := result[tc.period].String(); got != tc.wantRate {
+				t.Errorf("%s rate = %s, want %s", tc.period, got, tc.wantRate)
+			}
+		})
+	}
+}
+
 // TestGetStockChangeRatesNearestPastDate verifies the rate is computed against
 // the most recent price at or before the target date when no exact-date row
 // exists (target lands on a non-business day with no cached price).
