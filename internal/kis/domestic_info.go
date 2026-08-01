@@ -30,7 +30,7 @@ func (i DomesticStockInfo) AssetClass() string {
 // also carry a non-empty etf_dvsn_cd. Anything else (주권 "ST", ETN, etc.) is
 // treated as a regular stock for eligibility.
 //
-// ETN ("EN") intentionally falls through to "stock": Korean capital markets
+// ETN ("EN") is explicitly classified as "stock": Korean capital markets
 // law treats ETNs as 파생결합증권 (issuer-credit-linked debt securities), which
 // are ineligible for 연금저축/IRP accounts industry-wide. There is no in-repo
 // canHold gate enforcing this (removed with rebalance_service.go in PR #145);
@@ -39,6 +39,9 @@ func (i DomesticStockInfo) AssetClass() string {
 // accurate — this is not a bug.
 func ClassifyDomesticAssetClass(sctyGrpIDCd, etfDvsnCd string) string {
 	grp := strings.ToUpper(strings.TrimSpace(sctyGrpIDCd))
+	if grp == "EN" {
+		return "stock"
+	}
 	// "EF" is the documented ETF code. "FE" is an UNVERIFIED guess at a foreign-ETF
 	// variant — kept defensively; the etf_dvsn_cd check below is the reliable
 	// secondary signal. Remove "FE" if KIS docs/responses confirm it never occurs.
