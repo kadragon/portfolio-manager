@@ -9,16 +9,6 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
-// AssetClassUnknown is the sentinel persisted onto a stock's asset_class when it
-// could not be resolved (classifier error or no signal). It is itself terminal
-// for the "already classified" skip-gates, so the ticker is not re-queried
-// against KIS on every sync/ClassifyAll. It is stamped ONLY on asset_class —
-// never on security_group, which keeps its KIS scty_grp_id_cd value space.
-// Downstream consumers (e.g. assetIsETF) treat any non-"etf" value as non-ETF,
-// so the sentinel is safe. A user can reset asset_class to "미분류" (empty) via
-// the edit form to force a re-classification on the next sync.
-const AssetClassUnknown = "unknown"
-
 // errClassifyNoSignal marks the case where the classifier returned no usable
 // signal (no error, but no asset class) and the stock was sentinel-tagged. It
 // lets ClassifyAll count the stock as Failed rather than Classified.
@@ -26,7 +16,7 @@ var errClassifyNoSignal = errors.New("no classification signal")
 
 // isUnknown reports whether a nullable column holds the sentinel value.
 func isUnknown(s *string) bool {
-	return s != nil && *s == AssetClassUnknown
+	return s != nil && *s == models.AssetClassUnknown
 }
 
 // AssetClassifier resolves a security's asset class ("etf"/"stock") and its
@@ -69,7 +59,7 @@ func classifyStock(
 			// value space (never the sentinel); the asset_class sentinel is
 			// itself terminal for the skip-gates. Surface a non-nil error so the
 			// run counts this as a failure, not a real classification.
-			updated, uerr := updater.UpdateAssetClass(ctx, st.ID, AssetClassUnknown)
+			updated, uerr := updater.UpdateAssetClass(ctx, st.ID, models.AssetClassUnknown)
 			if uerr != nil {
 				return st, false, uerr
 			}

@@ -299,7 +299,7 @@ func TestSyncAccount_SkipsSentinelStock(t *testing.T) {
 			{Ticker: "BADTICK", Name: "분류 실패 종목", Quantity: mustDecimal("10")},
 		},
 	}}
-	unknown := services.AssetClassUnknown
+	unknown := models.AssetClassUnknown
 	stockID := newTestUUID()
 	// asset_class sentinel, security_group still nil — must NOT be re-queried.
 	stocks := &mockSyncStockRepo{all: []models.Stock{{ID: stockID, Ticker: "BADTICK", AssetClass: &unknown}}}

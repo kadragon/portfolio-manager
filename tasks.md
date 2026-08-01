@@ -8,10 +8,6 @@ Schema / lifecycle:
 
 ## Review Backlog
 
-### PR #129 — [REFACTOR] centralize asset-class vocabulary via models.ValidAssetClass (2026-06-19)
-
-- [ ] [refactor] `AssetClassUnknown = "unknown"` sentinel lives in `services` while the new valid-class consts (`AssetClassETF`/`AssetClassStock`) live in `models`; co-locating the sentinel in `models/stock.go` would unify the asset_class value space, but ripples to external `services.AssetClassUnknown` references in test files (out of PR #129 scope) (source: review) — `internal/services/stock_classification.go:20`
-
 ### PR #164 — [FIX] omit change-rate keys with no cached history (2026-08-01)
 
 - [ ] [test] The `GetStockChangeRates` omit-contract and the `sortDashboardHoldings` present-before-missing rule are each pinned only in isolation — `./cmd/pm` passes in full even with the `price_service.go` omit hunk reverted, so nothing exercises `runDashboard` end-to-end on a ticker with genuinely short history. An integration test over a seeded DB (short-history ticker + `-sort 1y`) would close the gap between the two halves (source: qa-verifier) — `cmd/pm/dashboard.go:sortDashboardHoldings`, `internal/services/price_service.go:107`

@@ -9,8 +9,9 @@ import (
 // Asset class values. Drive account eligibility in the rebalance engine
 // (IRP/연금 hold ETFs/funds only, never individual stocks).
 const (
-	AssetClassETF   = "etf"
-	AssetClassStock = "stock"
+	AssetClassETF     = "etf"
+	AssetClassStock   = "stock"
+	AssetClassUnknown = "unknown"
 )
 
 // ValidAssetClass reports whether s is a recognized asset class.
