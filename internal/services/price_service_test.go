@@ -242,6 +242,41 @@ func TestGetStockChangeRatesOmitsMissingHistory(t *testing.T) {
 	}
 }
 
+// TestGetStockChangeRatesEmptyWhenNoPeriodHasHistory pins the all-absent shape:
+// a ticker whose only cached row is today's yields a non-nil but empty map, not
+// the nil reserved for "no current price / no valid periods". Callers must not
+// read nil as the no-data signal.
+func TestGetStockChangeRatesEmptyWhenNoPeriodHasHistory(t *testing.T) {
+	r := newPriceRepo(t)
+	ctx := context.Background()
+
+	todayDate, err := datex.ParseDate("2026-06-01")
+	if err != nil {
+		t.Fatalf("parse date: %v", err)
+	}
+	p, err := numeric.FromString("100")
+	if err != nil {
+		t.Fatalf("parse price: %v", err)
+	}
+	if _, err := r.Save(ctx, "005930", todayDate, p, "KRW", "삼성전자", sql.NullString{}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	today, err := time.Parse("2006-01-02", "2026-06-01")
+	if err != nil {
+		t.Fatalf("parse today: %v", err)
+	}
+	svc := services.NewPriceService(r).WithTodayProvider(func() time.Time { return today })
+
+	result := svc.GetStockChangeRates(ctx, "005930", "", []string{"1y", "6m", "1m", "1d"})
+	if result == nil {
+		t.Fatal("want non-nil empty map, got nil")
+	}
+	if len(result) != 0 {
+		t.Errorf("want empty map when no period has history, got %v", result)
+	}
+}
+
 // TestGetStockChangeRatesMonthEndTargetDate verifies the historical target date
 // stays inside the intended month when today's day-of-month does not exist in
 // that month (e.g. 2026-07-31 minus one month is June, which has no 31st). Each

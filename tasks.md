@@ -16,6 +16,10 @@ Schema / lifecycle:
 
 - [ ] [debt] `hasExecutableWholeShare` applies a blanket ≥1 whole-share floor to all currencies including USD, where some brokers support fractional shares; if fractional trading is ever enabled for overseas stocks, this guard will need per-currency / per-account-type gating (source: agy) — `internal/services/rebalance_service.go:961`
 
+### PR #164 — [FIX] omit change-rate keys with no cached history (2026-08-01)
+
+- [ ] [test] The `GetStockChangeRates` omit-contract and the `sortDashboardHoldings` present-before-missing rule are each pinned only in isolation — `./cmd/pm` passes in full even with the `price_service.go` omit hunk reverted, so nothing exercises `runDashboard` end-to-end on a ticker with genuinely short history. An integration test over a seeded DB (short-history ticker + `-sort 1y`) would close the gap between the two halves (source: qa-verifier) — `cmd/pm/dashboard.go:sortDashboardHoldings`, `internal/services/price_service.go:107`
+
 ### PR #149 — [FIX] thread ctx.Context through KIS/Toss OrderClient.PlaceOrder (2026-07-12)
 
 - [ ] [debt] `toss.Client.PlaceOrder`'s `ctx` isn't forwarded into `c.accessToken()`'s token-refresh HTTP call, so a cancelled/timed-out caller ctx doesn't abort an in-flight Toss OAuth request — it still blocks up to the HTTP client's default 30s timeout. Fixing requires giving `accessToken` a `ctx` param, which is also called by `FetchAccountSnapshot` (no `ctx` param today); deferred to keep this PR scoped to the order-placement path only (source: agy) — `internal/toss/client.go:139`

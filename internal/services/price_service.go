@@ -102,8 +102,9 @@ func (s *PriceService) getOnOrBefore(ctx context.Context, ticker string, date da
 // GetStockChangeRates returns rate-of-change (%) for each period from DB.
 // A period key is present only when a cached historical close was found for it;
 // an absent key means "no data that far back", so a stored 0 is a genuine flat
-// return. Returns nil when no current price is available or no valid periods
-// requested.
+// return. The map is non-nil but empty when no requested period has history —
+// distinct from the nil returned when no current price is available or no valid
+// periods were requested, so callers must not read nil as "no data".
 func (s *PriceService) GetStockChangeRates(ctx context.Context, ticker, preferredExchange string, periods []string) map[string]numeric.Decimal {
 	if s.stockPrices == nil {
 		return nil
