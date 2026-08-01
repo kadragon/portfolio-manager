@@ -16,9 +16,9 @@ Schema / lifecycle:
 
 - [ ] [debt] `hasExecutableWholeShare` applies a blanket ≥1 whole-share floor to all currencies including USD, where some brokers support fractional shares; if fractional trading is ever enabled for overseas stocks, this guard will need per-currency / per-account-type gating (source: agy) — `internal/services/rebalance_service.go:961`
 
-### PR #147 — [FEAT] add pm price list command and dashboard -sort flag (2026-07-11)
+### PR #164 — [FIX] omit change-rate keys with no cached history (2026-08-01)
 
-- [ ] [debt] `GetStockChangeRates` intentionally stores a literal `0` (not an absent key) when a stock lacks cached history far enough back for a period (see `TestGetStockChangeRatesZeroForMissingHistory`); `pm dashboard -sort` can't distinguish that from a genuine flat return, so a recently-added ticker sorts as if flat rather than excluded/last. Fixing properly requires changing `GetStockChangeRates`'s return contract (e.g. a parallel "has data" map or `*Decimal`), which ripples to its one caller and existing tests — architectural change beyond this PR's scope (source: codex) — `internal/services/price_service.go:104`, `cmd/pm/dashboard.go:73`
+- [ ] [test] The `GetStockChangeRates` omit-contract and the `sortDashboardHoldings` present-before-missing rule are each pinned only in isolation — `./cmd/pm` passes in full even with the `price_service.go` omit hunk reverted, so nothing exercises `runDashboard` end-to-end on a ticker with genuinely short history. An integration test over a seeded DB (short-history ticker + `-sort 1y`) would close the gap between the two halves (source: qa-verifier) — `cmd/pm/dashboard.go:sortDashboardHoldings`, `internal/services/price_service.go:107`
 
 ### PR #149 — [FIX] thread ctx.Context through KIS/Toss OrderClient.PlaceOrder (2026-07-12)
 

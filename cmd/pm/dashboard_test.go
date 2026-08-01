@@ -57,7 +57,10 @@ func TestSortDashboardHoldingsMissingKeySortsLast(t *testing.T) {
 			ChangeRates: map[string]numeric.Decimal{},
 		},
 	}
-	holdings := []models.GroupHoldingPair{missing, pairWithChangeRate(t, "HASDATA", "1.0")}
+	// Peer must be negative: descending, a missing key read as the zero value would
+	// outrank it, so a comparator that dropped the present-before-missing guard
+	// fails here. A positive peer would pass either way and pin nothing.
+	holdings := []models.GroupHoldingPair{missing, pairWithChangeRate(t, "HASDATA", "-4.5")}
 
 	sortDashboardHoldings(holdings, "1m", false)
 
@@ -66,6 +69,30 @@ func TestSortDashboardHoldingsMissingKeySortsLast(t *testing.T) {
 	}
 	if holdings[1].Holding.Stock.Ticker != "NODATA" {
 		t.Fatalf("expected row missing 1m to sort last, got %s", holdings[1].Holding.Stock.Ticker)
+	}
+}
+
+// TestSortDashboardHoldingsMissingKeySortsLastAscending pins the direction-independent
+// half of the rule: a row whose period key is absent (no history that far back) stays
+// last ascending too. The peer must be positive — ascending, a missing key read as the
+// zero value would sort ahead of it, so this fails without the present-before-missing
+// guard, which a negative peer would not detect.
+func TestSortDashboardHoldingsMissingKeySortsLastAscending(t *testing.T) {
+	missing := models.GroupHoldingPair{
+		Holding: models.StockHoldingWithPrice{
+			Stock:       models.Stock{Ticker: "NODATA"},
+			ChangeRates: map[string]numeric.Decimal{},
+		},
+	}
+	holdings := []models.GroupHoldingPair{missing, pairWithChangeRate(t, "WINNER", "2.0")}
+
+	sortDashboardHoldings(holdings, "1m", true)
+
+	if holdings[0].Holding.Stock.Ticker != "WINNER" {
+		t.Fatalf("expected row with data first ascending, got %s", holdings[0].Holding.Stock.Ticker)
+	}
+	if holdings[1].Holding.Stock.Ticker != "NODATA" {
+		t.Fatalf("expected row missing 1m to sort last ascending, got %s", holdings[1].Holding.Stock.Ticker)
 	}
 }
 

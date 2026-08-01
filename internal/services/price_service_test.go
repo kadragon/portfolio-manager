@@ -197,23 +197,83 @@ func TestGetStockChangeRatesFromDB(t *testing.T) {
 	}
 }
 
-// TestGetStockChangeRatesZeroForMissingHistory returns a map with zero rates
-// when current price exists but historical data is missing.
-func TestGetStockChangeRatesZeroForMissingHistory(t *testing.T) {
+// TestGetStockChangeRatesOmitsMissingHistory omits a period key entirely when
+// the current price exists but no historical close reaches back that far, so
+// callers can tell "no data" apart from a genuine flat 0% return.
+func TestGetStockChangeRatesOmitsMissingHistory(t *testing.T) {
 	r := newPriceRepo(t)
 	ctx := context.Background()
 
-	todayDate, _ := datex.ParseDate("2026-06-01")
-	p, _ := numeric.FromString("100")
-	_, _ = r.Save(ctx, "005930", todayDate, p, "KRW", "삼성전자", sql.NullString{})
+	// Same price a month apart: 1m has history and is genuinely flat, while 1y
+	// reaches back before the earliest row and has none.
+	for _, iso := range []string{"2026-06-01", "2026-05-01"} {
+		d, err := datex.ParseDate(iso)
+		if err != nil {
+			t.Fatalf("parse %s: %v", iso, err)
+		}
+		p, err := numeric.FromString("100")
+		if err != nil {
+			t.Fatalf("parse price: %v", err)
+		}
+		if _, err := r.Save(ctx, "005930", d, p, "KRW", "삼성전자", sql.NullString{}); err != nil {
+			t.Fatalf("save %s: %v", iso, err)
+		}
+	}
 
-	svc := services.NewPriceService(r)
+	today, err := time.Parse("2006-01-02", "2026-06-01")
+	if err != nil {
+		t.Fatalf("parse today: %v", err)
+	}
+	svc := services.NewPriceService(r).WithTodayProvider(func() time.Time { return today })
+
 	result := svc.GetStockChangeRates(ctx, "005930", "", []string{"1y", "1m"})
 	if result == nil {
-		t.Fatal("want non-nil map (even with zeros), got nil")
+		t.Fatal("want non-nil map, got nil")
 	}
-	if result["1y"].String() != "0" {
-		t.Errorf("want zero 1y rate for missing history, got %v", result["1y"])
+	if rate, ok := result["1y"]; ok {
+		t.Errorf("want 1y absent for missing history, got %v", rate)
+	}
+	rate, ok := result["1m"]
+	if !ok {
+		t.Fatal("want 1m present (history exists), got absent")
+	}
+	if rate.String() != "0" {
+		t.Errorf("want 1m rate 0 for a genuinely flat return, got %v", rate)
+	}
+}
+
+// TestGetStockChangeRatesEmptyWhenNoPeriodHasHistory pins the all-absent shape:
+// a ticker whose only cached row is today's yields a non-nil but empty map, not
+// the nil reserved for "no current price / no valid periods". Callers must not
+// read nil as the no-data signal.
+func TestGetStockChangeRatesEmptyWhenNoPeriodHasHistory(t *testing.T) {
+	r := newPriceRepo(t)
+	ctx := context.Background()
+
+	todayDate, err := datex.ParseDate("2026-06-01")
+	if err != nil {
+		t.Fatalf("parse date: %v", err)
+	}
+	p, err := numeric.FromString("100")
+	if err != nil {
+		t.Fatalf("parse price: %v", err)
+	}
+	if _, err := r.Save(ctx, "005930", todayDate, p, "KRW", "삼성전자", sql.NullString{}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	today, err := time.Parse("2006-01-02", "2026-06-01")
+	if err != nil {
+		t.Fatalf("parse today: %v", err)
+	}
+	svc := services.NewPriceService(r).WithTodayProvider(func() time.Time { return today })
+
+	result := svc.GetStockChangeRates(ctx, "005930", "", []string{"1y", "6m", "1m", "1d"})
+	if result == nil {
+		t.Fatal("want non-nil empty map, got nil")
+	}
+	if len(result) != 0 {
+		t.Errorf("want empty map when no period has history, got %v", result)
 	}
 }
 
