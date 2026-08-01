@@ -2,8 +2,14 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"io"
+	"os"
 	"testing"
+	"time"
 
+	"github.com/kadragon/portfolio-manager/internal/datex"
 	"github.com/kadragon/portfolio-manager/internal/models"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/services"
@@ -119,4 +125,114 @@ func TestRunDashboardRejectsSortWithoutPriceService(t *testing.T) {
 	if err := runDashboard(ctx, c, []string{"-sort", "value"}); err == nil {
 		t.Fatal("expected error when -sort is used without a price service")
 	}
+}
+
+func TestRunDashboardSortsMissingOneYearHistoryLast(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+	fixedToday := datex.New(2026, time.June, 1).Time
+
+	group, err := c.Groups.Create(ctx, "Dashboard test", 100)
+	if err != nil {
+		t.Fatalf("Groups.Create: %v", err)
+	}
+	longHistory, err := c.Stocks.Create(ctx, "LONG", group.ID)
+	if err != nil {
+		t.Fatalf("Stocks.Create LONG: %v", err)
+	}
+	shortHistory, err := c.Stocks.Create(ctx, "SHORT", group.ID)
+	if err != nil {
+		t.Fatalf("Stocks.Create SHORT: %v", err)
+	}
+	account, err := c.Accounts.Create(ctx, "Dashboard test account", numeric.Zero)
+	if err != nil {
+		t.Fatalf("Accounts.Create: %v", err)
+	}
+	for _, stock := range []models.Stock{longHistory, shortHistory} {
+		if _, err := c.Holdings.Create(ctx, account.ID, stock.ID, numeric.FromInt(1)); err != nil {
+			t.Fatalf("Holdings.Create %s: %v", stock.Ticker, err)
+		}
+	}
+
+	savePrice := func(ticker, isoDate, price, name string) {
+		t.Helper()
+		priceDate, err := datex.ParseDate(isoDate)
+		if err != nil {
+			t.Fatalf("ParseDate %s: %v", isoDate, err)
+		}
+		if _, err := c.StockPrices.Save(ctx, ticker, priceDate, mustDecimal(t, price), "KRW", name, sql.NullString{}); err != nil {
+			t.Fatalf("StockPrices.Save %s %s: %v", ticker, isoDate, err)
+		}
+	}
+
+	// LONG has a close on the computed 1y target (2025-05-30). SHORT has
+	// current and recent history only, so its 1y key must be absent.
+	savePrice("LONG", "2026-06-01", "100", "Long history")
+	savePrice("LONG", "2025-05-30", "80", "Long history")
+	savePrice("SHORT", "2026-06-01", "200", "Short history")
+	savePrice("SHORT", "2026-05-01", "190", "Short history")
+
+	priceService := services.NewPriceService(c.StockPrices).WithTodayProvider(func() time.Time {
+		return fixedToday
+	})
+	c.Portfolio = services.NewPortfolioService(
+		c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil,
+	)
+
+	data := captureDashboardOutput(t, func() error {
+		return runDashboard(ctx, c, []string{"-sort", "1y"})
+	})
+	var dashboard struct {
+		Holdings []struct {
+			Holding struct {
+				Stock struct {
+					Ticker string `json:"Ticker"`
+				} `json:"Stock"`
+				ChangeRates map[string]json.RawMessage `json:"ChangeRates"`
+			} `json:"Holding"`
+		} `json:"Holdings"`
+	}
+	if err := json.Unmarshal(data, &dashboard); err != nil {
+		t.Fatalf("decode dashboard output: %v\n%s", err, data)
+	}
+	if len(dashboard.Holdings) != 2 {
+		t.Fatalf("dashboard holdings = %d, want 2", len(dashboard.Holdings))
+	}
+	gotOrder := []string{
+		dashboard.Holdings[0].Holding.Stock.Ticker,
+		dashboard.Holdings[1].Holding.Stock.Ticker,
+	}
+	if want := []string{"LONG", "SHORT"}; gotOrder[0] != want[0] || gotOrder[1] != want[1] {
+		t.Fatalf("dashboard -sort 1y order = %v, want %v", gotOrder, want)
+	}
+	if _, ok := dashboard.Holdings[0].Holding.ChangeRates["1y"]; !ok {
+		t.Fatal("LONG dashboard row missing 1y change-rate key")
+	}
+	if _, ok := dashboard.Holdings[1].Holding.ChangeRates["1y"]; ok {
+		t.Fatal("SHORT dashboard row unexpectedly contains 1y change-rate key")
+	}
+}
+
+func captureDashboardOutput(t *testing.T, fn func() error) []byte {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	original := os.Stdout
+	os.Stdout = writer
+	callErr := fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close dashboard output: %v", err)
+	}
+	os.Stdout = original
+	t.Cleanup(func() { _ = reader.Close() })
+	if callErr != nil {
+		t.Fatalf("runDashboard: %v", callErr)
+	}
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read dashboard output: %v", err)
+	}
+	return data
 }
