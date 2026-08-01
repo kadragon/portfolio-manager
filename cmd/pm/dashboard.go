@@ -70,10 +70,9 @@ func runDashboard(ctx context.Context, c *container.Container, args []string) er
 
 // sortDashboardHoldings orders holdings in place by sortKey, best-first unless
 // asc is set. Rows missing the requested value (nil ValueKRW, absent change-rate
-// period) sort last regardless of direction. Note: GetStockChangeRates reports a
-// literal 0 (not a missing key) when a stock has no cached price far enough back
-// for the period — e.g. a ticker held less than a year shows "1y": 0 — so those
-// rows are indistinguishable here from a genuine flat return and will not sort last.
+// period) sort last regardless of direction — GetStockChangeRates omits a period
+// key entirely when no cached price reaches that far back, so a ticker held less
+// than a year sorts last under -sort 1y rather than as a flat 0.
 func sortDashboardHoldings(holdings []models.GroupHoldingPair, sortKey string, asc bool) {
 	keyOf := func(h models.GroupHoldingPair) (numeric.Decimal, bool) {
 		if sortKey == "value" {

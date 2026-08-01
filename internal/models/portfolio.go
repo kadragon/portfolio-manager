@@ -21,7 +21,7 @@ type StockHoldingWithPrice struct {
 	Currency    string
 	Name        string
 	ValueKRW    *numeric.Decimal           // nil when exchange rate unavailable
-	ChangeRates map[string]numeric.Decimal // "1y","6m","1m","1d" → pct
+	ChangeRates map[string]numeric.Decimal // "1y","6m","1m","1d" → pct; a period is absent when no history reaches that far back
 }
 
 // GroupHoldings is a group with its aggregated stock holdings.
