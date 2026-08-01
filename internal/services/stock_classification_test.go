@@ -99,8 +99,8 @@ func TestClassifyAllPersistsSentinelOnFailure(t *testing.T) {
 	if _, err := svc.ClassifyAll(context.Background()); err != nil {
 		t.Fatalf("ClassifyAll: %v", err)
 	}
-	if len(repo.classified) != 1 || repo.classified[0].assetClass != services.AssetClassUnknown {
-		t.Errorf("asset_class updates = %+v, want one %q", repo.classified, services.AssetClassUnknown)
+	if len(repo.classified) != 1 || repo.classified[0].assetClass != models.AssetClassUnknown {
+		t.Errorf("asset_class updates = %+v, want one %q", repo.classified, models.AssetClassUnknown)
 	}
 	if len(repo.secGrouped) != 0 {
 		t.Errorf("security_group updates = %+v, want none (sentinel is asset_class-only)", repo.secGrouped)
@@ -120,8 +120,8 @@ func TestClassifyAllPersistsSentinelOnEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClassifyAll: %v", err)
 	}
-	if len(repo.classified) != 1 || repo.classified[0].assetClass != services.AssetClassUnknown {
-		t.Errorf("asset_class updates = %+v, want one %q", repo.classified, services.AssetClassUnknown)
+	if len(repo.classified) != 1 || repo.classified[0].assetClass != models.AssetClassUnknown {
+		t.Errorf("asset_class updates = %+v, want one %q", repo.classified, models.AssetClassUnknown)
 	}
 	if len(repo.secGrouped) != 0 {
 		t.Errorf("security_group updates = %+v, want none", repo.secGrouped)
@@ -134,7 +134,7 @@ func TestClassifyAllPersistsSentinelOnEmpty(t *testing.T) {
 // A stock whose asset_class is the sentinel is terminal even with a nil
 // security_group — the classifier is never called again.
 func TestClassifyAllSkipsSentinelStock(t *testing.T) {
-	unknown := services.AssetClassUnknown
+	unknown := models.AssetClassUnknown
 	repo := &mockSyncStockRepo{all: []models.Stock{
 		{ID: newTestUUID(), Ticker: "BADTICK", AssetClass: &unknown}, // security_group nil
 	}}
