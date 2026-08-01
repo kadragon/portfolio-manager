@@ -26,7 +26,13 @@ func main() {
 		return
 	}
 
-	c, err := container.New("")
+	var c *container.Container
+	var err error
+	if resource == "dashboard" || resource == "snapshot" {
+		c, err = container.NewReadOnly("")
+	} else {
+		c, err = container.New("")
+	}
 	if err != nil {
 		fatal("init container: %v", err)
 	}

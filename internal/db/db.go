@@ -144,6 +144,10 @@ func dsn(path string) string {
 	return "file:" + path + "?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)"
 }
 
+func readOnlyDSN(path string) string {
+	return "file:" + path + "?mode=ro&_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)"
+}
+
 // Open opens the database at path (or the default if empty), creates tables if
 // needed, and returns the *sql.DB together with the sqlc Queries handle.
 func Open(path string) (*sql.DB, *sqlc.Queries, error) {
@@ -175,6 +179,29 @@ func Open(path string) (*sql.DB, *sqlc.Queries, error) {
 	if err := migrate(context.Background(), sqlDB); err != nil {
 		_ = sqlDB.Close()
 		return nil, nil, err
+	}
+	return sqlDB, sqlc.New(sqlDB), nil
+}
+
+// OpenReadOnly opens an existing database without creating tables or applying
+// migrations. The initial ping forces SQLite to reject a missing path before
+// the caller receives a handle.
+func OpenReadOnly(path string) (*sql.DB, *sqlc.Queries, error) {
+	if path == "" {
+		var err error
+		path, err = DefaultPath()
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	sqlDB, err := sql.Open("sqlite", readOnlyDSN(path))
+	if err != nil {
+		return nil, nil, fmt.Errorf("db: open read-only: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	if err := sqlDB.PingContext(context.Background()); err != nil {
+		_ = sqlDB.Close()
+		return nil, nil, fmt.Errorf("db: open read-only: %w", err)
 	}
 	return sqlDB, sqlc.New(sqlDB), nil
 }

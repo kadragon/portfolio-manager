@@ -202,7 +202,7 @@ func buildSnapshot(ctx context.Context, c *container.Container, fx float64, stal
 			}
 		}
 
-		valueKRW := value.Round(0).IntPart()
+		valueKRW := value.RoundBank(0).IntPart()
 		out.Accounts[acctSlot].Holdings = append(
 			out.Accounts[acctSlot].Holdings, snapshotHolding{
 				Ticker:   stock.Ticker,
@@ -227,9 +227,9 @@ func buildSnapshot(ctx context.Context, c *container.Container, fx float64, stal
 	}
 	total := totalHoldings.Add(totalCash)
 
-	out.TotalKRW = total.Round(0).IntPart()
-	out.TotalHoldingsKRW = totalHoldings.Round(0).IntPart()
-	out.TotalCashKRW = totalCash.Round(0).IntPart()
+	out.TotalKRW = total.RoundBank(0).IntPart()
+	out.TotalHoldingsKRW = totalHoldings.RoundBank(0).IntPart()
+	out.TotalCashKRW = totalCash.RoundBank(0).IntPart()
 
 	// Accounts: largest holdings value first, name-tiebroken so equal-value
 	// accounts keep a stable order run-to-run (accounts ListAll has no ORDER BY).
@@ -267,13 +267,13 @@ func buildSnapshot(ctx context.Context, c *container.Container, fx float64, stal
 		}
 		var weight *float64
 		if total.IsPositive() {
-			w, _ := hundred.Mul(g.val).Div(total).Round(2).Float64()
+			w, _ := hundred.Mul(g.val).Div(total).RoundBank(2).Float64()
 			weight = &w
 		}
 		out.Groups = append(out.Groups, snapshotGroup{
 			Name:        g.name,
 			DBTargetPct: target,
-			ValueKRW:    g.val.Round(0).IntPart(),
+			ValueKRW:    g.val.RoundBank(0).IntPart(),
 			WeightPct:   weight,
 		})
 	}
