@@ -221,11 +221,11 @@ func captureDashboardOutput(t *testing.T, fn func() error) []byte {
 	}
 	original := os.Stdout
 	os.Stdout = writer
+	defer func() { os.Stdout = original }()
 	callErr := fn()
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close dashboard output: %v", err)
 	}
-	os.Stdout = original
 	t.Cleanup(func() { _ = reader.Close() })
 	if callErr != nil {
 		t.Fatalf("runDashboard: %v", callErr)
