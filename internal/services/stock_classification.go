@@ -14,7 +14,9 @@ import (
 // lets ClassifyAll count the stock as Failed rather than Classified.
 var errClassifyNoSignal = errors.New("no classification signal")
 
-// isUnknown reports whether a nullable column holds the sentinel value.
+// isUnknown reports whether a nullable column holds the models.AssetClassUnknown
+// sentinel. The sentinel is terminal for the skip-gates below, so a stock already
+// carrying it is never re-queried against the classifier.
 func isUnknown(s *string) bool {
 	return s != nil && *s == models.AssetClassUnknown
 }
