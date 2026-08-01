@@ -20,9 +20,11 @@ const (
 // but it IS terminal for the classifier's "already classified" skip-gates, so a
 // sentinel-tagged ticker is not re-queried against KIS on every sync/ClassifyAll.
 // Stamped ONLY on asset_class, never on security_group, which keeps its KIS
-// scty_grp_id_cd value space. Downstream consumers treat any non-"etf" value as
-// non-ETF, so the sentinel is safe. Clearing asset_class to empty forces
-// re-classification on the next sync.
+// scty_grp_id_cd value space. No in-repo consumer reads asset_class for ETF
+// gating today (the canHold gate was removed with rebalance_service.go in
+// PR #145), so any future one must treat a non-"etf" value — this sentinel
+// included — as non-ETF. Clearing asset_class to empty forces re-classification
+// on the next sync.
 const AssetClassUnknown = "unknown"
 
 // ValidAssetClass reports whether s is a recognized asset class.
@@ -70,8 +72,9 @@ type Stock struct {
 	Exchange *string // nil when unknown
 	Name     string  // empty when not yet resolved
 	// AssetClass is "etf", "stock", or the AssetClassUnknown sentinel.
-	// nil = unclassified. Drives account eligibility (IRP/연금 hold only
-	// ETFs/funds, never individual stocks).
+	// nil = unclassified. Informational metadata feeding account-eligibility
+	// reasoning (IRP/연금 hold only ETFs/funds, never individual stocks);
+	// no in-repo gate consumes it today.
 	AssetClass *string
 	// SecurityGroup is the KIS security-group classification (scty_grp_id_cd),
 	// normalized uppercase: "ST"=주식, "EF"=국내ETF, "RT"=리츠, "EN"=ETN,
