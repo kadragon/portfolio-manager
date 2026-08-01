@@ -6,8 +6,8 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
 
-// Asset class values. Drive account eligibility in the rebalance engine
-// (IRP/연금 hold ETFs/funds only, never individual stocks).
+// Asset class values. Informational metadata only; no in-repo consumer
+// currently uses asset_class to drive ETF or account eligibility.
 const (
 	AssetClassETF   = "etf"
 	AssetClassStock = "stock"
