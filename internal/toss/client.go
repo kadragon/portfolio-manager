@@ -176,7 +176,7 @@ func (c *Client) usdKRWRateDecimal(ctx context.Context) (numeric.Decimal, error)
 	return numeric.Wrap(rate), nil
 }
 
-func (c *Client) accessToken() (string, error) {
+func (c *Client) accessToken(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -189,7 +189,7 @@ func (c *Client) accessToken() (string, error) {
 	form.Set("grant_type", "client_credentials")
 	form.Set("client_id", c.ClientID)
 	form.Set("client_secret", c.ClientSecret)
-	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/oauth2/token", strings.NewReader(form.Encode())) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/oauth2/token", strings.NewReader(form.Encode())) //nolint:gosec // BaseURL is operator-controlled config or httptest URL.
 	if err != nil {
 		return "", fmt.Errorf("toss auth: create request: %w", err)
 	}

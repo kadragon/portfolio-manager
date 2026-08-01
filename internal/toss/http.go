@@ -28,7 +28,7 @@ type apiErrorResponse struct {
 // {"result": T} envelope. prefix labels errors (e.g. "toss orderbook").
 func doGet[T any](ctx context.Context, c *Client, prefix, path string, query, headers map[string]string) (T, error) {
 	var zero T
-	token, err := c.accessToken()
+	token, err := c.accessToken(ctx)
 	if err != nil {
 		return zero, err
 	}
@@ -57,7 +57,7 @@ func doGet[T any](ctx context.Context, c *Client, prefix, path string, query, he
 // (e.g. cancelOrder).
 func doPost[T any](ctx context.Context, c *Client, prefix, path string, body any, headers map[string]string) (T, error) {
 	var zero T
-	token, err := c.accessToken()
+	token, err := c.accessToken(ctx)
 	if err != nil {
 		return zero, err
 	}
@@ -85,7 +85,7 @@ func doPost[T any](ctx context.Context, c *Client, prefix, path string, body any
 // envelope.
 func doDelete[T any](ctx context.Context, c *Client, prefix, path string, headers map[string]string) (T, error) {
 	var zero T
-	token, err := c.accessToken()
+	token, err := c.accessToken(ctx)
 	if err != nil {
 		return zero, err
 	}

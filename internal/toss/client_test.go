@@ -3,6 +3,7 @@ package toss
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -497,6 +498,62 @@ func TestPlaceOrderCreatesMarketQuantityOrder(t *testing.T) {
 	}
 	if result, ok := got["result"].(map[string]any); !ok || result["orderId"] != "ord-1" {
 		t.Fatalf("raw response = %#v", got)
+	}
+}
+
+type cancelTrackingRoundTripper struct {
+	started  chan *http.Request
+	canceled chan struct{}
+}
+
+func (rt *cancelTrackingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt.started <- req
+	<-req.Context().Done()
+	close(rt.canceled)
+	return nil, fmt.Errorf("token refresh canceled: %w", req.Context().Err())
+}
+
+func TestPlaceOrderCanceledContextCancelsTokenRefresh(t *testing.T) {
+	transport := &cancelTrackingRoundTripper{
+		started:  make(chan *http.Request, 1),
+		canceled: make(chan struct{}),
+	}
+	client := NewClient(&http.Client{Transport: transport}, "https://toss.test", "cid", "secret")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := client.PlaceOrder(ctx, "7", models.OrderIntent{
+			Ticker:   "AAPL",
+			Side:     "buy",
+			Quantity: 1,
+		})
+		errCh <- err
+	}()
+
+	var tokenRequest *http.Request
+	select {
+	case tokenRequest = <-transport.started:
+	case <-time.After(time.Second):
+		t.Fatal("token refresh did not start")
+	}
+	if tokenRequest.Method != http.MethodPost || tokenRequest.URL.Path != "/oauth2/token" {
+		t.Fatalf("token request = %s %s, want POST /oauth2/token", tokenRequest.Method, tokenRequest.URL.Path)
+	}
+	cancel()
+
+	select {
+	case <-transport.canceled:
+	case <-time.After(time.Second):
+		t.Fatal("token refresh was not canceled")
+	}
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("PlaceOrder error = %v, want wrapped context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("PlaceOrder did not return promptly after cancellation")
 	}
 }
 
