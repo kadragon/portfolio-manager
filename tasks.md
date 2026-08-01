@@ -11,6 +11,7 @@ Schema / lifecycle:
 ### PR #165 — [REFACTOR] centralize asset-class sentinel in models (2026-08-01)
 
 - [ ] [docs] The `AssetClassETF`/`AssetClassStock` const-block header still reads "Drive account eligibility in the rebalance engine", but the `canHold` gate was removed with `rebalance_service.go` in PR #145 — no in-repo consumer reads `asset_class` for ETF gating today. PR #165 corrected the two adjacent comments it touched (the sentinel doc and the `Stock.AssetClass` field doc); this untouched header now states the opposite of them. Reword to match (source: review) — `internal/models/stock.go:9`
+
 ### PR #164 — [FIX] omit change-rate keys with no cached history (2026-08-01)
 
 - [ ] [test] The `GetStockChangeRates` omit-contract and the `sortDashboardHoldings` present-before-missing rule are each pinned only in isolation — `./cmd/pm` passes in full even with the `price_service.go` omit hunk reverted, so nothing exercises `runDashboard` end-to-end on a ticker with genuinely short history. An integration test over a seeded DB (short-history ticker + `-sort 1y`) would close the gap between the two halves (source: qa-verifier) — `cmd/pm/dashboard.go:sortDashboardHoldings`, `internal/services/price_service.go:107`

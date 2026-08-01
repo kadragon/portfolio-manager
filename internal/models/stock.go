@@ -9,23 +9,21 @@ import (
 // Asset class values. Drive account eligibility in the rebalance engine
 // (IRP/연금 hold ETFs/funds only, never individual stocks).
 const (
-	AssetClassETF     = "etf"
-	AssetClassStock   = "stock"
+	AssetClassETF   = "etf"
+	AssetClassStock = "stock"
+	// AssetClassUnknown is the sentinel persisted onto a stock's asset_class when it
+	// could not be resolved (classifier error or no signal). It is deliberately NOT
+	// accepted by ValidAssetClass — it marks the absence of a class, not a class —
+	// but it IS terminal for the classifier's "already classified" skip-gates, so a
+	// sentinel-tagged ticker is not re-queried against KIS on every sync/ClassifyAll.
+	// Stamped ONLY on asset_class, never on security_group, which keeps its KIS
+	// scty_grp_id_cd value space. No in-repo consumer reads asset_class for ETF
+	// gating today (the canHold gate was removed with rebalance_service.go in
+	// PR #145), so any future one must treat a non-"etf" value — this sentinel
+	// included — as non-ETF. Clearing asset_class to empty forces re-classification
+	// on the next sync.
 	AssetClassUnknown = "unknown"
 )
-
-// AssetClassUnknown is the sentinel persisted onto a stock's asset_class when it
-// could not be resolved (classifier error or no signal). It is deliberately NOT
-// accepted by ValidAssetClass — it marks the absence of a class, not a class —
-// but it IS terminal for the classifier's "already classified" skip-gates, so a
-// sentinel-tagged ticker is not re-queried against KIS on every sync/ClassifyAll.
-// Stamped ONLY on asset_class, never on security_group, which keeps its KIS
-// scty_grp_id_cd value space. No in-repo consumer reads asset_class for ETF
-// gating today (the canHold gate was removed with rebalance_service.go in
-// PR #145), so any future one must treat a non-"etf" value — this sentinel
-// included — as non-ETF. Clearing asset_class to empty forces re-classification
-// on the next sync.
-const AssetClassUnknown = "unknown"
 
 // ValidAssetClass reports whether s is a recognized asset class.
 func ValidAssetClass(s string) bool {
