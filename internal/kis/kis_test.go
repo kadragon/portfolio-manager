@@ -1036,6 +1036,7 @@ func TestClassifyDomesticAssetClass(t *testing.T) {
 		{"ST", "0", "stock"}, // etf_dvsn_cd "0" ≠ ETF
 		{"", "1", "etf"},     // only etf_dvsn_cd present
 		{"EN", "", "stock"},  // ETN treated as non-ETF
+		{"EN", "1", "stock"}, // ETN remains non-ETF despite etf_dvsn_cd
 		{"", "", "stock"},    // unknown → stock
 	}
 	for _, tc := range cases {

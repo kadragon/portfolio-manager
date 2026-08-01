@@ -39,6 +39,9 @@ func (i DomesticStockInfo) AssetClass() string {
 // accurate — this is not a bug.
 func ClassifyDomesticAssetClass(sctyGrpIDCd, etfDvsnCd string) string {
 	grp := strings.ToUpper(strings.TrimSpace(sctyGrpIDCd))
+	if grp == "EN" {
+		return "stock"
+	}
 	// "EF" is the documented ETF code. "FE" is an UNVERIFIED guess at a foreign-ETF
 	// variant — kept defensively; the etf_dvsn_cd check below is the reliable
 	// secondary signal. Remove "FE" if KIS docs/responses confirm it never occurs.
