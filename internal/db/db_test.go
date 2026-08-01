@@ -3,12 +3,59 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/kadragon/portfolio-manager/internal/ktime"
 	"github.com/kadragon/portfolio-manager/internal/numeric"
 	"github.com/kadragon/portfolio-manager/internal/uuidx"
 )
+
+func TestOpenReadOnlyMissingPathDoesNotCreateDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing", "portfolio.db")
+	if _, _, err := OpenReadOnly(path); err == nil {
+		t.Fatal("OpenReadOnly missing path returned nil error")
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing database stat error = %v, want os.ErrNotExist", err)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing database parent stat error = %v, want os.ErrNotExist", err)
+	}
+}
+
+func TestOpenReadOnlyDoesNotApplySchemaOrAllowWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "portfolio.db")
+	seed, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("seed open: %v", err)
+	}
+	seed.SetMaxOpenConns(1)
+	if _, err := seed.ExecContext(context.Background(), `CREATE TABLE accounts (id TEXT PRIMARY KEY)`); err != nil {
+		_ = seed.Close()
+		t.Fatalf("seed schema: %v", err)
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close seed: %v", err)
+	}
+
+	readOnly, _, err := OpenReadOnly(path)
+	if err != nil {
+		t.Fatalf("OpenReadOnly: %v", err)
+	}
+	defer readOnly.Close()
+
+	if _, err := readOnly.ExecContext(context.Background(), `CREATE TABLE should_not_exist (id TEXT)`); err == nil {
+		t.Fatal("read-only database accepted a schema write")
+	}
+	if has, err := hasColumn(context.Background(), readOnly, "accounts", "account_type"); err != nil {
+		t.Fatalf("check migrated column: %v", err)
+	} else if has {
+		t.Fatal("read-only database applied migration")
+	}
+}
 
 // TestScanProductionFormats inserts rows using the exact literal forms found in
 // the production database (hex32 UUID, integer-stored decimal, datetime with

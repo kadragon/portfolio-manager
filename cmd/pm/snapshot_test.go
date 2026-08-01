@@ -142,6 +142,96 @@ func TestBuildSnapshotValuesAndWeights(t *testing.T) {
 	}
 }
 
+func TestBuildSnapshotUsesBankersRoundingForValues(t *testing.T) {
+	ctx := context.Background()
+	c := newSnapshotContainer(t)
+	group, err := c.Groups.Create(ctx, "half", 100)
+	if err != nil {
+		t.Fatalf("group: %v", err)
+	}
+	account, err := c.Accounts.Create(ctx, "half account", numeric.Zero)
+	if err != nil {
+		t.Fatalf("account: %v", err)
+	}
+	stock, err := c.Stocks.Create(ctx, "HALF", group.ID)
+	if err != nil {
+		t.Fatalf("stock: %v", err)
+	}
+	today := datex.FromTime(ktime.NowKST())
+	if _, err := c.StockPrices.Save(ctx, "HALF", today, mustDec(t, "2.5"), "KRW", "Half", sql.NullString{}); err != nil {
+		t.Fatalf("price: %v", err)
+	}
+	if _, err := c.Holdings.Create(ctx, account.ID, stock.ID, numeric.FromInt(1)); err != nil {
+		t.Fatalf("holding: %v", err)
+	}
+
+	out, err := buildSnapshot(ctx, c, 1400, 7)
+	if err != nil {
+		t.Fatalf("buildSnapshot: %v", err)
+	}
+	if got := out.Accounts[0].Holdings[0].ValueKRW; got != 2 {
+		t.Errorf("holding value = %d, want banker-rounded 2", got)
+	}
+	if out.TotalHoldingsKRW != 2 || out.TotalKRW != 2 {
+		t.Errorf("totals = (%d, %d), want (2, 2)", out.TotalHoldingsKRW, out.TotalKRW)
+	}
+	if got := out.Groups[0].ValueKRW; got != 2 {
+		t.Errorf("group value = %d, want banker-rounded 2", got)
+	}
+}
+
+func TestBuildSnapshotUsesBankersRoundingForWeightBoundary(t *testing.T) {
+	ctx := context.Background()
+	c := newSnapshotContainer(t)
+	weightGroup, err := c.Groups.Create(ctx, "weight", 50)
+	if err != nil {
+		t.Fatalf("weight group: %v", err)
+	}
+	otherGroup, err := c.Groups.Create(ctx, "other", 50)
+	if err != nil {
+		t.Fatalf("other group: %v", err)
+	}
+	account, err := c.Accounts.Create(ctx, "weight account", mustDec(t, "85.155"))
+	if err != nil {
+		t.Fatalf("account: %v", err)
+	}
+	weightStock, err := c.Stocks.Create(ctx, "WEIGHT", weightGroup.ID)
+	if err != nil {
+		t.Fatalf("weight stock: %v", err)
+	}
+	otherStock, err := c.Stocks.Create(ctx, "OTHER", otherGroup.ID)
+	if err != nil {
+		t.Fatalf("other stock: %v", err)
+	}
+	today := datex.FromTime(ktime.NowKST())
+	for ticker, price := range map[string]string{"WEIGHT": "12.345", "OTHER": "2.5"} {
+		if _, err := c.StockPrices.Save(ctx, ticker, today, mustDec(t, price), "KRW", ticker, sql.NullString{}); err != nil {
+			t.Fatalf("price %s: %v", ticker, err)
+		}
+	}
+	if _, err := c.Holdings.Create(ctx, account.ID, weightStock.ID, numeric.FromInt(1)); err != nil {
+		t.Fatalf("weight holding: %v", err)
+	}
+	if _, err := c.Holdings.Create(ctx, account.ID, otherStock.ID, numeric.FromInt(1)); err != nil {
+		t.Fatalf("other holding: %v", err)
+	}
+
+	out, err := buildSnapshot(ctx, c, 1400, 7)
+	if err != nil {
+		t.Fatalf("buildSnapshot: %v", err)
+	}
+	var weight *float64
+	for _, group := range out.Groups {
+		if group.Name == "weight" {
+			weight = group.WeightPct
+			break
+		}
+	}
+	if weight == nil || *weight != 12.34 {
+		t.Errorf("weight = %v, want banker-rounded 12.34", weight)
+	}
+}
+
 func TestBuildSnapshotMissingAndStalePriceWarnings(t *testing.T) {
 	ctx := context.Background()
 	c := newSnapshotContainer(t)

@@ -55,6 +55,17 @@ func New(path string) (*Container, error) {
 	return newWithQueries(sqlDB, q, true), nil
 }
 
+// NewReadOnly opens an existing database without applying schema changes and
+// builds the repositories and external clients used by read-only commands.
+func NewReadOnly(path string) (*Container, error) {
+	loadDotEnv()
+	sqlDB, q, err := db.OpenReadOnly(path)
+	if err != nil {
+		return nil, err
+	}
+	return newWithQueries(sqlDB, q, true), nil
+}
+
 // loadDotEnv reads KEY=VALUE pairs from ./.env and sets them as process env
 // vars, skipping any key already set — so real env vars (CI, an explicit
 // export) always win over the file. A no-op if .env doesn't exist. This

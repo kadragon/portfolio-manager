@@ -66,6 +66,16 @@ func TestResolveSyncService(t *testing.T) {
 	}
 }
 
+func TestNewReadOnlyMissingPathDoesNotCreateDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing", "portfolio.db")
+	if _, err := NewReadOnly(path); err == nil {
+		t.Fatal("NewReadOnly missing path returned nil error")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("missing database stat error = %v, want not-exist", err)
+	}
+}
+
 func TestResolveKisAuth(t *testing.T) {
 	defaultAuth := &kisAuth{appKey: "key-1"}
 	key2 := &kisAuth{appKey: "key-2"}
