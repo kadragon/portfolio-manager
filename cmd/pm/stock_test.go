@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/kadragon/portfolio-manager/internal/container"
@@ -208,8 +211,8 @@ func TestStockUpdateInvalidSecurityGroupRejected(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := runStock(ctx, c, []string{"update", "-id", s.ID.String(), "-security-group", "XX"}); err == nil {
-		t.Fatal("expected error for unrecognized -security-group code")
+	if err := runStock(ctx, c, []string{"update", "-id", s.ID.String(), "-security-group", "ETF"}); err == nil {
+		t.Fatal("expected error for malformed -security-group code")
 	}
 	got, err := c.Stocks.GetByID(ctx, s.ID)
 	if err != nil {
@@ -228,6 +231,49 @@ func TestStockUpdateInvalidSecurityGroupRejected(t *testing.T) {
 	}
 	if got.SecurityGroup == nil || *got.SecurityGroup != "EF" {
 		t.Fatalf("expected security group EF, got %v", got.SecurityGroup)
+	}
+}
+
+// A code KIS adds after the allowlist was written must still be storable.
+func TestStockUpdateUnknownSecurityGroupAcceptedWithWarning(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+	g := mustGroup(t, ctx, c, "Test Group")
+	s, err := c.Stocks.Create(ctx, "AAPL", g.ID)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	originalStderr := os.Stderr
+	os.Stderr = writer
+	defer func() { os.Stderr = originalStderr }()
+	callErr := runStock(ctx, c, []string{"update", "-id", s.ID.String(), "-security-group", "xq"})
+	os.Stderr = originalStderr
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr pipe: %v", err)
+	}
+	t.Cleanup(func() { _ = reader.Close() })
+	if callErr != nil {
+		t.Fatalf("stock update -security-group (unknown but well formed): %v", callErr)
+	}
+	stderr, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	if !strings.Contains(string(stderr), "XQ") {
+		t.Errorf("expected warning naming the unknown code, got %q", stderr)
+	}
+
+	got, err := c.Stocks.GetByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.SecurityGroup == nil || *got.SecurityGroup != "XQ" {
+		t.Fatalf("expected security group XQ, got %v", got.SecurityGroup)
 	}
 }
 
@@ -263,9 +309,9 @@ func TestStockUpdateInvalidSecurityGroupLeavesOtherFieldsUnchanged(t *testing.T)
 
 	if err := runStock(ctx, c, []string{
 		"update", "-id", s.ID.String(),
-		"-ticker", "spy", "-security-group", "XX",
+		"-ticker", "spy", "-security-group", "ETF",
 	}); err == nil {
-		t.Fatal("expected error for unrecognized -security-group code")
+		t.Fatal("expected error for malformed -security-group code")
 	}
 	got, err := c.Stocks.GetByID(ctx, s.ID)
 	if err != nil {
