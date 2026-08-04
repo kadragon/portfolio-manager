@@ -133,7 +133,7 @@ func stockUpdate(ctx context.Context, c *container.Container, args []string) err
 			// Unknown codes are accepted so a code KIS adds later is not rejected;
 			// only malformed input is refused.
 			if !models.WellFormedSecurityGroup(normalizedSecurityGroup) {
-				return fmt.Errorf("invalid -security-group %q: expected two uppercase letters", *securityGroup)
+				return fmt.Errorf("invalid -security-group %q: expected a two-letter code", *securityGroup)
 			}
 			unknownSecurityGroup = true
 		}

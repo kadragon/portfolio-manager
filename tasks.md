@@ -4,3 +4,4 @@ Schema / lifecycle:
   Dormant        — no active sprint; file starts with "# (dormant)" and retains only open [debt/blocked] items.
 -->
 
+# (dormant)
