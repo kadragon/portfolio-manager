@@ -51,6 +51,10 @@ const (
 // ValidSecurityGroup reports whether s is a recognized KIS security-group code.
 // Does NOT accept empty string (mirrors ValidAssetClass). `pm stock update` accepts
 // empty separately to clear the field; KIS sync bypasses this check entirely.
+//
+// KIS may add codes beyond the eight above, so callers that must not reject a
+// legitimate future code should gate on WellFormedSecurityGroup and treat a
+// false result here as "unknown", not "invalid".
 func ValidSecurityGroup(s string) bool {
 	switch s {
 	case SecurityGroupStock, SecurityGroupDomesticETF, SecurityGroupETN,
@@ -60,6 +64,22 @@ func ValidSecurityGroup(s string) bool {
 	default:
 		return false
 	}
+}
+
+// WellFormedSecurityGroup reports whether s has the shape of a KIS
+// security-group code: exactly two uppercase ASCII letters. Every code KIS
+// issues follows that shape, so this catches typos without rejecting codes
+// added after this allowlist was written.
+func WellFormedSecurityGroup(s string) bool {
+	if len(s) != 2 {
+		return false
+	}
+	for i := range len(s) {
+		if s[i] < 'A' || s[i] > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 // Stock is a ticker held in a portfolio group.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/kadragon/portfolio-manager/internal/container"
@@ -125,10 +126,16 @@ func stockUpdate(ctx context.Context, c *container.Container, args []string) err
 	}
 
 	normalizedSecurityGroup := ""
+	unknownSecurityGroup := false
 	if seen["security-group"] {
 		normalizedSecurityGroup = strings.ToUpper(strings.TrimSpace(*securityGroup))
 		if normalizedSecurityGroup != "" && !models.ValidSecurityGroup(normalizedSecurityGroup) {
-			return fmt.Errorf("invalid -security-group: %q", *securityGroup)
+			// Unknown codes are accepted so a code KIS adds later is not rejected;
+			// only malformed input is refused.
+			if !models.WellFormedSecurityGroup(normalizedSecurityGroup) {
+				return fmt.Errorf("invalid -security-group %q: expected a two-letter code", *securityGroup)
+			}
+			unknownSecurityGroup = true
 		}
 	}
 
@@ -159,6 +166,9 @@ func stockUpdate(ctx context.Context, c *container.Container, args []string) err
 	if seen["security-group"] {
 		if _, err := c.Stocks.UpdateSecurityGroup(ctx, id, normalizedSecurityGroup); err != nil {
 			return fmt.Errorf("update stock security group: %w", err)
+		}
+		if unknownSecurityGroup {
+			fmt.Fprintf(os.Stderr, "warning: unknown KIS security group %q — accepted\n", normalizedSecurityGroup)
 		}
 	}
 
