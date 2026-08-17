@@ -57,6 +57,11 @@ type PortfolioSummary struct {
 	// Note: BenchmarkAverageReturn is also nil when the portfolio return is
 	// unavailable, even if this count is non-zero.
 	BenchmarkAvailableCount int
+	// BenchmarkMode names how BenchmarkReturns were computed ("lump-sum" or
+	// "timing-matched"). The two are not comparable: lump-sum is a price return
+	// on the first deposit date in the benchmark's own currency, timing-matched
+	// is a KRW money-weighted return over every deposit.
+	BenchmarkMode string
 }
 
 // BenchmarkReturn is one dashboard benchmark compared with the portfolio return.

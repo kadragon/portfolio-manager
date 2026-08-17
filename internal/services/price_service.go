@@ -241,3 +241,16 @@ func toPriceExchange(e string) string {
 	}
 	return e
 }
+
+// GetPriceOnOrBefore returns the most recent cached close at or before date, or
+// nil when no such close is stored. Unlike GetStockPrice it never falls forward
+// to the latest price, so callers replaying historical purchases cannot silently
+// buy at today's quote.
+func (s *PriceService) GetPriceOnOrBefore(ctx context.Context, ticker string, date datex.Date) *numeric.Decimal {
+	sp := s.getOnOrBefore(ctx, ticker, date)
+	if sp == nil || !sp.Price.IsPositive() {
+		return nil
+	}
+	price := sp.Price
+	return &price
+}

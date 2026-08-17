@@ -421,3 +421,171 @@ func TestResolveAndPersistNameWithPriceService(t *testing.T) {
 	// DB has no price/name data, result is ""
 	_ = result
 }
+
+// Timing-matched mode replays each deposit at its own date, so a later deposit
+// made after the benchmark already ran up earns only the remaining move — the
+// whole point of the mode versus lump-sum.
+func TestGetPortfolioSummaryTimingMatchedBenchmarks(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	g, _ := c.Groups.Create(ctx, "성장주", 100.0)
+	s, _ := c.Stocks.Create(ctx, "005930", g.ID)
+	acc, _ := c.Accounts.Create(ctx, "내 계좌", numeric.Zero)
+	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(300))
+
+	start := datex.New(2026, time.January, 1)
+	mid := datex.New(2026, time.March, 1)
+	today := datex.New(2026, time.June, 1)
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(100), start, sql.NullString{})
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(100), mid, sql.NullString{})
+
+	savePrice := func(ticker, price string, d datex.Date) {
+		t.Helper()
+		p, _ := numeric.FromString(price)
+		if _, err := c.StockPrices.Save(ctx, ticker, d, p, "KRW", ticker, sql.NullString{}); err != nil {
+			t.Fatalf("save price %s %s: %v", ticker, d.ISO(), err)
+		}
+	}
+
+	savePrice("005930", "1", today)
+	// 100 at 100 → 1 unit; 100 at 200 → 0.5 unit; 1.5 units × 200 = 300 on 200 invested = +50%.
+	savePrice("360750", "100", start)
+	savePrice("360750", "200", mid)
+	savePrice("360750", "200", today)
+	// 100 at 100 → 1 unit; 100 at 100 → 1 unit; 2 units × 100 = 200 on 200 = 0%.
+	savePrice("368590", "100", start)
+	savePrice("368590", "100", mid)
+	savePrice("368590", "100", today)
+	savePrice("226490", "100", start)
+	savePrice("226490", "50", mid)
+	savePrice("226490", "50", today)
+
+	priceService := services.NewPriceService(c.StockPrices).WithTodayProvider(func() time.Time { return today.Time })
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
+
+	summary, err := ps.GetPortfolioSummaryWithBenchmarkMode(ctx, false, services.BenchmarkModeTimingMatched)
+	if err != nil {
+		t.Fatalf("GetPortfolioSummaryWithBenchmarkMode: %v", err)
+	}
+	if summary.BenchmarkMode != string(services.BenchmarkModeTimingMatched) {
+		t.Errorf("BenchmarkMode = %q, want timing-matched", summary.BenchmarkMode)
+	}
+	want := map[string]string{"360750": "50.0", "368590": "0.0", "226490": "-25.0"}
+	if len(summary.BenchmarkReturns) != len(want) {
+		t.Fatalf("BenchmarkReturns len = %d, want %d", len(summary.BenchmarkReturns), len(want))
+	}
+	for _, b := range summary.BenchmarkReturns {
+		exp, ok := want[b.Ticker]
+		if !ok {
+			t.Errorf("unexpected benchmark ticker %q", b.Ticker)
+			continue
+		}
+		if b.ReturnRate == nil {
+			t.Errorf("%s ReturnRate is nil", b.Ticker)
+			continue
+		}
+		if got := b.ReturnRate.StringFixed(1); got != exp {
+			t.Errorf("%s ReturnRate = %s, want %s", b.Ticker, got, exp)
+		}
+	}
+	// Portfolio: 300 assets on 200 invested = +50%, so the diff vs 360750 is 0.
+	if summary.ReturnRate == nil || summary.ReturnRate.StringFixed(1) != "50.0" {
+		t.Fatalf("ReturnRate = %v, want 50.0", summary.ReturnRate)
+	}
+	for _, b := range summary.BenchmarkReturns {
+		if b.Ticker == "360750" {
+			if b.Difference == nil || b.Difference.StringFixed(1) != "0.0" {
+				t.Errorf("360750 Difference = %v, want 0.0", b.Difference)
+			}
+		}
+	}
+}
+
+// A deposit predating every cached close makes the whole simulation unusable:
+// dropping that deposit would shrink the invested base and overstate the
+// benchmark, so the benchmark reports nil instead.
+func TestGetPortfolioSummaryTimingMatchedSkipsUnpriceableBenchmark(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	g, _ := c.Groups.Create(ctx, "성장주", 100.0)
+	s, _ := c.Stocks.Create(ctx, "005930", g.ID)
+	acc, _ := c.Accounts.Create(ctx, "내 계좌", numeric.Zero)
+	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(300))
+
+	early := datex.New(2020, time.January, 1)
+	start := datex.New(2026, time.January, 1)
+	today := datex.New(2026, time.June, 1)
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(100), early, sql.NullString{})
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(100), start, sql.NullString{})
+
+	savePrice := func(ticker, price string, d datex.Date) {
+		t.Helper()
+		p, _ := numeric.FromString(price)
+		if _, err := c.StockPrices.Save(ctx, ticker, d, p, "KRW", ticker, sql.NullString{}); err != nil {
+			t.Fatalf("save price %s %s: %v", ticker, d.ISO(), err)
+		}
+	}
+
+	savePrice("005930", "1", today)
+	// Only 360750 reaches back before the 2020 deposit.
+	savePrice("360750", "100", early)
+	savePrice("360750", "100", start)
+	savePrice("360750", "150", today)
+	savePrice("368590", "100", start)
+	savePrice("368590", "150", today)
+	savePrice("226490", "100", start)
+	savePrice("226490", "150", today)
+
+	priceService := services.NewPriceService(c.StockPrices).WithTodayProvider(func() time.Time { return today.Time })
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
+
+	summary, err := ps.GetPortfolioSummaryWithBenchmarkMode(ctx, false, services.BenchmarkModeTimingMatched)
+	if err != nil {
+		t.Fatalf("GetPortfolioSummaryWithBenchmarkMode: %v", err)
+	}
+	if summary.BenchmarkAvailableCount != 1 {
+		t.Errorf("BenchmarkAvailableCount = %d, want 1 (only 360750 covers every deposit)", summary.BenchmarkAvailableCount)
+	}
+	for _, b := range summary.BenchmarkReturns {
+		if b.Ticker == "360750" {
+			if b.ReturnRate == nil || b.ReturnRate.StringFixed(1) != "50.0" {
+				t.Errorf("360750 ReturnRate = %v, want 50.0", b.ReturnRate)
+			}
+			continue
+		}
+		if b.ReturnRate != nil {
+			t.Errorf("%s ReturnRate = %v, want nil", b.Ticker, b.ReturnRate)
+		}
+	}
+}
+
+// The default path must keep reporting lump-sum numbers under a lump-sum label.
+func TestGetPortfolioSummaryDefaultsToLumpSumMode(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	priceService := services.NewPriceService(c.StockPrices)
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
+
+	summary, err := ps.GetPortfolioSummary(ctx, false)
+	if err != nil {
+		t.Fatalf("GetPortfolioSummary: %v", err)
+	}
+	if summary.BenchmarkMode != string(services.BenchmarkModeLumpSum) {
+		t.Errorf("BenchmarkMode = %q, want lump-sum", summary.BenchmarkMode)
+	}
+}
+
+func TestGetPortfolioSummaryRejectsUnknownBenchmarkMode(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	priceService := services.NewPriceService(c.StockPrices)
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
+
+	if _, err := ps.GetPortfolioSummaryWithBenchmarkMode(ctx, false, services.BenchmarkMode("dollar-cost")); err == nil {
+		t.Fatal("expected error for unknown benchmark mode, got nil")
+	}
+}
