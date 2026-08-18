@@ -589,3 +589,105 @@ func TestGetPortfolioSummaryRejectsUnknownBenchmarkMode(t *testing.T) {
 		t.Fatal("expected error for unknown benchmark mode, got nil")
 	}
 }
+
+// A withdrawal must sell benchmark units, not merely shrink the invested base:
+// keeping the units while the denominator drops fabricates benchmark return out
+// of a correction. 100 buys 1 unit at 100; -50 sells 0.25 unit at 200; the
+// remaining 0.75 unit is worth 150 on 50 invested = +200%, not the +300% that
+// an unsold-units simulation would report.
+func TestGetPortfolioSummaryTimingMatchedSellsUnitsForNegativeDeposit(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	g, _ := c.Groups.Create(ctx, "성장주", 100.0)
+	s, _ := c.Stocks.Create(ctx, "005930", g.ID)
+	acc, _ := c.Accounts.Create(ctx, "내 계좌", numeric.Zero)
+	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(100))
+
+	start := datex.New(2026, time.January, 1)
+	mid := datex.New(2026, time.March, 1)
+	today := datex.New(2026, time.March, 20)
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(100), start, sql.NullString{})
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(-50), mid, sql.NullString{})
+
+	savePrice := func(ticker, price string, d datex.Date) {
+		t.Helper()
+		p, _ := numeric.FromString(price)
+		if _, err := c.StockPrices.Save(ctx, ticker, d, p, "KRW", ticker, sql.NullString{}); err != nil {
+			t.Fatalf("save price %s %s: %v", ticker, d.ISO(), err)
+		}
+	}
+
+	savePrice("005930", "1", today)
+	for _, ticker := range []string{"360750", "368590", "226490"} {
+		savePrice(ticker, "100", start)
+		savePrice(ticker, "200", mid)
+		savePrice(ticker, "200", today)
+	}
+
+	priceService := services.NewPriceService(c.StockPrices).WithTodayProvider(func() time.Time { return today.Time })
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
+
+	summary, err := ps.GetPortfolioSummaryWithBenchmarkMode(ctx, false, services.BenchmarkModeTimingMatched)
+	if err != nil {
+		t.Fatalf("GetPortfolioSummaryWithBenchmarkMode: %v", err)
+	}
+	for _, b := range summary.BenchmarkReturns {
+		if b.ReturnRate == nil {
+			t.Fatalf("%s ReturnRate is nil", b.Ticker)
+		}
+		if got := b.ReturnRate.StringFixed(1); got != "200.0" {
+			t.Errorf("%s ReturnRate = %s, want 200.0 (withdrawal sells units)", b.Ticker, got)
+		}
+	}
+}
+
+// Price history is sparse checkpoints, so an on-or-before lookup can resolve a
+// deposit to a close from years earlier. Pricing the deposit off that close
+// while labelling the result timing-matched is worse than reporting nothing.
+func TestGetPortfolioSummaryTimingMatchedRejectsStaleDepositPrice(t *testing.T) {
+	c := newPortfolioContainer(t)
+	ctx := context.Background()
+
+	g, _ := c.Groups.Create(ctx, "성장주", 100.0)
+	s, _ := c.Stocks.Create(ctx, "005930", g.ID)
+	acc, _ := c.Accounts.Create(ctx, "내 계좌", numeric.Zero)
+	_, _ = c.Holdings.Create(ctx, acc.ID, s.ID, numeric.FromInt(100))
+
+	old := datex.New(2021, time.January, 6)
+	deposit := datex.New(2023, time.June, 1)
+	today := datex.New(2026, time.June, 1)
+	_, _ = c.Deposits.Create(ctx, numeric.FromInt(100), deposit, sql.NullString{})
+
+	savePrice := func(ticker, price string, d datex.Date) {
+		t.Helper()
+		p, _ := numeric.FromString(price)
+		if _, err := c.StockPrices.Save(ctx, ticker, d, p, "KRW", ticker, sql.NullString{}); err != nil {
+			t.Fatalf("save price %s %s: %v", ticker, d.ISO(), err)
+		}
+	}
+
+	savePrice("005930", "1", today)
+	// A 2021 close and a current close, with the 2023 deposit falling in the hole
+	// between them — exactly the shape `pm price-sync` leaves behind.
+	for _, ticker := range []string{"360750", "368590", "226490"} {
+		savePrice(ticker, "100", old)
+		savePrice(ticker, "200", today)
+	}
+
+	priceService := services.NewPriceService(c.StockPrices).WithTodayProvider(func() time.Time { return today.Time })
+	ps := services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, priceService, nil)
+
+	summary, err := ps.GetPortfolioSummaryWithBenchmarkMode(ctx, false, services.BenchmarkModeTimingMatched)
+	if err != nil {
+		t.Fatalf("GetPortfolioSummaryWithBenchmarkMode: %v", err)
+	}
+	if summary.BenchmarkAvailableCount != 0 {
+		t.Errorf("BenchmarkAvailableCount = %d, want 0 (every deposit price is stale)", summary.BenchmarkAvailableCount)
+	}
+	for _, b := range summary.BenchmarkReturns {
+		if b.ReturnRate != nil {
+			t.Errorf("%s ReturnRate = %v, want nil (priced off a 2021 close)", b.Ticker, b.ReturnRate)
+		}
+	}
+}

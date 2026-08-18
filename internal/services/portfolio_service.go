@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/datex"
 	"github.com/kadragon/portfolio-manager/internal/ktime"
@@ -343,18 +344,19 @@ func (s *PortfolioService) timingMatchedReturn(ctx context.Context, b benchmarkS
 	units := numeric.Zero
 	invested := numeric.Zero
 	for _, d := range deposits {
-		if !d.Amount.IsPositive() {
-			// A zero or negative entry (correction/withdrawal) has no purchase to
-			// replay; it still belongs in the invested base, matching TotalInvested.
-			invested = numeric.Wrap(invested.Add(d.Amount.Decimal))
+		invested = numeric.Wrap(invested.Add(d.Amount.Decimal))
+		if d.Amount.IsZero() {
+			// Nothing to replay, and no price lookup to risk failing on.
 			continue
 		}
-		buyPrice := s.priceService.GetPriceOnOrBefore(ctx, b.ticker, d.DepositDate)
-		if buyPrice == nil {
+		buyPrice, priceDate := s.priceService.GetPriceOnOrBefore(ctx, b.ticker, d.DepositDate)
+		if buyPrice == nil || staleBenchmarkPrice(priceDate, d.DepositDate) {
 			return nil
 		}
+		// A negative amount (withdrawal/correction) sells units at that date's
+		// price rather than only shrinking the base: keeping the units while the
+		// denominator drops would fabricate benchmark return out of a withdrawal.
 		units = numeric.Wrap(units.Add(d.Amount.Div(buyPrice.Decimal)))
-		invested = numeric.Wrap(invested.Add(d.Amount.Decimal))
 	}
 	if !invested.IsPositive() {
 		return nil
@@ -363,6 +365,24 @@ func (s *PortfolioService) timingMatchedReturn(ctx context.Context, b benchmarkS
 	finalValue := numeric.Wrap(units.Mul(currentPrice.Decimal))
 	rate := numeric.Wrap(finalValue.Sub(invested.Decimal).Div(invested.Decimal).Mul(hundred.Decimal))
 	return &rate
+}
+
+// maxBenchmarkPriceGap bounds how far before a deposit date a cached close may
+// sit and still stand in for it. Price history is stored as sparse checkpoints
+// (1y/6m/1m/1d plus the first-deposit date), not a daily series, so an unbounded
+// on-or-before lookup can price a deposit off a close years earlier and still
+// report the result as timing-matched. A month of slack tolerates ordinary
+// checkpoint spacing while rejecting the multi-year holes between them.
+const maxBenchmarkPriceGap = 31 * 24 * time.Hour
+
+// staleBenchmarkPrice reports whether the close found for depositDate sits too
+// far in the past to represent it. A zero priceDate is treated as stale: an
+// unknown gap is not a small one.
+func staleBenchmarkPrice(priceDate, depositDate datex.Date) bool {
+	if priceDate.Time.IsZero() {
+		return true
+	}
+	return depositDate.Time.Sub(priceDate.Time) > maxBenchmarkPriceGap
 }
 
 func (s *PortfolioService) computeBenchmarkReturns(ctx context.Context, portfolioReturn *numeric.Decimal, startDate *datex.Date) []models.BenchmarkReturn {

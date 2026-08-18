@@ -265,8 +265,9 @@ func (s *PriceSyncService) benchmarkHistoricalDates(ctx context.Context, today d
 // benchmarkTickerSet is the set of dashboard-benchmark tickers, used to decide
 // which sync targets also need the benchmark-only historical dates.
 func benchmarkTickerSet() map[string]bool {
-	set := make(map[string]bool, len(dashboardBenchmarks))
-	for _, b := range dashboardBenchmarks {
+	specs := allBenchmarks()
+	set := make(map[string]bool, len(specs))
+	for _, b := range specs {
 		set[b.ticker] = true
 	}
 	return set
@@ -279,8 +280,9 @@ type priceSyncTarget struct {
 }
 
 func syncTargets(stocks []models.Stock) []priceSyncTarget {
-	targets := make([]priceSyncTarget, 0, len(stocks)+len(dashboardBenchmarks))
-	seen := make(map[string]bool, len(stocks)+len(dashboardBenchmarks))
+	benchmarks := allBenchmarks()
+	targets := make([]priceSyncTarget, 0, len(stocks)+len(benchmarks))
+	seen := make(map[string]bool, len(stocks)+len(benchmarks))
 	for i := range stocks {
 		preferredExchange := ""
 		if stocks[i].Exchange != nil {
@@ -293,7 +295,7 @@ func syncTargets(stocks []models.Stock) []priceSyncTarget {
 		})
 		seen[stocks[i].Ticker] = true
 	}
-	for _, b := range dashboardBenchmarks {
+	for _, b := range benchmarks {
 		if seen[b.ticker] {
 			continue
 		}

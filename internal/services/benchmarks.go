@@ -35,3 +35,22 @@ var timingMatchedBenchmarks = []benchmarkSpec{
 	{label: "Nasdaq (KRW)", ticker: "368590"},
 	{label: "KOSPI", ticker: "226490"},
 }
+
+// allBenchmarks is every benchmark ticker the dashboard can ask for, in either
+// mode. Price sync must cover this union: a timing-matched proxy that is never
+// fetched has neither a current price nor historical closes, so its return is
+// reported as nil on an otherwise healthy DB.
+func allBenchmarks() []benchmarkSpec {
+	specs := make([]benchmarkSpec, 0, len(dashboardBenchmarks)+len(timingMatchedBenchmarks))
+	seen := make(map[string]bool, cap(specs))
+	for _, set := range [][]benchmarkSpec{dashboardBenchmarks, timingMatchedBenchmarks} {
+		for _, b := range set {
+			if seen[b.ticker] {
+				continue
+			}
+			seen[b.ticker] = true
+			specs = append(specs, b)
+		}
+	}
+	return specs
+}

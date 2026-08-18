@@ -134,7 +134,20 @@ level of ceremony, but do restate what you're about to run if the request was am
 go run ./cmd/pm dashboard -benchmark-mode timing-matched -no-change-rates
 ```
 
-Use `timing-matched` for any "우리가 시장보다 잘했나?" question. A benchmark reports a `null`
-`ReturnRate` when even one deposit predates its cached price history (dropping that deposit would
-shrink the invested base and flatter the benchmark) — fix it with the portfolio-sync skill's
-`price-backfill` for that ticker, don't reinterpret the null. Neither mode includes dividends.
+Use `timing-matched` for any "우리가 시장보다 잘했나?" question. Neither mode includes dividends.
+
+A `timing-matched` benchmark reports a `null` `ReturnRate` — never a partial one — whenever any
+deposit cannot be priced honestly, because dropping a deposit would shrink the invested base and
+flatter the benchmark. Four distinct causes, so read the DB before picking a remedy:
+
+1. **No deposits at all** (`TotalInvested` 0) — nothing to replay; all three benchmarks null.
+   `price-backfill` will not change this.
+2. **No current price for the proxy** — `pm price list -ticker 360750 -limit 1` is empty. Run the
+   portfolio-sync skill's `price-sync` (it covers both benchmark sets).
+3. **A deposit predates the proxy's earliest cached close.**
+4. **A deposit falls in a hole in the cached history** — the nearest earlier close is more than
+   31 days before the deposit date, so it is rejected rather than used as a stand-in price.
+
+For 3 and 4, `price-backfill` that ticker over the deposit range. Price history is sparse
+checkpoints (1y/6m/1m/1d plus today), not a daily series, so multi-year holes are normal on a DB
+that has only ever run `price-sync`.
