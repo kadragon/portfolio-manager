@@ -25,8 +25,14 @@ func runDashboard(ctx context.Context, c *container.Container, args []string) er
 	noChangeRates := fs.Bool("no-change-rates", false, "skip benchmark change-rate computation (faster)")
 	sortKey := fs.String("sort", "", "sort holdings by {value,1d,1m,6m,1y}, best first (default: unsorted)")
 	asc := fs.Bool("asc", false, "with -sort, order ascending (worst first) instead of descending")
+	benchmarkMode := fs.String("benchmark-mode", string(services.BenchmarkModeLumpSum),
+		"benchmark basis: lump-sum (price return since first deposit) or timing-matched (money-weighted over every deposit, KRW-listed proxies)")
 	if err := parseFlags(fs, args); err != nil {
 		return err
+	}
+	mode := services.BenchmarkMode(*benchmarkMode)
+	if mode != services.BenchmarkModeLumpSum && mode != services.BenchmarkModeTimingMatched {
+		return fmt.Errorf("invalid -benchmark-mode %q: must be lump-sum or timing-matched", *benchmarkMode)
 	}
 	if *sortKey != "" && !sortableDashboardKeys[*sortKey] {
 		return fmt.Errorf("invalid -sort %q: must be one of value, 1d, 1m, 6m, 1y", *sortKey)
@@ -43,7 +49,7 @@ func runDashboard(ctx context.Context, c *container.Container, args []string) er
 	}
 
 	if c.Portfolio.HasPriceService() {
-		summary, err := c.Portfolio.GetPortfolioSummary(ctx, !*noChangeRates)
+		summary, err := c.Portfolio.GetPortfolioSummaryWithBenchmarkMode(ctx, !*noChangeRates, mode)
 		if err == nil {
 			if *sortKey != "" {
 				sortDashboardHoldings(summary.Holdings, *sortKey, *asc)
@@ -59,6 +65,11 @@ func runDashboard(ctx context.Context, c *container.Container, args []string) er
 	// -sort has nothing to operate on — fail loudly instead of silently ignoring it.
 	if *sortKey != "" {
 		return fmt.Errorf("-sort %q requires priced dashboard data (no price service configured)", *sortKey)
+	}
+	// Same reason as -sort: the fallback carries no benchmark block at all, so a
+	// requested non-default benchmark mode would be silently dropped.
+	if mode != services.BenchmarkModeLumpSum {
+		return fmt.Errorf("-benchmark-mode %q requires priced dashboard data (no price service configured)", mode)
 	}
 
 	groupHoldings, err := c.Portfolio.GetHoldingsByGroup(ctx)

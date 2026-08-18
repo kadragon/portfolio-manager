@@ -319,10 +319,22 @@ func TestPriceSyncServiceEmptyStockListStillSyncsBenchmarks(t *testing.T) {
 	svc.SyncOnce(ctx)
 
 	client.mu.Lock()
+	called := make(map[string]bool, len(client.priceCalls))
+	for _, ticker := range client.priceCalls {
+		called[ticker] = true
+	}
 	calls := len(client.priceCalls)
 	client.mu.Unlock()
-	if calls != 3 {
-		t.Errorf("want 3 benchmark calls with empty stock list, got %d", calls)
+	// Both benchmark sets must be synced, not just the lump-sum one: a
+	// timing-matched proxy with no cached price reports a nil return on an
+	// otherwise healthy DB, and its current price would never refresh.
+	for _, ticker := range []string{"SPY", "QQQ", "226490", "360750", "368590"} {
+		if !called[ticker] {
+			t.Errorf("benchmark %s not synced with empty stock list (calls: %v)", ticker, client.priceCalls)
+		}
+	}
+	if calls != 5 {
+		t.Errorf("want 5 benchmark calls with empty stock list, got %d", calls)
 	}
 }
 

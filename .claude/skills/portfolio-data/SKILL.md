@@ -28,7 +28,7 @@ deposit   list | get -id | add -amount -date [-note] | update -id [-amount -date
 holding   list [-account] | get -id | add -account -stock -qty | add-by-ticker -account -ticker -qty | bulk -account -updates | update -id -qty | delete -id
 price     list -ticker T [-from DATE -to DATE -limit N] | set -ticker T -date DATE -price P [-currency C -name N -exchange E] | delete -ticker T -date DATE
 order-execution list [-limit N] [-ticker T] [-status STATUS]
-dashboard [-no-change-rates]
+dashboard [-no-change-rates] [-sort {value,1d,1m,6m,1y}] [-asc] [-benchmark-mode {lump-sum,timing-matched}]
 ```
 
 `go run ./cmd/pm help` prints this same table if you need to double check a flag name.
@@ -113,3 +113,41 @@ level of ceremony, but do restate what you're about to run if the request was am
   per-group holdings breakdown (no `TotalValue`/`ReturnRate` fields), prices may be missing or
   stale — point the user at the portfolio-sync skill's `price-sync` rather than trying to
   compute totals yourself from the holdings list.
+- Don't read the default `-benchmark-mode lump-sum` diff as underperformance — see below.
+
+## Reading the dashboard's benchmark block
+
+`BenchmarkMode` names the basis, and the two bases are not comparable:
+
+- `lump-sum` (default): each benchmark's **price** change from the first deposit date to now, in
+  the benchmark's own currency. `ReturnRate` meanwhile is money-weighted over every deposit
+  ((TotalAssets − TotalInvested) / TotalInvested). So whenever contributions arrived well after
+  the first deposit, `Difference` overstates underperformance — the benchmark is credited with
+  compounding money the portfolio did not yet hold. USD-listed SPY/QQQ also carry no FX effect
+  while the portfolio return is in KRW.
+- `timing-matched`: replays every deposit into the benchmark on that deposit's own date and
+  values the units at the current price, against KRW-listed proxies (360750 S&P 500,
+  368590 Nasdaq 100, 226490 KOSPI). Same money-weighted basis and same currency as `ReturnRate`,
+  so `Difference` is a fair read.
+
+```bash
+go run ./cmd/pm dashboard -benchmark-mode timing-matched -no-change-rates
+```
+
+Use `timing-matched` for any "우리가 시장보다 잘했나?" question. Neither mode includes dividends.
+
+A `timing-matched` benchmark reports a `null` `ReturnRate` — never a partial one — whenever any
+deposit cannot be priced honestly, because dropping a deposit would shrink the invested base and
+flatter the benchmark. Four distinct causes, so read the DB before picking a remedy:
+
+1. **No deposits at all** (`TotalInvested` 0) — nothing to replay; all three benchmarks null.
+   `price-backfill` will not change this.
+2. **No current price for the proxy** — `pm price list -ticker 360750 -limit 1` is empty. Run the
+   portfolio-sync skill's `price-sync` (it covers both benchmark sets).
+3. **A deposit predates the proxy's earliest cached close.**
+4. **A deposit falls in a hole in the cached history** — the nearest earlier close is more than
+   31 days before the deposit date, so it is rejected rather than used as a stand-in price.
+
+For 3 and 4, `price-backfill` that ticker over the deposit range. Price history is sparse
+checkpoints (1y/6m/1m/1d plus today), not a daily series, so multi-year holes are normal on a DB
+that has only ever run `price-sync`.

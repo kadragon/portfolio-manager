@@ -236,3 +236,23 @@ func captureDashboardOutput(t *testing.T, fn func() error) []byte {
 	}
 	return data
 }
+
+func TestRunDashboardRejectsInvalidBenchmarkMode(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+
+	if err := runDashboard(ctx, c, []string{"-benchmark-mode", "dollar-cost"}); err == nil {
+		t.Fatal("expected error for an unknown -benchmark-mode value")
+	}
+}
+
+func TestRunDashboardRejectsBenchmarkModeWithoutPriceService(t *testing.T) {
+	ctx := context.Background()
+	c := newStockContainer(t)
+	// Same fallback simulation as TestRunDashboardRejectsSortWithoutPriceService.
+	c.Portfolio = services.NewPortfolioService(c.Groups, c.Stocks, c.Holdings, c.Accounts, c.Deposits, nil, nil)
+
+	if err := runDashboard(ctx, c, []string{"-benchmark-mode", "timing-matched"}); err == nil {
+		t.Fatal("expected error when -benchmark-mode timing-matched is used without a price service")
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/kadragon/portfolio-manager/internal/datex"
 	"github.com/kadragon/portfolio-manager/internal/ktime"
@@ -101,10 +102,20 @@ func (s *PortfolioService) GetHoldingsByGroup(ctx context.Context) ([]models.Gro
 	return result, nil
 }
 
-// GetPortfolioSummary computes a full portfolio summary using DB-cached prices.
-// Returns ErrNoPriceService if no PriceService is configured.
+// GetPortfolioSummary computes a full portfolio summary using DB-cached prices
+// and lump-sum benchmarks. Returns ErrNoPriceService if no PriceService is wired.
 // Pass includeChangeRates=false to skip per-stock historical price fetches (rebalance path).
 func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChangeRates bool) (*models.PortfolioSummary, error) {
+	return s.GetPortfolioSummaryWithBenchmarkMode(ctx, includeChangeRates, BenchmarkModeLumpSum)
+}
+
+// GetPortfolioSummaryWithBenchmarkMode is GetPortfolioSummary with an explicit
+// benchmark mode. An unknown mode is rejected rather than defaulted, so a typo
+// cannot silently return lump-sum numbers under a timing-matched label.
+func (s *PortfolioService) GetPortfolioSummaryWithBenchmarkMode(ctx context.Context, includeChangeRates bool, mode BenchmarkMode) (*models.PortfolioSummary, error) {
+	if mode != BenchmarkModeLumpSum && mode != BenchmarkModeTimingMatched {
+		return nil, fmt.Errorf("unknown benchmark mode %q", mode)
+	}
 	if s.priceService == nil {
 		return nil, ErrNoPriceService
 	}
@@ -228,9 +239,11 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChang
 
 	totalInvested := numeric.Zero
 	var firstDate *datex.Date
+	var deposits []models.Deposit
 	if s.deposits != nil {
 		deps, err := s.deposits.ListAll(ctx)
 		if err == nil {
+			deposits = deps
 			for _, d := range deps {
 				totalInvested = numeric.Wrap(totalInvested.Add(d.Amount.Decimal))
 			}
@@ -257,7 +270,12 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChang
 		}
 	}
 
-	benchmarkReturns := s.computeBenchmarkReturns(ctx, returnRate, firstDate)
+	var benchmarkReturns []models.BenchmarkReturn
+	if mode == BenchmarkModeTimingMatched {
+		benchmarkReturns = s.computeTimingMatchedBenchmarkReturns(ctx, returnRate, deposits)
+	} else {
+		benchmarkReturns = s.computeBenchmarkReturns(ctx, returnRate, firstDate)
+	}
 	benchmarkAverage, benchmarkAverageDiff := computeBenchmarkAverage(returnRate, benchmarkReturns)
 	benchmarkAvailable := 0
 	for _, b := range benchmarkReturns {
@@ -281,7 +299,90 @@ func (s *PortfolioService) GetPortfolioSummary(ctx context.Context, includeChang
 		BenchmarkAverageReturn:  benchmarkAverage,
 		BenchmarkAverageDiff:    benchmarkAverageDiff,
 		BenchmarkAvailableCount: benchmarkAvailable,
+		BenchmarkMode:           string(mode),
 	}, nil
+}
+
+// computeTimingMatchedBenchmarkReturns replays every deposit into each benchmark
+// at that deposit's own date and values the accumulated units at the current
+// price, yielding a money-weighted return comparable with the portfolio's
+// (totalAssets − totalInvested) / totalInvested.
+//
+// A benchmark reports nil unless EVERY deposit could be priced: skipping the
+// deposits with no cached close that far back would shrink the invested base and
+// silently overstate the benchmark.
+func (s *PortfolioService) computeTimingMatchedBenchmarkReturns(ctx context.Context, portfolioReturn *numeric.Decimal, deposits []models.Deposit) []models.BenchmarkReturn {
+	results := make([]models.BenchmarkReturn, 0, len(timingMatchedBenchmarks))
+	for _, b := range timingMatchedBenchmarks {
+		var rate *numeric.Decimal
+		if s.priceService != nil && len(deposits) > 0 {
+			rate = s.timingMatchedReturn(ctx, b, deposits)
+		}
+		var diff *numeric.Decimal
+		if rate != nil && portfolioReturn != nil {
+			d := numeric.Wrap(portfolioReturn.Sub(rate.Decimal))
+			diff = &d
+		}
+		results = append(results, models.BenchmarkReturn{
+			Label:      b.label,
+			Ticker:     b.ticker,
+			ReturnRate: rate,
+			Difference: diff,
+		})
+	}
+	return results
+}
+
+// timingMatchedReturn is the per-benchmark simulation behind
+// computeTimingMatchedBenchmarkReturns; nil means "not fully priceable".
+func (s *PortfolioService) timingMatchedReturn(ctx context.Context, b benchmarkSpec, deposits []models.Deposit) *numeric.Decimal {
+	currentPrice, _, _, _ := s.priceService.GetStockPrice(ctx, b.ticker, b.preferredExchange)
+	if !currentPrice.IsPositive() {
+		return nil
+	}
+
+	units := numeric.Zero
+	invested := numeric.Zero
+	for _, d := range deposits {
+		invested = numeric.Wrap(invested.Add(d.Amount.Decimal))
+		if d.Amount.IsZero() {
+			// Nothing to replay, and no price lookup to risk failing on.
+			continue
+		}
+		buyPrice, priceDate := s.priceService.GetPriceOnOrBefore(ctx, b.ticker, d.DepositDate)
+		if buyPrice == nil || staleBenchmarkPrice(priceDate, d.DepositDate) {
+			return nil
+		}
+		// A negative amount (withdrawal/correction) sells units at that date's
+		// price rather than only shrinking the base: keeping the units while the
+		// denominator drops would fabricate benchmark return out of a withdrawal.
+		units = numeric.Wrap(units.Add(d.Amount.Div(buyPrice.Decimal)))
+	}
+	if !invested.IsPositive() {
+		return nil
+	}
+
+	finalValue := numeric.Wrap(units.Mul(currentPrice.Decimal))
+	rate := numeric.Wrap(finalValue.Sub(invested.Decimal).Div(invested.Decimal).Mul(hundred.Decimal))
+	return &rate
+}
+
+// maxBenchmarkPriceGap bounds how far before a deposit date a cached close may
+// sit and still stand in for it. Price history is stored as sparse checkpoints
+// (1y/6m/1m/1d plus the first-deposit date), not a daily series, so an unbounded
+// on-or-before lookup can price a deposit off a close years earlier and still
+// report the result as timing-matched. A month of slack tolerates ordinary
+// checkpoint spacing while rejecting the multi-year holes between them.
+const maxBenchmarkPriceGap = 31 * 24 * time.Hour
+
+// staleBenchmarkPrice reports whether the close found for depositDate sits too
+// far in the past to represent it. A zero priceDate is treated as stale: an
+// unknown gap is not a small one.
+func staleBenchmarkPrice(priceDate, depositDate datex.Date) bool {
+	if priceDate.Time.IsZero() {
+		return true
+	}
+	return depositDate.Time.Sub(priceDate.Time) > maxBenchmarkPriceGap
 }
 
 func (s *PortfolioService) computeBenchmarkReturns(ctx context.Context, portfolioReturn *numeric.Decimal, startDate *datex.Date) []models.BenchmarkReturn {
