@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,6 +39,19 @@ type trackingClient struct {
 	// the same closures. Off by default: the backfill tests drive the fake from
 	// rangeByTicker instead.
 	synthesizeRange bool
+}
+
+// rangeKeysFor returns the "TICKER@START..END" spans requested for one ticker.
+func (c *trackingClient) rangeKeysFor(ticker string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var keys []string
+	for _, k := range c.rangeKeys {
+		if strings.HasPrefix(k, ticker+"@") {
+			keys = append(keys, k)
+		}
+	}
+	return keys
 }
 
 // rangeCallCount counts GetHistoricalRange calls made for one ticker.
@@ -1095,6 +1109,49 @@ func TestPriceSyncServiceDoesNotBatchDepositRangesForHeldStocks(t *testing.T) {
 	for _, ticker := range []string{"SPY", "QQQ"} {
 		if got := client.rangeCallCount(ticker); got != 0 {
 			t.Errorf("GetHistoricalRange for dashboard-only %s called %d times, want 0", ticker, got)
+		}
+	}
+}
+
+// The request reaches benchmarkDepositLookback (14d) before the first missing
+// date, and depositPrefetchWindows only clusters dates within
+// backfillWindowDays - 14 of each other. Their sum is the row-cap budget
+// backfillWindowDays stands for, so no span may exceed it — a truncated response
+// would silently drop the earliest rows.
+func TestPriceSyncServiceBatchedDepositRangeStaysWithinRowBudget(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	for _, d := range clusteredDepositDates() {
+		mustCreateDeposit(t, ctx, depositRepo, d)
+	}
+
+	client := newClusteredDepositClient()
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	const maxSpanDays = 90
+	keys := client.rangeKeysFor("226490")
+	if len(keys) == 0 {
+		t.Fatal("no GetHistoricalRange call recorded for 226490")
+	}
+	for _, k := range keys {
+		span := strings.TrimPrefix(k, "226490@")
+		bounds := strings.Split(span, "..")
+		if len(bounds) != 2 {
+			t.Fatalf("malformed range key %q", k)
+		}
+		start, err := datex.ParseDate(bounds[0])
+		if err != nil {
+			t.Fatalf("parse range start %q: %v", bounds[0], err)
+		}
+		end, err := datex.ParseDate(bounds[1])
+		if err != nil {
+			t.Fatalf("parse range end %q: %v", bounds[1], err)
+		}
+		days := int(end.Time.Sub(start.Time).Hours() / 24)
+		if days > maxSpanDays {
+			t.Errorf("range %s spans %d days, want at most %d", span, days, maxSpanDays)
 		}
 	}
 }

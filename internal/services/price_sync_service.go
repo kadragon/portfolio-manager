@@ -275,17 +275,26 @@ func (s *PriceSyncService) saveHistoricalPoint(
 	return true, false
 }
 
+// depositPrefetchSpanDays bounds how far apart two deposit dates may sit and
+// still share one request. The request itself reaches benchmarkDepositLookback
+// further back than its first date (see prefetchBenchmarkDepositRanges), so the
+// spacing budget is backfillWindowDays minus that prefix — which is what keeps
+// the fetched span inside the row cap backfillWindowDays stands for. Widening
+// the lookback narrows this automatically instead of silently truncating the
+// earliest rows of the response.
+const depositPrefetchSpanDays = backfillWindowDays - int(benchmarkDepositLookback/(24*time.Hour))
+
 // depositPrefetchWindows groups sorted deposit dates into spans a single
 // GetHistoricalRange call can cover. A window opens at the first ungrouped date
-// and takes every later date within backfillWindowDays of it; windows holding a
-// lone date are dropped, since one range call for one date saves nothing and the
-// per-date path already handles it. This is what keeps the batching from
-// degenerating into fetching years of daily closes for a handful of scattered
-// dates: only dates that genuinely cluster share a request.
+// and takes every later date within depositPrefetchSpanDays of it; windows
+// holding a lone date are dropped, since one range call for one date saves
+// nothing and the per-date path already handles it. This is what keeps the
+// batching from degenerating into fetching years of daily closes for a handful
+// of scattered dates: only dates that genuinely cluster share a request.
 func depositPrefetchWindows(dates []datex.Date) [][]datex.Date {
 	var windows [][]datex.Date
 	for i := 0; i < len(dates); {
-		limit := dates[i].Time.AddDate(0, 0, backfillWindowDays)
+		limit := dates[i].Time.AddDate(0, 0, depositPrefetchSpanDays)
 		j := i + 1
 		for j < len(dates) && !dates[j].Time.After(limit) {
 			j++
@@ -307,6 +316,8 @@ func depositPrefetchWindows(dates []datex.Date) [][]datex.Date {
 // The fetched span reaches back benchmarkDepositLookback before the first missing
 // date so a deposit that landed in a market closure has its walk-back candidates
 // in the same response — ensureBenchmarkDepositClose then resolves it from cache.
+// That prefix plus depositPrefetchSpanDays is exactly backfillWindowDays, so the
+// request stays inside the row cap that constant stands for.
 // The pass is an optimization, not a requirement: a failed range is logged and
 // the per-date path still runs.
 func (s *PriceSyncService) prefetchBenchmarkDepositRanges(
@@ -339,6 +350,11 @@ func (s *PriceSyncService) prefetchBenchmarkDepositRanges(
 		if err != nil {
 			log.Printf("price sync: benchmark deposit range %s %s..%s: %v", ticker, start.ISO(), end.ISO(), err)
 			continue
+		}
+		if ctx.Err() != nil {
+			// The client takes no ctx, so a cancellation during the call lands here.
+			// Saving now would fail once per row and log a burst of noise.
+			return true
 		}
 		for _, p := range points {
 			s.saveHistoricalPoint(ctx, ticker, p, quote, exc)
