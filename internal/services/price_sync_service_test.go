@@ -19,10 +19,28 @@ type trackingClient struct {
 	mu                sync.Mutex
 	priceCalls        []string
 	histCalls         []string
+	histKeys          []string // "TICKER@YYYY-MM-DD", one per GetHistoricalClose call
 	rangeCalls        []string
 	quotesByTicker    map[string]services.PriceQuote
 	histPriceByTicker map[string]float64
-	rangeByTicker     map[string][]services.HistoricalPricePoint
+	// histEmptyDates marks ISO dates with no close (a market holiday), so a
+	// GetHistoricalClose for one returns 0 the way KIS does.
+	histEmptyDates map[string]bool
+	rangeByTicker  map[string][]services.HistoricalPricePoint
+}
+
+// histKeyCount counts GetHistoricalClose calls for one ticker/date pair.
+func (c *trackingClient) histKeyCount(ticker string, date datex.Date) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	want := ticker + "@" + date.ISO()
+	n := 0
+	for _, k := range c.histKeys {
+		if k == want {
+			n++
+		}
+	}
+	return n
 }
 
 func (c *trackingClient) GetPrice(ticker, _ string) (services.PriceQuote, error) {
@@ -35,10 +53,14 @@ func (c *trackingClient) GetPrice(ticker, _ string) (services.PriceQuote, error)
 	return services.PriceQuote{Symbol: ticker, Currency: "USD", Price: 100.0}, nil
 }
 
-func (c *trackingClient) GetHistoricalClose(ticker string, _ datex.Date, _ string) (float64, error) {
+func (c *trackingClient) GetHistoricalClose(ticker string, date datex.Date, _ string) (float64, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.histCalls = append(c.histCalls, ticker)
+	c.histKeys = append(c.histKeys, ticker+"@"+date.ISO())
+	if c.histEmptyDates[date.ISO()] {
+		return 0, nil
+	}
 	if p, ok := c.histPriceByTicker[ticker]; ok {
 		return p, nil
 	}
@@ -191,6 +213,188 @@ func TestPriceSyncServiceSkipsFirstDepositDateForHeldStocks(t *testing.T) {
 	}
 	if vym != nil {
 		t.Errorf("held stock VYM fetched first-deposit-date price %v, want none (benchmark-only date)", vym.Price)
+	}
+}
+
+// Timing-matched benchmarks price EVERY deposit at its own date, so price-sync
+// must checkpoint all of them — not just the first.
+func TestPriceSyncServiceFetchesEveryDepositDateForBenchmarks(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	depositDates := []datex.Date{
+		datex.New(2024, time.March, 12),
+		datex.New(2025, time.July, 8),
+		datex.New(2026, time.January, 15),
+	}
+	for _, d := range depositDates {
+		_, _ = depositRepo.Create(ctx, numeric.FromInt(100), d, sql.NullString{})
+	}
+
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"SPY":    {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+			"QQQ":    {Symbol: "QQQ", Price: 450.0, Currency: "USD", Exchange: "NASD"},
+			"226490": {Symbol: "226490", Price: 30000.0, Currency: "KRW"},
+		},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	for _, ticker := range []string{"SPY", "QQQ", "226490", "360750", "368590"} {
+		for _, d := range depositDates {
+			sp, err := priceRepo.GetByTickerAndDate(ctx, ticker, d)
+			if err != nil {
+				t.Fatalf("get deposit-date price %s %s: %v", ticker, d.ISO(), err)
+			}
+			if sp == nil {
+				t.Errorf("deposit-date price for %s on %s was not saved", ticker, d.ISO())
+			}
+		}
+	}
+}
+
+// Two deposits on one date are one checkpoint: the deposit-date set is deduped,
+// so KIS is not called twice for the same (ticker, date).
+func TestPriceSyncServiceFetchesDuplicateDepositDateOnce(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	depositDate := datex.New(2025, time.July, 8)
+	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), depositDate, sql.NullString{})
+	_, _ = depositRepo.Create(ctx, numeric.FromInt(250), depositDate, sql.NullString{})
+
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"SPY": {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+		},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	if got := client.histKeyCount("SPY", depositDate); got != 1 {
+		t.Errorf("GetHistoricalClose for SPY on %s called %d times, want 1", depositDate.ISO(), got)
+	}
+}
+
+// Deposit dates are a benchmark-only checkpoint set; held stocks sync the base
+// 1y/6m/1m/1d checkpoints only.
+func TestPriceSyncServiceSkipsDepositDatesForHeldStocks(t *testing.T) {
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	g, _ := groupRepo.Create(ctx, "test", 0)
+	_, _ = stockRepo.Create(ctx, "VYM", g.ID) // held stock, not a benchmark
+
+	depositDates := []datex.Date{
+		datex.New(2024, time.March, 12),
+		datex.New(2025, time.July, 8),
+	}
+	for _, d := range depositDates {
+		_, _ = depositRepo.Create(ctx, numeric.FromInt(100), d, sql.NullString{})
+	}
+
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"VYM": {Symbol: "VYM", Price: 118.0, Currency: "USD", Exchange: "AMEX"},
+			"SPY": {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+		},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	for _, d := range depositDates {
+		// Precondition: the benchmark did take this checkpoint (guards against a
+		// wall-clock run where a deposit date collides with a base checkpoint).
+		spy, err := priceRepo.GetByTickerAndDate(ctx, "SPY", d)
+		if err != nil {
+			t.Fatalf("get SPY deposit-date price %s: %v", d.ISO(), err)
+		}
+		if spy == nil {
+			continue
+		}
+		vym, err := priceRepo.GetByTickerAndDate(ctx, "VYM", d)
+		if err != nil {
+			t.Fatalf("get VYM deposit-date price %s: %v", d.ISO(), err)
+		}
+		if vym != nil {
+			t.Errorf("held stock VYM fetched deposit-date price on %s (%v), want none", d.ISO(), vym.Price)
+		}
+	}
+}
+
+// prevBizDay only skips weekends, so a deposit on a market holiday lands on a day
+// with no close. The sync walks back to the nearest earlier day that has one; the
+// close is stored under that day, never mislabelled as the deposit date.
+func TestPriceSyncServiceWalksBackFromHolidayDepositDate(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	// 2025-01-01 (Wed) is a holiday; 2024-12-31 (Tue) is the nearest open day.
+	holiday := datex.New(2025, time.January, 1)
+	fallback := datex.New(2024, time.December, 31)
+	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), holiday, sql.NullString{})
+
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"SPY": {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+		},
+		histEmptyDates: map[string]bool{holiday.ISO(): true},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	if sp, err := priceRepo.GetByTickerAndDate(ctx, "SPY", holiday); err != nil {
+		t.Fatalf("get SPY holiday price: %v", err)
+	} else if sp != nil {
+		t.Errorf("holiday %s saved price %v, want none (no close exists that day)", holiday.ISO(), sp.Price)
+	}
+
+	sp, err := priceRepo.GetByTickerAndDate(ctx, "SPY", fallback)
+	if err != nil {
+		t.Fatalf("get SPY fallback price: %v", err)
+	}
+	if sp == nil {
+		t.Fatalf("fallback date %s has no price; the walk-back did not run", fallback.ISO())
+	}
+}
+
+// The walk-back is bounded: a date with no close within the fallback window
+// leaves no row rather than reaching back arbitrarily far.
+func TestPriceSyncServiceBoundsHolidayWalkBack(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	depositDate := datex.New(2025, time.July, 8)
+	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), depositDate, sql.NullString{})
+
+	// Every day in and beyond the walk-back window is empty.
+	empty := map[string]bool{}
+	for i := 0; i < 40; i++ {
+		empty[datex.FromTime(depositDate.Time.AddDate(0, 0, -i)).ISO()] = true
+	}
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"SPY": {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+		},
+		histEmptyDates: empty,
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	for i := 0; i < 40; i++ {
+		d := datex.FromTime(depositDate.Time.AddDate(0, 0, -i))
+		if sp, err := priceRepo.GetByTickerAndDate(ctx, "SPY", d); err == nil && sp != nil {
+			t.Fatalf("saved a price for %s despite no close being available", d.ISO())
+		}
+	}
+	// 1 deposit-date attempt + benchmarkDepositFallbackDays walk-back attempts.
+	total := 0
+	for i := 0; i < 40; i++ {
+		total += client.histKeyCount("SPY", datex.FromTime(depositDate.Time.AddDate(0, 0, -i)))
+	}
+	if total > 5 {
+		t.Errorf("walk-back made %d attempts for one deposit date, want at most 5", total)
 	}
 }
 
