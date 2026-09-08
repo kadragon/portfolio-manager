@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -31,13 +32,51 @@ type trackingClient struct {
 	// rate-limit failure, which is not evidence the market was shut.
 	histErrDates  map[string]bool
 	rangeByTicker map[string][]services.HistoricalPricePoint
+	// rangeKeys records "TICKER@START..END", one per GetHistoricalRange call.
+	rangeKeys []string
+	// synthesizeRange makes GetHistoricalRange answer from the same holiday and
+	// price maps GetHistoricalClose uses, so a batched fetch can be tested against
+	// the same closures. Off by default: the backfill tests drive the fake from
+	// rangeByTicker instead.
+	synthesizeRange bool
+}
+
+// rangeKeysFor returns the "TICKER@START..END" spans requested for one ticker.
+func (c *trackingClient) rangeKeysFor(ticker string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var keys []string
+	for _, k := range c.rangeKeys {
+		if strings.HasPrefix(k, ticker+"@") {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
+// rangeCallCount counts GetHistoricalRange calls made for one ticker.
+func (c *trackingClient) rangeCallCount(ticker string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, t := range c.rangeCalls {
+		if t == ticker {
+			n++
+		}
+	}
+	return n
 }
 
 // histKeyCount counts GetHistoricalClose calls made for SPY on one date.
 func (c *trackingClient) histKeyCount(date datex.Date) int {
+	return c.histKeyCountFor("SPY", date)
+}
+
+// histKeyCountFor counts GetHistoricalClose calls made for one ticker and date.
+func (c *trackingClient) histKeyCountFor(ticker string, date datex.Date) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	want := "SPY@" + date.ISO()
+	want := ticker + "@" + date.ISO()
 	n := 0
 	for _, k := range c.histKeys {
 		if k == want {
@@ -74,11 +113,30 @@ func (c *trackingClient) GetHistoricalClose(ticker string, date datex.Date, _ st
 	return 50.0, nil
 }
 
-func (c *trackingClient) GetHistoricalRange(ticker string, _, _ datex.Date, _ string) ([]services.HistoricalPricePoint, error) {
+func (c *trackingClient) GetHistoricalRange(ticker string, start, end datex.Date, _ string) ([]services.HistoricalPricePoint, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.rangeCalls = append(c.rangeCalls, ticker)
-	return c.rangeByTicker[ticker], nil
+	c.rangeKeys = append(c.rangeKeys, ticker+"@"+start.ISO()+".."+end.ISO())
+	if !c.synthesizeRange {
+		return c.rangeByTicker[ticker], nil
+	}
+	price := 50.0
+	if p, ok := c.histPriceByTicker[ticker]; ok {
+		price = p
+	}
+	var points []services.HistoricalPricePoint
+	for d := start.Time; !d.After(end.Time); d = d.AddDate(0, 0, 1) {
+		day := datex.FromTime(d)
+		if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
+			continue
+		}
+		if c.histEmptyDates[day.ISO()] {
+			continue
+		}
+		points = append(points, services.HistoricalPricePoint{Date: day, Price: price})
+	}
+	return points, nil
 }
 
 func newSyncRepos(t *testing.T) (*repositories.StockPriceRepository, *repositories.StockRepository, *repositories.GroupRepository, *repositories.DepositRepository) {
@@ -859,5 +917,241 @@ func TestPriceSyncServiceReportsNoUnpricedDatesOnCleanRun(t *testing.T) {
 
 	if got := svc.SyncOnce(ctx).UnpricedBenchmarkDates; got != 0 {
 		t.Errorf("UnpricedBenchmarkDates = %d on a clean run, want 0", got)
+	}
+}
+
+// timingMatchedTickers are the benchmarks that replay every deposit date, so they
+// are the ones the batched prefetch is meant to spare from per-date calls.
+var timingMatchedTickers = []string{"226490", "360750", "368590"}
+
+// clusteredDepositDates are six monthly deposits that fall into exactly two
+// 90-day windows: 2024-01-15 opens one that reaches 2024-04-14, 2024-05-15 opens
+// the next.
+func clusteredDepositDates() []datex.Date {
+	return []datex.Date{
+		datex.New(2024, time.January, 15),
+		datex.New(2024, time.February, 15),
+		datex.New(2024, time.March, 15),
+		datex.New(2024, time.May, 15),
+		datex.New(2024, time.June, 17),
+		datex.New(2024, time.July, 15),
+	}
+}
+
+func newClusteredDepositClient() *trackingClient {
+	return &trackingClient{
+		synthesizeRange: true,
+		quotesByTicker: map[string]services.PriceQuote{
+			"SPY":    {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+			"QQQ":    {Symbol: "QQQ", Price: 450.0, Currency: "USD", Exchange: "NASD"},
+			"226490": {Symbol: "226490", Price: 30000.0, Currency: "KRW"},
+			"360750": {Symbol: "360750", Price: 20000.0, Currency: "KRW"},
+			"368590": {Symbol: "368590", Price: 15000.0, Currency: "KRW"},
+		},
+	}
+}
+
+// Deposit dates clustered inside a 90-day window are what makes a long history
+// slow: one GetHistoricalClose each, every one paying syncCallDelay. A single
+// GetHistoricalRange covers the whole cluster.
+func TestPriceSyncServiceBatchesClusteredDepositDates(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	depositDates := clusteredDepositDates()
+	for _, d := range depositDates {
+		mustCreateDeposit(t, ctx, depositRepo, d)
+	}
+
+	client := newClusteredDepositClient()
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	for _, ticker := range timingMatchedTickers {
+		if got := client.rangeCallCount(ticker); got != 2 {
+			t.Errorf("GetHistoricalRange for %s called %d times, want 2 (one per window)", ticker, got)
+		}
+		for _, d := range depositDates {
+			if got := client.histKeyCountFor(ticker, d); got != 0 {
+				t.Errorf("GetHistoricalClose for %s on %s called %d times, want 0 (batched)", ticker, d.ISO(), got)
+			}
+			sp, err := priceRepo.GetByTickerAndDate(ctx, ticker, d)
+			if err != nil {
+				t.Fatalf("get deposit-date price %s %s: %v", ticker, d.ISO(), err)
+			}
+			if sp == nil {
+				t.Errorf("deposit-date price for %s on %s was not saved", ticker, d.ISO())
+			}
+		}
+	}
+}
+
+// The batched span reaches back benchmarkDepositLookback before the first missing
+// date, so a deposit that landed in a market closure has the preceding sessions in
+// the same response and needs no walk-back calls of its own.
+func TestPriceSyncServiceBatchCoversHolidayDepositDate(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	depositDates := clusteredDepositDates()
+	for _, d := range depositDates {
+		mustCreateDeposit(t, ctx, depositRepo, d)
+	}
+	holiday := datex.New(2024, time.February, 15)
+
+	client := newClusteredDepositClient()
+	client.histEmptyDates = map[string]bool{holiday.ISO(): true}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	for _, ticker := range timingMatchedTickers {
+		if got := client.histKeyCountFor(ticker, holiday); got != 0 {
+			t.Errorf("GetHistoricalClose for %s on holiday %s called %d times, want 0", ticker, holiday.ISO(), got)
+		}
+		sp, err := priceRepo.GetOnOrBeforeDate(ctx, ticker, holiday)
+		if err != nil {
+			t.Fatalf("get on-or-before %s %s: %v", ticker, holiday.ISO(), err)
+		}
+		if sp == nil || !sp.Price.IsPositive() {
+			t.Errorf("holiday deposit date %s for %s left unpriced", holiday.ISO(), ticker)
+		}
+	}
+}
+
+// A second pass over unchanged data must not re-request the ranges: every deposit
+// date is already covered, so no window has two missing dates left to batch.
+func TestPriceSyncServiceDoesNotRefetchBatchedDepositRanges(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	for _, d := range clusteredDepositDates() {
+		mustCreateDeposit(t, ctx, depositRepo, d)
+	}
+
+	client := newClusteredDepositClient()
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+	before := len(client.rangeCalls)
+	svc.SyncOnce(ctx)
+
+	if got := len(client.rangeCalls) - before; got != 0 {
+		t.Errorf("second sync issued %d GetHistoricalRange calls, want 0", got)
+	}
+}
+
+// Scattered deposits are the case the windowing rule exists to reject: a range
+// call covering dates months apart would fetch a year of daily closes to reach a
+// handful of them, so each stays on the single-date path.
+func TestPriceSyncServiceDoesNotBatchScatteredDepositDates(t *testing.T) {
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	g, err := groupRepo.Create(ctx, "test", 0)
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if _, err := stockRepo.Create(ctx, "VYM", g.ID); err != nil {
+		t.Fatalf("create stock: %v", err)
+	}
+
+	depositDates := []datex.Date{
+		datex.New(2024, time.March, 12),
+		datex.New(2025, time.July, 8),
+		datex.New(2026, time.January, 15),
+	}
+	for _, d := range depositDates {
+		mustCreateDeposit(t, ctx, depositRepo, d)
+	}
+
+	client := newClusteredDepositClient()
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	for _, ticker := range append(timingMatchedTickers, "VYM") {
+		if got := client.rangeCallCount(ticker); got != 0 {
+			t.Errorf("GetHistoricalRange for %s called %d times, want 0", ticker, got)
+		}
+	}
+	for _, ticker := range timingMatchedTickers {
+		for _, d := range depositDates {
+			if got := client.histKeyCountFor(ticker, d); got != 1 {
+				t.Errorf("GetHistoricalClose for %s on %s called %d times, want 1", ticker, d.ISO(), got)
+			}
+		}
+	}
+}
+
+// Deposit dates are a benchmark-only checkpoint set, so the batching must not
+// start pulling ranges for held stocks either.
+func TestPriceSyncServiceDoesNotBatchDepositRangesForHeldStocks(t *testing.T) {
+	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	g, err := groupRepo.Create(ctx, "test", 0)
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if _, err := stockRepo.Create(ctx, "VYM", g.ID); err != nil {
+		t.Fatalf("create stock: %v", err)
+	}
+	for _, d := range clusteredDepositDates() {
+		mustCreateDeposit(t, ctx, depositRepo, d)
+	}
+
+	client := newClusteredDepositClient()
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	if got := client.rangeCallCount("VYM"); got != 0 {
+		t.Errorf("GetHistoricalRange for held stock VYM called %d times, want 0", got)
+	}
+	// SPY and QQQ are dashboard-only proxies: one deposit date each, never a cluster.
+	for _, ticker := range []string{"SPY", "QQQ"} {
+		if got := client.rangeCallCount(ticker); got != 0 {
+			t.Errorf("GetHistoricalRange for dashboard-only %s called %d times, want 0", ticker, got)
+		}
+	}
+}
+
+// The request reaches benchmarkDepositLookback (14d) before the first missing
+// date, and depositPrefetchWindows only clusters dates within
+// backfillWindowDays - 14 of each other. Their sum is the row-cap budget
+// backfillWindowDays stands for, so no span may exceed it — a truncated response
+// would silently drop the earliest rows.
+func TestPriceSyncServiceBatchedDepositRangeStaysWithinRowBudget(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	for _, d := range clusteredDepositDates() {
+		mustCreateDeposit(t, ctx, depositRepo, d)
+	}
+
+	client := newClusteredDepositClient()
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+	svc.SyncOnce(ctx)
+
+	const maxSpanDays = 90
+	keys := client.rangeKeysFor("226490")
+	if len(keys) == 0 {
+		t.Fatal("no GetHistoricalRange call recorded for 226490")
+	}
+	for _, k := range keys {
+		span := strings.TrimPrefix(k, "226490@")
+		bounds := strings.Split(span, "..")
+		if len(bounds) != 2 {
+			t.Fatalf("malformed range key %q", k)
+		}
+		start, err := datex.ParseDate(bounds[0])
+		if err != nil {
+			t.Fatalf("parse range start %q: %v", bounds[0], err)
+		}
+		end, err := datex.ParseDate(bounds[1])
+		if err != nil {
+			t.Fatalf("parse range end %q: %v", bounds[1], err)
+		}
+		days := int(end.Time.Sub(start.Time).Hours() / 24)
+		if days > maxSpanDays {
+			t.Errorf("range %s spans %d days, want at most %d", span, days, maxSpanDays)
+		}
 	}
 }
