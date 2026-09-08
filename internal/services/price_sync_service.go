@@ -15,15 +15,21 @@ import (
 	"github.com/kadragon/portfolio-manager/internal/repositories"
 )
 
-const syncCallDelay = 200 * time.Millisecond
+// syncCallDelay paces calls against KIS's rate limits. A var, not a const, so the
+// tests can shorten it — the pacing is what makes a full sync slow, and paying it
+// in unit tests buys nothing.
+var syncCallDelay = 200 * time.Millisecond
 
-// benchmarkDepositFallbackDays bounds the walk-back when a deposit-date close
-// comes back empty. prevBizDay only skips weekends, so a deposit made on a
-// market holiday still lands on a day with no close; without a fallback that
-// deposit stays unpriced and the whole timing-matched benchmark reports nil.
-// Every candidate stays well inside maxBenchmarkPriceGap, so the earlier close
-// still legitimately stands in for the deposit.
-const benchmarkDepositFallbackDays = 4
+// benchmarkDepositLookback bounds the walk-back when a deposit-date close comes
+// back empty. prevBizDay only skips weekends, so a deposit made during a market
+// closure still lands on a day with no close; without a fallback that deposit
+// stays unpriced and the whole timing-matched benchmark reports nil. The bound is
+// a window rather than an attempt count because Korean closures cluster: KRX was
+// shut 2025-10-03 (개천절) through 2025-10-09 (한글날), five sessions, and the KRW
+// benchmark proxies trade there. Two weeks clears the longest such run while
+// staying inside maxBenchmarkPriceGap, so a close found inside it still
+// legitimately stands in for the deposit.
+const benchmarkDepositLookback = 14 * 24 * time.Hour
 
 // PriceSyncService fetches prices for all stocks and saves them to DB, one
 // pass per SyncOnce call (invoked on demand via `pm price-sync`, not on a
@@ -65,8 +71,9 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 
 	today := datex.FromTime(ktime.NowKST())
 	baseDates := s.syncHistoricalDates(today)
-	benchmarkDates := s.benchmarkHistoricalDates(ctx, today, baseDates)
+	depositDates := s.benchmarkDepositDates(ctx, today)
 	benchmarkTickers := benchmarkTickerSet()
+	timingTickers := timingMatchedTickerSet()
 
 	for idx, target := range targets {
 		if ctx.Err() != nil {
@@ -121,30 +128,25 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 		}
 
 		// Fetch any missing historical closes (fetch-once: immutable past data).
-		// Only dashboard benchmarks need the deposit dates (they price the
-		// benchmark-vs-portfolio comparison); held stocks sync base dates only.
-		var depositDates []datex.Date
-		if benchmarkTickers[target.ticker] {
-			depositDates = benchmarkDates
+		// Deposit dates are benchmark-only; held stocks sync base dates only.
+		var targetDepositDates []datex.Date
+		switch {
+		case timingTickers[target.ticker]:
+			// Timing-matched mode replays every deposit at its own date.
+			targetDepositDates = depositDates
+		case benchmarkTickers[target.ticker] && len(depositDates) > 0:
+			// Dashboard-only proxies are compared from the first deposit alone, so
+			// fetching the rest for them would be pure cost.
+			targetDepositDates = depositDates[:1]
 		}
 		for _, targetDate := range baseDates {
-			if _, canceled := s.syncHistoricalClose(ctx, target.ticker, targetDate, preferredExchange, quote, exc); canceled {
+			if _, canceled, _ := s.syncHistoricalClose(ctx, target.ticker, targetDate, preferredExchange, quote, exc); canceled {
 				return
 			}
 		}
-		// Deposit dates are exact, not approximate like the base checkpoints, so a
-		// miss here is worth walking back for (see benchmarkDepositFallbackDays).
-		for _, depositDate := range depositDates {
-			candidate := depositDate
-			for attempt := 0; attempt <= benchmarkDepositFallbackDays; attempt++ {
-				ok, canceled := s.syncHistoricalClose(ctx, target.ticker, candidate, preferredExchange, quote, exc)
-				if canceled {
-					return
-				}
-				if ok {
-					break
-				}
-				candidate = datex.FromTime(prevBizDay(candidate.Time.AddDate(0, 0, -1)))
+		for _, depositDate := range targetDepositDates {
+			if canceled := s.ensureBenchmarkDepositClose(ctx, target.ticker, depositDate, preferredExchange, quote, exc); canceled {
+				return
 			}
 		}
 	}
@@ -245,15 +247,19 @@ func (s *PriceSyncService) syncHistoricalDates(today datex.Date) []datex.Date {
 	return dates
 }
 
-// benchmarkHistoricalDates returns extra checkpoints only the dashboard
-// benchmarks need: every deposit date (prev-business-day adjusted), ascending.
-// The first of them backs GetStockChangeSince's benchmark-vs-portfolio
-// comparison; the rest back the timing-matched mode, which prices each deposit
-// at its own date and reports nil unless every one of them is priceable — the
-// sparse 1y/6m/1m/1d checkpoints leave multi-year holes that maxBenchmarkPriceGap
-// rejects. Held stocks don't need any of these, so they stay out of the base set.
-// Deduped against base and against each other; nil when nothing is usable.
-func (s *PriceSyncService) benchmarkHistoricalDates(ctx context.Context, today datex.Date, base []datex.Date) []datex.Date {
+// benchmarkDepositDates returns every deposit date (prev-business-day adjusted),
+// ascending — checkpoints only the dashboard benchmarks need. The first backs
+// GetStockChangeSince's benchmark-vs-portfolio comparison; the rest back the
+// timing-matched mode, which prices each deposit at its own date and reports nil
+// unless every one of them is priceable, so the sparse 1y/6m/1m/1d checkpoints
+// leave multi-year holes that maxBenchmarkPriceGap rejects. Held stocks need none
+// of these, so they stay out of the base set.
+//
+// Dates are deduped against each other but deliberately NOT against the base
+// checkpoints: a deposit that lands on a base date still needs
+// ensureBenchmarkDepositClose's walk-back if that date turns out to be a market
+// holiday, and the cache checks downstream make the overlap free.
+func (s *PriceSyncService) benchmarkDepositDates(ctx context.Context, today datex.Date) []datex.Date {
 	if s.deposits == nil {
 		return nil
 	}
@@ -263,11 +269,7 @@ func (s *PriceSyncService) benchmarkHistoricalDates(ctx context.Context, today d
 		return nil
 	}
 
-	seen := make(map[string]bool, len(base)+len(deposits))
-	for _, d := range base {
-		seen[d.ISO()] = true
-	}
-
+	seen := make(map[string]bool, len(deposits))
 	dates := make([]datex.Date, 0, len(deposits))
 	for _, d := range deposits {
 		if d.DepositDate.Time.IsZero() || d.DepositDate.ISO() >= today.ISO() {
@@ -287,10 +289,56 @@ func (s *PriceSyncService) benchmarkHistoricalDates(ctx context.Context, today d
 	return dates
 }
 
+// ensureBenchmarkDepositClose makes depositDate priceable for ticker. A cached
+// close already sitting inside the lookback window is what timingMatchedReturn
+// actually reads, so it returns without a call — which is also what keeps a
+// second SyncOnce from re-requesting a market-holiday date whose close is stored
+// a few days behind it. Otherwise it fetches, walking back over a closure.
+// Reports only whether ctx ended; a close that cannot be found is logged, since
+// leaving the date unpriced is preferable to storing a price under a date the
+// market never traded on.
+func (s *PriceSyncService) ensureBenchmarkDepositClose(
+	ctx context.Context,
+	ticker string,
+	depositDate datex.Date,
+	preferredExchange string,
+	quote PriceQuote,
+	exc sql.NullString,
+) (canceled bool) {
+	floor := depositDate.Time.Add(-benchmarkDepositLookback)
+	if cached, err := s.stockPrices.GetOnOrBeforeDate(ctx, ticker, depositDate); err == nil &&
+		cached != nil && cached.Price.IsPositive() && !cached.PriceDate.Time.Before(floor) {
+		return false
+	}
+
+	for candidate := depositDate; !candidate.Time.Before(floor); candidate = datex.FromTime(prevBizDay(candidate.Time.AddDate(0, 0, -1))) {
+		ok, canceled, fetchFailed := s.syncHistoricalClose(ctx, ticker, candidate, preferredExchange, quote, exc)
+		if canceled {
+			return true
+		}
+		if ok {
+			return false
+		}
+		if fetchFailed {
+			// A transport or storage failure is not evidence the market was shut.
+			// Walking back on it would multiply calls against an API already
+			// failing, so stop and let the next sync retry from the top.
+			log.Printf("price sync: benchmark deposit close %s %s: fetch failed, left unpriced", ticker, depositDate.ISO())
+			return false
+		}
+	}
+
+	log.Printf("price sync: benchmark deposit close %s %s: no close within %d days, left unpriced",
+		ticker, depositDate.ISO(), int(benchmarkDepositLookback.Hours()/24))
+	return false
+}
+
 // syncHistoricalClose ensures one (ticker, date) close is on record: a date
 // already cached is left alone (past data is immutable), otherwise the close is
-// fetched and saved. ok reports whether a close now stands for that date;
+// fetched and saved. ok reports whether a close now stands for that exact date.
 // canceled reports that ctx ended mid-call and the whole pass should stop.
+// fetchFailed separates "the call or the save failed" from "the market returned
+// no close that day", which is the only outcome a walk-back should act on.
 func (s *PriceSyncService) syncHistoricalClose(
 	ctx context.Context,
 	ticker string,
@@ -298,27 +346,32 @@ func (s *PriceSyncService) syncHistoricalClose(
 	preferredExchange string,
 	quote PriceQuote,
 	exc sql.NullString,
-) (ok, canceled bool) {
+) (ok, canceled, fetchFailed bool) {
 	if cached, _ := s.stockPrices.GetByTickerAndDate(ctx, ticker, targetDate); cached != nil && cached.Price.IsPositive() {
-		return true, false
+		return true, false, false
 	}
 	delay(ctx)
 	if ctx.Err() != nil {
-		return false, true
+		return false, true, false
 	}
 	raw, histErr := s.client.GetHistoricalClose(ticker, targetDate, preferredExchange)
-	if histErr != nil || raw <= 0 {
-		return false, false
+	if histErr != nil {
+		return false, false, true
+	}
+	if raw <= 0 {
+		// The market was shut that day (or KIS has no row for it) — the one case
+		// worth walking back from.
+		return false, false, false
 	}
 	pastClose, parseErr := numeric.FromString(fmt.Sprintf("%g", raw))
 	if parseErr != nil || !pastClose.IsPositive() {
-		return false, false
+		return false, false, true
 	}
 	if _, err := s.stockPrices.Save(ctx, ticker, targetDate, pastClose, quote.Currency, quote.Name, exc); err != nil {
 		log.Printf("price sync: save historical %s: %v", ticker, err)
-		return false, false
+		return false, false, true
 	}
-	return true, false
+	return true, false, false
 }
 
 // benchmarkTickerSet is the set of dashboard-benchmark tickers, used to decide
@@ -327,6 +380,17 @@ func benchmarkTickerSet() map[string]bool {
 	specs := allBenchmarks()
 	set := make(map[string]bool, len(specs))
 	for _, b := range specs {
+		set[b.ticker] = true
+	}
+	return set
+}
+
+// timingMatchedTickerSet is the subset of benchmark tickers the timing-matched
+// mode replays deposits into. Only these need a checkpoint at every deposit date;
+// the dashboard-only proxies are measured from the first deposit alone.
+func timingMatchedTickerSet() map[string]bool {
+	set := make(map[string]bool, len(timingMatchedBenchmarks))
+	for _, b := range timingMatchedBenchmarks {
 		set[b.ticker] = true
 	}
 	return set
