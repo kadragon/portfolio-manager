@@ -153,6 +153,11 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) SyncResult {
 				return result
 			}
 		}
+		if len(targetDepositDates) > 1 {
+			if canceled := s.prefetchBenchmarkDepositRanges(ctx, target.ticker, targetDepositDates, preferredExchange, quote, exc); canceled {
+				return result
+			}
+		}
 		for _, depositDate := range targetDepositDates {
 			priced, canceled := s.ensureBenchmarkDepositClose(ctx, target.ticker, depositDate, preferredExchange, quote, exc)
 			if canceled {
@@ -230,25 +235,125 @@ func (s *PriceSyncService) BackfillRange(ctx context.Context, ticker string, sta
 			if p.Date.ISO() < start.ISO() || p.Date.ISO() > end.ISO() {
 				continue
 			}
-			if cached, _ := s.stockPrices.GetByTickerAndDate(ctx, ticker, p.Date); cached != nil && cached.Price.IsPositive() {
+			saved, skipped := s.saveHistoricalPoint(ctx, ticker, p, quote, exc)
+			switch {
+			case saved:
+				result.Saved++
+			case skipped:
 				result.Skipped++
-				continue
 			}
-			price, parseErr := numeric.FromString(fmt.Sprintf("%g", p.Price))
-			if parseErr != nil || !price.IsPositive() {
-				continue
-			}
-			if _, saveErr := s.stockPrices.Save(ctx, ticker, p.Date, price, quote.Currency, quote.Name, exc); saveErr != nil {
-				log.Printf("price backfill: save %s %s: %v", ticker, p.Date.ISO(), saveErr)
-				continue
-			}
-			result.Saved++
 		}
 
 		windowStart = datex.FromTime(windowEnd.Time.AddDate(0, 0, 1))
 	}
 
 	return result, nil
+}
+
+// saveHistoricalPoint stores one fetched close under its own date unless a
+// positive close is already on record there (past data is immutable). saved
+// reports a new row; skipped reports that a cached close already stood for the
+// date. Neither is true when the point itself is unusable.
+func (s *PriceSyncService) saveHistoricalPoint(
+	ctx context.Context,
+	ticker string,
+	p HistoricalPricePoint,
+	quote PriceQuote,
+	exc sql.NullString,
+) (saved, skipped bool) {
+	if cached, _ := s.stockPrices.GetByTickerAndDate(ctx, ticker, p.Date); cached != nil && cached.Price.IsPositive() {
+		return false, true
+	}
+	price, parseErr := numeric.FromString(fmt.Sprintf("%g", p.Price))
+	if parseErr != nil || !price.IsPositive() {
+		return false, false
+	}
+	if _, saveErr := s.stockPrices.Save(ctx, ticker, p.Date, price, quote.Currency, quote.Name, exc); saveErr != nil {
+		log.Printf("price sync: save historical %s %s: %v", ticker, p.Date.ISO(), saveErr)
+		return false, false
+	}
+	return true, false
+}
+
+// depositPrefetchWindows groups sorted deposit dates into spans a single
+// GetHistoricalRange call can cover. A window opens at the first ungrouped date
+// and takes every later date within backfillWindowDays of it; windows holding a
+// lone date are dropped, since one range call for one date saves nothing and the
+// per-date path already handles it. This is what keeps the batching from
+// degenerating into fetching years of daily closes for a handful of scattered
+// dates: only dates that genuinely cluster share a request.
+func depositPrefetchWindows(dates []datex.Date) [][]datex.Date {
+	var windows [][]datex.Date
+	for i := 0; i < len(dates); {
+		limit := dates[i].Time.AddDate(0, 0, backfillWindowDays)
+		j := i + 1
+		for j < len(dates) && !dates[j].Time.After(limit) {
+			j++
+		}
+		if j-i >= 2 {
+			windows = append(windows, dates[i:j])
+		}
+		i = j
+	}
+	return windows
+}
+
+// prefetchBenchmarkDepositRanges fills clustered deposit dates with one
+// GetHistoricalRange call per cluster instead of one GetHistoricalClose per date.
+// Monthly deposits put ~3 dates in every 90-day window, and each saved call is a
+// syncCallDelay the whole sync no longer pays. Dates already covered are excluded
+// first, so a second sync over unchanged data issues no call at all.
+//
+// The fetched span reaches back benchmarkDepositLookback before the first missing
+// date so a deposit that landed in a market closure has its walk-back candidates
+// in the same response — ensureBenchmarkDepositClose then resolves it from cache.
+// The pass is an optimization, not a requirement: a failed range is logged and
+// the per-date path still runs.
+func (s *PriceSyncService) prefetchBenchmarkDepositRanges(
+	ctx context.Context,
+	ticker string,
+	dates []datex.Date,
+	preferredExchange string,
+	quote PriceQuote,
+	exc sql.NullString,
+) (canceled bool) {
+	for _, window := range depositPrefetchWindows(dates) {
+		missing := make([]datex.Date, 0, len(window))
+		for _, d := range window {
+			if !s.benchmarkDepositCovered(ctx, ticker, d) {
+				missing = append(missing, d)
+			}
+		}
+		if len(missing) < 2 {
+			continue
+		}
+
+		delay(ctx)
+		if ctx.Err() != nil {
+			return true
+		}
+
+		start := datex.FromTime(missing[0].Time.Add(-benchmarkDepositLookback))
+		end := missing[len(missing)-1]
+		points, err := s.client.GetHistoricalRange(ticker, start, end, preferredExchange)
+		if err != nil {
+			log.Printf("price sync: benchmark deposit range %s %s..%s: %v", ticker, start.ISO(), end.ISO(), err)
+			continue
+		}
+		for _, p := range points {
+			s.saveHistoricalPoint(ctx, ticker, p, quote, exc)
+		}
+	}
+	return false
+}
+
+// benchmarkDepositCovered reports whether a close already on record can stand for
+// depositDate: a positive close on or before it and no older than the lookback
+// window is exactly what timingMatchedReturn reads.
+func (s *PriceSyncService) benchmarkDepositCovered(ctx context.Context, ticker string, depositDate datex.Date) bool {
+	floor := depositDate.Time.Add(-benchmarkDepositLookback)
+	cached, err := s.stockPrices.GetOnOrBeforeDate(ctx, ticker, depositDate)
+	return err == nil && cached != nil && cached.Price.IsPositive() && !cached.PriceDate.Time.Before(floor)
 }
 
 // syncHistoricalDates returns the fixed 1y/6m/1m/1d checkpoints synced for every
@@ -321,12 +426,11 @@ func (s *PriceSyncService) ensureBenchmarkDepositClose(
 	quote PriceQuote,
 	exc sql.NullString,
 ) (priced, canceled bool) {
-	floor := depositDate.Time.Add(-benchmarkDepositLookback)
-	if cached, err := s.stockPrices.GetOnOrBeforeDate(ctx, ticker, depositDate); err == nil &&
-		cached != nil && cached.Price.IsPositive() && !cached.PriceDate.Time.Before(floor) {
+	if s.benchmarkDepositCovered(ctx, ticker, depositDate) {
 		return true, false
 	}
 
+	floor := depositDate.Time.Add(-benchmarkDepositLookback)
 	for candidate := depositDate; !candidate.Time.Before(floor); candidate = datex.FromTime(prevBizDay(candidate.Time.AddDate(0, 0, -1))) {
 		ok, canceled, fetchFailed := s.syncHistoricalClose(ctx, ticker, candidate, preferredExchange, quote, exc)
 		if canceled {
