@@ -61,13 +61,18 @@ func (c *UnifiedPriceClient) GetPrice(ticker string, preferredExchange string) (
 	return c.getOverseasPrice(ticker, preferredExchange)
 }
 
-// GetHistoricalClose returns the closing price for ticker on date.
+// GetHistoricalClose returns the closing price for ticker on date. A (0, nil)
+// result means the venue reported no close for that date — the market was shut.
+// A transport or rate-limit failure is returned as an error and must NOT be
+// collapsed into the same value: price sync walks back over a closed market, and
+// reading a failure as a closure makes it store an earlier close for a date that
+// traded normally.
 func (c *UnifiedPriceClient) GetHistoricalClose(ticker string, date datex.Date, preferredExchange string) (float64, error) {
 	if IsDomesticTicker(ticker) {
 		price, err := c.Domestic.FetchHistoricalClose(ticker, date)
 		if err != nil {
 			log.Printf("KIS: domestic historical close %s: %v", ticker, err)
-			return 0, nil
+			return 0, err
 		}
 		return price, nil
 	}
@@ -190,13 +195,23 @@ func toHistoricalPricePoints(points []HistoricalPoint) []services.HistoricalPric
 	return out
 }
 
+// getOverseasHistorical tries the preferred exchange, then the rest. It reports
+// (0, nil) only when at least one venue answered cleanly with no close — i.e. the
+// market really was shut. If every attempt failed, the last error is returned, so
+// callers can tell an outage from a closure.
 func (c *UnifiedPriceClient) getOverseasHistorical(ticker string, date datex.Date, preferredExchange string) (float64, error) {
+	var lastErr error
+	answered := false
 	if preferredExchange != "" {
 		price, err := c.Overseas.FetchHistoricalClose(preferredExchange, ticker, date)
 		if err != nil {
 			log.Printf("KIS: overseas historical close %s@%s: %v", ticker, preferredExchange, err)
-		} else if price > 0 {
-			return price, nil
+			lastErr = err
+		} else {
+			answered = true
+			if price > 0 {
+				return price, nil
+			}
 		}
 	}
 	exchanges := prioritizedExchanges(preferredExchange)
@@ -207,11 +222,16 @@ func (c *UnifiedPriceClient) getOverseasHistorical(ticker string, date datex.Dat
 		price, err := c.Overseas.FetchHistoricalClose(excd, ticker, date)
 		if err != nil {
 			log.Printf("KIS: overseas historical close %s@%s: %v", ticker, excd, err)
+			lastErr = err
 			continue
 		}
+		answered = true
 		if price > 0 {
 			return price, nil
 		}
+	}
+	if !answered && lastErr != nil {
+		return 0, lastErr
 	}
 	return 0, nil
 }

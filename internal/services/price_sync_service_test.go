@@ -96,6 +96,16 @@ func newSyncRepos(t *testing.T) (*repositories.StockPriceRepository, *repositori
 		repositories.NewDepositRepository(q)
 }
 
+// mustCreateDeposit fails the test on a rejected insert. deposit_date carries a
+// unique index, so a discarded error silently leaves the sync with fewer deposits
+// than the test believes it set up — and the assertions then pass vacuously.
+func mustCreateDeposit(t *testing.T, ctx context.Context, repo *repositories.DepositRepository, date datex.Date) {
+	t.Helper()
+	if _, err := repo.Create(ctx, numeric.FromInt(100), date, sql.NullString{}); err != nil {
+		t.Fatalf("create deposit %s: %v", date.ISO(), err)
+	}
+}
+
 func TestPriceSyncServiceSavesCurrentPrice(t *testing.T) {
 	priceRepo, stockRepo, groupRepo, depositRepo := newSyncRepos(t)
 	ctx := context.Background()
@@ -159,7 +169,7 @@ func TestPriceSyncServiceFetchesFirstDepositDateForBenchmarks(t *testing.T) {
 	ctx := context.Background()
 
 	firstDepositDate := datex.New(2026, time.January, 15)
-	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), firstDepositDate, sql.NullString{})
+	mustCreateDeposit(t, ctx, depositRepo, firstDepositDate)
 
 	client := &trackingClient{
 		quotesByTicker: map[string]services.PriceQuote{
@@ -192,7 +202,7 @@ func TestPriceSyncServiceSkipsFirstDepositDateForHeldStocks(t *testing.T) {
 	_, _ = stockRepo.Create(ctx, "VYM", g.ID) // held stock, not a benchmark
 
 	firstDepositDate := datex.New(2026, time.January, 15)
-	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), firstDepositDate, sql.NullString{})
+	mustCreateDeposit(t, ctx, depositRepo, firstDepositDate)
 
 	client := &trackingClient{
 		quotesByTicker: map[string]services.PriceQuote{
@@ -237,7 +247,7 @@ func TestPriceSyncServiceFetchesEveryDepositDateForBenchmarks(t *testing.T) {
 		datex.New(2026, time.January, 15),
 	}
 	for _, d := range depositDates {
-		_, _ = depositRepo.Create(ctx, numeric.FromInt(100), d, sql.NullString{})
+		mustCreateDeposit(t, ctx, depositRepo, d)
 	}
 
 	client := &trackingClient{
@@ -265,15 +275,21 @@ func TestPriceSyncServiceFetchesEveryDepositDateForBenchmarks(t *testing.T) {
 	}
 }
 
-// Two deposits on one date are one checkpoint: the deposit-date set is deduped,
-// so KIS is not called twice for the same (ticker, date).
-func TestPriceSyncServiceFetchesDuplicateDepositDateOnce(t *testing.T) {
+// deposit_date carries a unique index, so two deposits never share a raw date.
+// They collide only after prev-business-day adjustment: a Saturday and a Sunday
+// deposit both resolve to the same Friday. That adjusted date is one checkpoint,
+// so KIS must not be called twice for it.
+func TestPriceSyncServiceFetchesAdjustedDuplicateDepositDateOnce(t *testing.T) {
 	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
 	ctx := context.Background()
 
-	depositDate := datex.New(2025, time.July, 8)
-	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), depositDate, sql.NullString{})
-	_, _ = depositRepo.Create(ctx, numeric.FromInt(250), depositDate, sql.NullString{})
+	saturday := datex.New(2025, time.July, 5)
+	sunday := datex.New(2025, time.July, 6)
+	friday := datex.New(2025, time.July, 4) // what both adjust to
+
+	for _, d := range []datex.Date{saturday, sunday} {
+		mustCreateDeposit(t, ctx, depositRepo, d)
+	}
 
 	client := &trackingClient{
 		quotesByTicker: map[string]services.PriceQuote{
@@ -283,8 +299,13 @@ func TestPriceSyncServiceFetchesDuplicateDepositDateOnce(t *testing.T) {
 	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
 	svc.SyncOnce(ctx)
 
-	if got := client.histKeyCount(depositDate); got != 1 {
-		t.Errorf("GetHistoricalClose for SPY on %s called %d times, want 1", depositDate.ISO(), got)
+	if got := client.histKeyCount(friday); got != 1 {
+		t.Errorf("GetHistoricalClose for SPY on %s called %d times, want 1", friday.ISO(), got)
+	}
+	for _, d := range []datex.Date{saturday, sunday} {
+		if got := client.histKeyCount(d); got != 0 {
+			t.Errorf("fetched the unadjusted weekend date %s %d times, want 0", d.ISO(), got)
+		}
 	}
 }
 
@@ -302,7 +323,7 @@ func TestPriceSyncServiceSkipsDepositDatesForHeldStocks(t *testing.T) {
 		datex.New(2025, time.July, 8),
 	}
 	for _, d := range depositDates {
-		_, _ = depositRepo.Create(ctx, numeric.FromInt(100), d, sql.NullString{})
+		mustCreateDeposit(t, ctx, depositRepo, d)
 	}
 
 	client := &trackingClient{
@@ -344,7 +365,7 @@ func TestPriceSyncServiceWalksBackFromHolidayDepositDate(t *testing.T) {
 	// 2025-01-01 (Wed) is a holiday; 2024-12-31 (Tue) is the nearest open day.
 	holiday := datex.New(2025, time.January, 1)
 	fallback := datex.New(2024, time.December, 31)
-	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), holiday, sql.NullString{})
+	mustCreateDeposit(t, ctx, depositRepo, holiday)
 
 	client := &trackingClient{
 		quotesByTicker: map[string]services.PriceQuote{
@@ -377,7 +398,7 @@ func TestPriceSyncServiceBoundsHolidayWalkBack(t *testing.T) {
 	ctx := context.Background()
 
 	depositDate := datex.New(2025, time.July, 8)
-	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), depositDate, sql.NullString{})
+	mustCreateDeposit(t, ctx, depositRepo, depositDate)
 
 	// Every day in and well beyond the walk-back window is empty.
 	empty := map[string]bool{}
@@ -417,7 +438,7 @@ func TestPriceSyncServiceWalksBackOverHolidayCluster(t *testing.T) {
 
 	depositDate := datex.New(2025, time.October, 9) // Thu, 한글날
 	lastOpen := datex.New(2025, time.October, 2)    // Thu, the session before the run
-	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), depositDate, sql.NullString{})
+	mustCreateDeposit(t, ctx, depositRepo, depositDate)
 
 	empty := map[string]bool{}
 	for _, d := range []datex.Date{
@@ -455,7 +476,7 @@ func TestPriceSyncServiceDoesNotRefetchResolvedHolidayDepositDate(t *testing.T) 
 	ctx := context.Background()
 
 	holiday := datex.New(2025, time.January, 1)
-	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), holiday, sql.NullString{})
+	mustCreateDeposit(t, ctx, depositRepo, holiday)
 
 	client := &trackingClient{
 		quotesByTicker: map[string]services.PriceQuote{
@@ -483,7 +504,7 @@ func TestPriceSyncServiceDoesNotWalkBackOnFetchError(t *testing.T) {
 	ctx := context.Background()
 
 	depositDate := datex.New(2025, time.July, 8)
-	_, _ = depositRepo.Create(ctx, numeric.FromInt(100), depositDate, sql.NullString{})
+	mustCreateDeposit(t, ctx, depositRepo, depositDate)
 
 	client := &trackingClient{
 		quotesByTicker: map[string]services.PriceQuote{
@@ -512,7 +533,7 @@ func TestPriceSyncServiceFetchesOnlyFirstDepositForDashboardBenchmarks(t *testin
 	first := datex.New(2024, time.March, 12)
 	later := datex.New(2025, time.July, 8)
 	for _, d := range []datex.Date{first, later} {
-		_, _ = depositRepo.Create(ctx, numeric.FromInt(100), d, sql.NullString{})
+		mustCreateDeposit(t, ctx, depositRepo, d)
 	}
 
 	client := &trackingClient{
@@ -792,5 +813,51 @@ func TestPriceSyncServiceBackfillRangeChunksLongSpans(t *testing.T) {
 	client.mu.Unlock()
 	if rangeCalls < 2 {
 		t.Errorf("rangeCalls = %d, want >= 2 for a >90-day span", rangeCalls)
+	}
+}
+
+// A deposit date left unpriced blanks the whole timing-matched comparison, so
+// SyncOnce reports the count rather than letting price-sync claim plain success.
+func TestPriceSyncServiceReportsUnpricedBenchmarkDates(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	depositDate := datex.New(2025, time.July, 8)
+	mustCreateDeposit(t, ctx, depositRepo, depositDate)
+
+	// Nothing in the walk-back window has a close.
+	empty := map[string]bool{}
+	for i := 0; i < 40; i++ {
+		empty[datex.FromTime(depositDate.Time.AddDate(0, 0, -i)).ISO()] = true
+	}
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"SPY": {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+		},
+		histEmptyDates: empty,
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+
+	if got := svc.SyncOnce(ctx).UnpricedBenchmarkDates; got == 0 {
+		t.Error("UnpricedBenchmarkDates = 0 with no close available, want a non-zero count")
+	}
+}
+
+// A clean run reports nothing outstanding.
+func TestPriceSyncServiceReportsNoUnpricedDatesOnCleanRun(t *testing.T) {
+	priceRepo, stockRepo, _, depositRepo := newSyncRepos(t)
+	ctx := context.Background()
+
+	mustCreateDeposit(t, ctx, depositRepo, datex.New(2025, time.July, 8))
+
+	client := &trackingClient{
+		quotesByTicker: map[string]services.PriceQuote{
+			"SPY": {Symbol: "SPY", Price: 500.0, Currency: "USD", Exchange: "AMEX"},
+		},
+	}
+	svc := services.NewPriceSyncService(client, priceRepo, stockRepo, depositRepo)
+
+	if got := svc.SyncOnce(ctx).UnpricedBenchmarkDates; got != 0 {
+		t.Errorf("UnpricedBenchmarkDates = %d on a clean run, want 0", got)
 	}
 }

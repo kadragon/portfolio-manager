@@ -57,15 +57,24 @@ func NewPriceSyncService(
 	}
 }
 
+// SyncResult reports what one SyncOnce pass could not complete. A benchmark
+// deposit date left unpriced is the one gap worth surfacing: timing-matched
+// returns are all-or-nothing per benchmark, so a single unpriced deposit blanks
+// the whole comparison, and price-sync would otherwise report plain success.
+type SyncResult struct {
+	UnpricedBenchmarkDates int
+}
+
 // SyncOnce fetches current prices for all stocks, then fills any missing
 // historical closes: the 1y/6m/1m/1d checkpoints for every target, plus each
 // deposit date for the dashboard benchmarks. Historical closes are never
 // re-fetched once saved — past data is immutable.
-func (s *PriceSyncService) SyncOnce(ctx context.Context) {
+func (s *PriceSyncService) SyncOnce(ctx context.Context) SyncResult {
+	var result SyncResult
 	allStocks, err := s.stocks.ListAll(ctx)
 	if err != nil {
 		log.Printf("price sync: list stocks: %v", err)
-		return
+		return result
 	}
 	targets := syncTargets(allStocks)
 
@@ -77,7 +86,7 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 
 	for idx, target := range targets {
 		if ctx.Err() != nil {
-			return
+			return result
 		}
 
 		preferredExchange := target.preferredExchange
@@ -141,15 +150,21 @@ func (s *PriceSyncService) SyncOnce(ctx context.Context) {
 		}
 		for _, targetDate := range baseDates {
 			if _, canceled, _ := s.syncHistoricalClose(ctx, target.ticker, targetDate, preferredExchange, quote, exc); canceled {
-				return
+				return result
 			}
 		}
 		for _, depositDate := range targetDepositDates {
-			if canceled := s.ensureBenchmarkDepositClose(ctx, target.ticker, depositDate, preferredExchange, quote, exc); canceled {
-				return
+			priced, canceled := s.ensureBenchmarkDepositClose(ctx, target.ticker, depositDate, preferredExchange, quote, exc)
+			if canceled {
+				return result
+			}
+			if !priced {
+				result.UnpricedBenchmarkDates++
 			}
 		}
 	}
+
+	return result
 }
 
 // backfillWindowDays keeps a single GetHistoricalRange call under KIS's ~100-row
@@ -294,9 +309,10 @@ func (s *PriceSyncService) benchmarkDepositDates(ctx context.Context, today date
 // actually reads, so it returns without a call — which is also what keeps a
 // second SyncOnce from re-requesting a market-holiday date whose close is stored
 // a few days behind it. Otherwise it fetches, walking back over a closure.
-// Reports only whether ctx ended; a close that cannot be found is logged, since
-// leaving the date unpriced is preferable to storing a price under a date the
-// market never traded on.
+// priced reports whether a close now stands for the date; canceled reports that
+// ctx ended. A close that cannot be found is logged and left absent, since an
+// unpriced date is preferable to a price stored under a date the market never
+// traded on.
 func (s *PriceSyncService) ensureBenchmarkDepositClose(
 	ctx context.Context,
 	ticker string,
@@ -304,33 +320,33 @@ func (s *PriceSyncService) ensureBenchmarkDepositClose(
 	preferredExchange string,
 	quote PriceQuote,
 	exc sql.NullString,
-) (canceled bool) {
+) (priced, canceled bool) {
 	floor := depositDate.Time.Add(-benchmarkDepositLookback)
 	if cached, err := s.stockPrices.GetOnOrBeforeDate(ctx, ticker, depositDate); err == nil &&
 		cached != nil && cached.Price.IsPositive() && !cached.PriceDate.Time.Before(floor) {
-		return false
+		return true, false
 	}
 
 	for candidate := depositDate; !candidate.Time.Before(floor); candidate = datex.FromTime(prevBizDay(candidate.Time.AddDate(0, 0, -1))) {
 		ok, canceled, fetchFailed := s.syncHistoricalClose(ctx, ticker, candidate, preferredExchange, quote, exc)
 		if canceled {
-			return true
+			return false, true
 		}
 		if ok {
-			return false
+			return true, false
 		}
 		if fetchFailed {
 			// A transport or storage failure is not evidence the market was shut.
 			// Walking back on it would multiply calls against an API already
 			// failing, so stop and let the next sync retry from the top.
 			log.Printf("price sync: benchmark deposit close %s %s: fetch failed, left unpriced", ticker, depositDate.ISO())
-			return false
+			return false, false
 		}
 	}
 
 	log.Printf("price sync: benchmark deposit close %s %s: no close within %d days, left unpriced",
 		ticker, depositDate.ISO(), int(benchmarkDepositLookback.Hours()/24))
-	return false
+	return false, false
 }
 
 // syncHistoricalClose ensures one (ticker, date) close is on record: a date
