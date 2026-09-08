@@ -369,10 +369,12 @@ func (s *PortfolioService) timingMatchedReturn(ctx context.Context, b benchmarkS
 
 // maxBenchmarkPriceGap bounds how far before a deposit date a cached close may
 // sit and still stand in for it. Price history is stored as sparse checkpoints
-// (1y/6m/1m/1d plus the first-deposit date), not a daily series, so an unbounded
-// on-or-before lookup can price a deposit off a close years earlier and still
-// report the result as timing-matched. A month of slack tolerates ordinary
-// checkpoint spacing while rejecting the multi-year holes between them.
+// (1y/6m/1m/1d, plus each deposit date for the benchmarks), not a daily series,
+// so an unbounded on-or-before lookup can price a deposit off a close years
+// earlier and still report the result as timing-matched. A month of slack
+// tolerates ordinary checkpoint spacing — including a deposit-date close pushed
+// back a few days by a market holiday — while rejecting the multi-year holes a
+// DB synced before deposit-date checkpoints existed still carries.
 const maxBenchmarkPriceGap = 31 * 24 * time.Hour
 
 // staleBenchmarkPrice reports whether the close found for depositDate sits too
