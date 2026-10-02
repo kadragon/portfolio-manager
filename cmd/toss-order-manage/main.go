@@ -1,4 +1,5 @@
-// Command toss-order-manage creates USD amount-based US stock orders,
+// Command toss-order-manage creates USD amount-based US stock orders and
+// fractional-quantity US market sells,
 // modifies or cancels an existing Toss order, and creates/modifies/cancels
 // Toss conditional orders (SINGLE/OCO/OTO).
 //
@@ -39,6 +40,7 @@ import (
 
 const usage = `usage:
   toss-order-manage -account NAME -action create-amount -symbol US_TICKER -side BUY|SELL -order-amount USD_AMOUNT [-client-order-id ID] [-confirm-high-value-order] [-yes]
+  toss-order-manage -account NAME -action create-fractional-sell -symbol US_TICKER -quantity N [-client-order-id ID] [-confirm-high-value-order] [-yes]
   toss-order-manage -account NAME -action modify -order-id ID -order-type LIMIT|MARKET [-quantity N] [-price P] [-confirm-high-value-order] [-yes]
   toss-order-manage -account NAME -action cancel -order-id ID [-yes]
   toss-order-manage -account NAME -action create-conditional -symbol T -type SINGLE|OCO|OTO -quantity N [-order-type LIMIT|MARKET] [-expire-date YYYY-MM-DD] -first-side BUY|SELL -first-trigger-price P [-first-order-price P] [-second-side BUY|SELL] [-second-trigger-price P] [-second-order-price P] [-client-order-id ID] [-confirm-high-value-order] [-yes]
@@ -46,6 +48,7 @@ const usage = `usage:
   toss-order-manage -account NAME -action cancel-conditional -conditional-order-id ID [-yes]
 
 create-amount: US market orders only; accepted during US regular market hours only
+create-fractional-sell: US MARKET SELL by (possibly fractional) share quantity; accepted from US regular open until 1 hour before close
 create-conditional defaults: order-type=MARKET (SINGLE) or LIMIT (OCO/OTO), expire-date=tomorrow in KST
 `
 
@@ -55,7 +58,7 @@ var decimalAmountPattern = regexp.MustCompile(`^\d+(\.\d+)?$`)
 
 func main() {
 	account := flag.String("account", "", "account name, exact or unique substring match; must be linked to a Toss accountSeq")
-	action := flag.String("action", "", "create-amount|modify|cancel|create-conditional|modify-conditional|cancel-conditional")
+	action := flag.String("action", "", "create-amount|create-fractional-sell|modify|cancel|create-conditional|modify-conditional|cancel-conditional")
 	orderID := flag.String("order-id", "", "existing order ID (modify/cancel)")
 	conditionalOrderID := flag.String("conditional-order-id", "", "existing conditional order ID (modify-conditional/cancel-conditional)")
 	orderType := flag.String("order-type", "", "LIMIT or MARKET (create-conditional default: MARKET for SINGLE, LIMIT for OCO/OTO)")
@@ -79,7 +82,7 @@ func main() {
 
 	*action = strings.ToLower(strings.TrimSpace(*action))
 	switch *action {
-	case "create-amount", "modify", "cancel", "create-conditional", "modify-conditional", "cancel-conditional":
+	case "create-amount", "create-fractional-sell", "modify", "cancel", "create-conditional", "modify-conditional", "cancel-conditional":
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
@@ -93,7 +96,8 @@ func main() {
 	second := buildSecondLeg(*secondSide, *secondTriggerPrice, *secondOrderPrice)
 	var amountReq toss.OrderCreateRequest
 	var validationErr error
-	if *action == "create-amount" {
+	switch *action {
+	case "create-amount":
 		amountReq, validationErr = buildAmountOrderRequest(
 			*symbol,
 			*side,
@@ -101,7 +105,9 @@ func main() {
 			*clientOrderID,
 			*confirmHighValueOrder,
 		)
-	} else {
+	case "create-fractional-sell":
+		amountReq, validationErr = buildFractionalSellRequest(*symbol, *quantity, *clientOrderID, *confirmHighValueOrder)
+	default:
 		validationErr = validateAction(*action, *orderID, *conditionalOrderID, *orderType, *quantity, *symbol, *condType,
 			*expireDate, *firstSide, *firstTriggerPrice, second)
 	}
@@ -128,7 +134,7 @@ func main() {
 		log.Fatalf("resolve account: %v", err)
 	}
 	accountSeq := fmt.Sprintf("%d", *acct.TossAccountSeq)
-	if *action == "create-amount" {
+	if *action == "create-amount" || *action == "create-fractional-sell" {
 		stocks, err := c.TossClient.GetStocks(ctx, []string{amountReq.Symbol})
 		if err != nil {
 			log.Fatalf("look up amount-order stock: %v", err)
@@ -156,6 +162,31 @@ func main() {
 		resp, err := c.TossClient.CreateOrder(ctx, accountSeq, amountReq)
 		if err != nil {
 			log.Fatalf("create amount order: %v", err)
+		}
+		printJSON(resp)
+
+	case "create-fractional-sell":
+		// Checked before the dry-run too, so the preview a human confirms
+		// already proves the quantity is sellable rather than failing only
+		// after -yes.
+		sellable, err := c.TossClient.GetSellableQuantity(ctx, accountSeq, amountReq.Symbol)
+		if err != nil {
+			log.Fatalf("look up sellable quantity: %v", err)
+		}
+		if err := checkSellableQuantity(amountReq.Quantity, sellable.SellableQuantity); err != nil {
+			log.Fatalf("validate fractional sell: %v", err)
+		}
+		if !*yes {
+			printDryRun("create-fractional-sell", *account, accountSeq, map[string]any{
+				"request":          amountReq,
+				"sellableQuantity": sellable.SellableQuantity,
+				"constraint":       "US regular market open until 1 hour before close",
+			})
+			return
+		}
+		resp, err := c.TossClient.CreateOrder(ctx, accountSeq, amountReq)
+		if err != nil {
+			log.Fatalf("create fractional sell order: %v", err)
 		}
 		printJSON(resp)
 
@@ -309,6 +340,63 @@ func buildAmountOrderRequest(
 		OrderAmount:           orderAmount,
 		ConfirmHighValueOrder: confirmHighValueOrder,
 	}, nil
+}
+
+// buildFractionalSellRequest builds a quantity-based US MARKET SELL. The Toss
+// spec allows fractional quantity only for this combination (MARKET+SELL on
+// a US stock), which is why the action fixes both side and order type.
+func buildFractionalSellRequest(
+	symbol, quantity, clientOrderID string,
+	confirmHighValueOrder bool,
+) (toss.OrderCreateRequest, error) {
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if symbol == "" {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-symbol is required for -action create-fractional-sell")
+	}
+
+	quantity = strings.TrimSpace(quantity)
+	if quantity == "" {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-quantity is required for -action create-fractional-sell")
+	}
+	if len(quantity) > 30 {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-quantity must be at most 30 characters")
+	}
+	if !decimalAmountPattern.MatchString(quantity) {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-quantity must be a positive decimal, got %q", quantity)
+	}
+	qty, err := numeric.FromString(quantity)
+	if err != nil {
+		return toss.OrderCreateRequest{}, fmt.Errorf("parse -quantity: %w", err)
+	}
+	if !qty.IsPositive() {
+		return toss.OrderCreateRequest{}, fmt.Errorf("-quantity must be greater than zero")
+	}
+
+	return toss.OrderCreateRequest{
+		ClientOrderID:         strings.TrimSpace(clientOrderID),
+		Symbol:                symbol,
+		Side:                  "SELL",
+		OrderType:             "MARKET",
+		Quantity:              quantity,
+		ConfirmHighValueOrder: confirmHighValueOrder,
+	}, nil
+}
+
+// checkSellableQuantity rejects a sell larger than the broker-reported
+// sellable quantity.
+func checkSellableQuantity(quantity, sellable string) error {
+	qty, err := numeric.FromString(quantity)
+	if err != nil {
+		return fmt.Errorf("parse quantity: %w", err)
+	}
+	limit, err := numeric.FromString(sellable)
+	if err != nil {
+		return fmt.Errorf("parse sellable quantity %q: %w", sellable, err)
+	}
+	if qty.GreaterThan(limit.Decimal) {
+		return fmt.Errorf("quantity %s exceeds sellable quantity %s", quantity, sellable)
+	}
+	return nil
 }
 
 func validateAmountOrderStock(stocks []toss.StockInfo, symbol string) error {

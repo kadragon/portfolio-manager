@@ -64,6 +64,21 @@ exact dollar amount; Toss determines fractional share quantity at execution time
    ```
    Report the broker's returned status; do not equate order acceptance with full execution.
 
+## Toss fractional-quantity sell mode
+
+`rebalance-order -qty` is integer-only, so a fractional US holding (e.g. `210.90595`) cannot be
+fully sold through it. Toss accepts fractional quantity only for a US `MARKET`+`SELL`, from
+regular open until 1 hour before close. Use:
+
+```bash
+go run ./cmd/toss-order-manage -account TOSS -action create-fractional-sell \
+  -symbol <ticker> -quantity <n> [-client-order-id <id>]
+```
+
+The dry-run already checks `<n>` against live `sellableQuantity`. Same banner/confirm/`-yes`/
+`pm toss order` verification flow as USD amount-order mode steps 2–6. Not logged to
+`order_executions` (unlike `rebalance-order`) — record the returned `orderId` in the plan.
+
 ## Toss conditional order mode (SINGLE / OCO / OTO)
 
 This mode does not require a rebalance-plan document.
