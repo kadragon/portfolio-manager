@@ -179,3 +179,64 @@ func TestValidateAmountOrderStock(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildFractionalSellRequest(t *testing.T) {
+	t.Parallel()
+
+	req, err := buildFractionalSellRequest(" vxus ", "210.90595", "frac-1", false)
+	if err != nil {
+		t.Fatalf("buildFractionalSellRequest: %v", err)
+	}
+	if req.Symbol != "VXUS" || req.Side != "SELL" || req.OrderType != "MARKET" {
+		t.Fatalf("request routing fields = %+v", req)
+	}
+	if req.Quantity != "210.90595" || req.OrderAmount != "" || req.Price != "" {
+		t.Fatalf("request quantity fields = %+v", req)
+	}
+	if req.ClientOrderID != "frac-1" {
+		t.Errorf("clientOrderId = %q, want frac-1", req.ClientOrderID)
+	}
+}
+
+func TestBuildFractionalSellRequestRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		symbol   string
+		quantity string
+		wantErr  string
+	}{
+		{name: "missing symbol", quantity: "1.5", wantErr: "-symbol is required"},
+		{name: "missing quantity", symbol: "VXUS", wantErr: "-quantity is required"},
+		{name: "negative quantity", symbol: "VXUS", quantity: "-1", wantErr: "positive decimal"},
+		{name: "zero quantity", symbol: "VXUS", quantity: "0", wantErr: "greater than zero"},
+		{name: "exponent quantity", symbol: "VXUS", quantity: "1e2", wantErr: "positive decimal"},
+		{name: "too long", symbol: "VXUS", quantity: strings.Repeat("1", 31), wantErr: "at most 30 characters"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := buildFractionalSellRequest(tt.symbol, tt.quantity, "", false)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestCheckSellableQuantity(t *testing.T) {
+	t.Parallel()
+
+	if err := checkSellableQuantity("210.90595", "210.90595"); err != nil {
+		t.Errorf("equal quantity: %v", err)
+	}
+	if err := checkSellableQuantity("0.5", "210.90595"); err != nil {
+		t.Errorf("partial quantity: %v", err)
+	}
+	if err := checkSellableQuantity("210.9060", "210.90595"); err == nil || !strings.Contains(err.Error(), "exceeds sellable") {
+		t.Errorf("over-sell error = %v, want exceeds sellable", err)
+	}
+}
