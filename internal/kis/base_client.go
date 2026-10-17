@@ -8,7 +8,15 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
+
+// rateLimitMaxRetries bounds how many times a GET rejected with EGW00201 is
+// re-sent. rateLimitBackoff is the base wait, scaled linearly per attempt so
+// the retries land in later per-second windows. Var so tests can shorten it.
+const rateLimitMaxRetries = 3
+
+var rateLimitBackoff = 500 * time.Millisecond
 
 // BuildHeaders constructs KIS API request headers for a GET request.
 func BuildHeaders(token, appKey, appSecret, trID, custType string) map[string]string {
@@ -37,7 +45,8 @@ func TrIDForEnv(env, realID, demoID string) (string, error) {
 	return "", fmt.Errorf("kis: env must be real/prod or demo/vps/paper, got %q", env)
 }
 
-// GetWithRetry issues a GET request, retrying once with a refreshed token on EGW00123.
+// GetWithRetry issues a GET request, retrying once with a refreshed token on EGW00123
+// and with backoff on EGW00201 (per-second rate limit).
 // headers must be the initial request headers; on retry they are rebuilt from appKey/appSecret/trID/custType.
 func GetWithRetry(
 	client *http.Client,
@@ -46,24 +55,8 @@ func GetWithRetry(
 	manager *TokenManager,
 	appKey, appSecret, trID, custType string,
 ) ([]byte, error) {
-	body, status, err := doGet(client, url, params, headers)
-	if err != nil {
-		return nil, err
-	}
-	if IsTokenExpiredError(status, body) && manager != nil {
-		newToken, refreshErr := manager.RefreshToken()
-		if refreshErr != nil {
-			return nil, fmt.Errorf("KIS token refresh: %w", refreshErr)
-		}
-		body, status, err = doGet(client, url, params, BuildHeaders(newToken, appKey, appSecret, trID, custType))
-		if err != nil {
-			return nil, err
-		}
-	}
-	if status >= 400 {
-		return nil, fmt.Errorf("KIS HTTP %d: %s", status, string(body))
-	}
-	return body, nil
+	body, _, err := GetWithRetryFull(client, url, params, headers, manager, appKey, appSecret, trID, custType)
+	return body, err
 }
 
 // postWithRetry issues a POST request with a JSON body, retrying once on EGW00123.
@@ -126,7 +119,7 @@ func GetWithRetryFull(
 	manager *TokenManager,
 	appKey, appSecret, trID, custType string,
 ) ([]byte, http.Header, error) {
-	body, status, respHeaders, err := doGetFull(client, url, params, headers)
+	body, status, respHeaders, err := doGetRateLimited(client, url, params, headers)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -135,7 +128,7 @@ func GetWithRetryFull(
 		if refreshErr != nil {
 			return nil, nil, fmt.Errorf("KIS token refresh: %w", refreshErr)
 		}
-		body, status, respHeaders, err = doGetFull(client, url, params, BuildHeaders(newToken, appKey, appSecret, trID, custType))
+		body, status, respHeaders, err = doGetRateLimited(client, url, params, BuildHeaders(newToken, appKey, appSecret, trID, custType))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -144,6 +137,19 @@ func GetWithRetryFull(
 		return nil, nil, fmt.Errorf("KIS HTTP %d: %s", status, string(body))
 	}
 	return body, respHeaders, nil
+}
+
+// doGetRateLimited issues a GET, re-sending it with linear backoff while KIS
+// rejects it with EGW00201. Only GETs retry: they are read-only, whereas order
+// POSTs stay single-shot so a placement is never silently repeated.
+func doGetRateLimited(client *http.Client, url string, params, headers map[string]string) ([]byte, int, http.Header, error) {
+	for attempt := 1; ; attempt++ {
+		body, status, respHeaders, err := doGetFull(client, url, params, headers)
+		if err != nil || attempt > rateLimitMaxRetries || !IsRateLimitError(status, body) {
+			return body, status, respHeaders, err
+		}
+		time.Sleep(time.Duration(attempt) * rateLimitBackoff)
+	}
 }
 
 func doGetFull(client *http.Client, url string, params, headers map[string]string) ([]byte, int, http.Header, error) {
