@@ -37,6 +37,10 @@ func runToss(ctx context.Context, c *container.Container, args []string) error {
 		return tossStocks(ctx, c, rest)
 	case "stock-warnings":
 		return tossStockWarnings(ctx, c, rest)
+	case "stocks-all":
+		return tossStocksAll(ctx, c, rest)
+	case "stock-investor-trading", "stock-program-trades", "stock-short-selling", "stock-credit-trades", "stock-securities-lending":
+		return tossStockFlow(ctx, c, strings.TrimPrefix(verb, "stock-"), rest)
 	case "exchange-rate":
 		return tossExchangeRate(ctx, c, rest)
 	case "market-calendar-kr":
@@ -85,6 +89,12 @@ market data (no account required):
   candles            -symbol T -interval 1m|1d [-count N] [-before RFC3339] [-adjusted true|false]
   stocks             -symbols T1,T2,...
   stock-warnings     -symbol T
+  stocks-all         -market KOSPI|KOSDAQ|NYSE|NASDAQ|AMEX|KR_ETC|US_ETC [-status SCHEDULED|ACTIVE|DELISTED] [-security-type TYPE] [-common-share true|false]
+  stock-investor-trading    -symbol KR_T [-count N] [-until YYYY-MM-DD]
+  stock-program-trades      -symbol KR_T [-count N] [-until YYYY-MM-DD]
+  stock-short-selling       -symbol KR_T [-count N] [-until YYYY-MM-DD]
+  stock-credit-trades       -symbol KR_T [-count N] [-until YYYY-MM-DD]
+  stock-securities-lending  -symbol KR_T [-count N] [-until YYYY-MM-DD]
   exchange-rate      -base CCY -quote CCY [-at RFC3339]
   market-calendar-kr [-date YYYY-MM-DD]
   market-calendar-us [-date YYYY-MM-DD]
@@ -309,6 +319,80 @@ func tossStockWarnings(ctx context.Context, c *container.Container, args []strin
 	result, err := client.GetStockWarnings(ctx, *symbol)
 	if err != nil {
 		return fmt.Errorf("toss stock-warnings: %w", err)
+	}
+	return printJSON(result)
+}
+
+func tossStocksAll(ctx context.Context, c *container.Container, args []string) error {
+	client, err := requireToss(c)
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("pm toss stocks-all", flag.ExitOnError)
+	market := fs.String("market", "", "KOSPI, KOSDAQ, NYSE, NASDAQ, AMEX, KR_ETC, or US_ETC (required)")
+	status := fs.String("status", "", "SCHEDULED, ACTIVE, or DELISTED (omit = server default ACTIVE)")
+	securityType := fs.String("security-type", "", "security type filter, e.g. STOCK, ETF, ETN (omit = all)")
+	commonShare := fs.String("common-share", "", "true = common shares only, false = preferred only (omit = both)")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*market) == "" {
+		return fmt.Errorf("-market is required")
+	}
+	params := toss.ListStocksParams{Market: *market, Status: *status, SecurityType: *securityType}
+	if *commonShare != "" {
+		v, err := strconv.ParseBool(*commonShare)
+		if err != nil {
+			return fmt.Errorf("invalid -common-share %q: want true or false", *commonShare)
+		}
+		params.CommonShare = &v
+	}
+	result, err := client.ListStocks(ctx, params)
+	if err != nil {
+		return fmt.Errorf("toss stocks-all: %w", err)
+	}
+	return printJSON(result)
+}
+
+// tossStockFlow serves the five "pm toss stock-<kind>" KR daily trend
+// verbs, which share one flag set.
+func tossStockFlow(ctx context.Context, c *container.Container, kind string, args []string) error {
+	client, err := requireToss(c)
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("pm toss stock-"+kind, flag.ExitOnError)
+	symbol := fs.String("symbol", "", "KR symbol, e.g. 005930 (required)")
+	count := fs.Int("count", 0, "max records to return (0 = server default)")
+	until := fs.String("until", "", "YYYY-MM-DD pagination cursor (omit for most recent records)")
+	if err := parseFlags(fs, args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*symbol) == "" {
+		return fmt.Errorf("-symbol is required")
+	}
+	if *until != "" {
+		if _, err := time.Parse("2006-01-02", *until); err != nil {
+			return fmt.Errorf("invalid -until %q: want YYYY-MM-DD", *until)
+		}
+	}
+	var result any
+	switch kind {
+	case "investor-trading":
+		result, err = client.GetStockInvestorTrading(ctx, *symbol, *count, *until)
+	case "program-trades":
+		result, err = client.GetStockProgramTrades(ctx, *symbol, *count, *until)
+	case "short-selling":
+		result, err = client.GetStockShortSelling(ctx, *symbol, *count, *until)
+	case "credit-trades":
+		result, err = client.GetStockCreditTrades(ctx, *symbol, *count, *until)
+	case "securities-lending":
+		result, err = client.GetStockSecuritiesLending(ctx, *symbol, *count, *until)
+	default:
+		return fmt.Errorf("unknown toss stock trend %q", kind)
+	}
+	if err != nil {
+		return fmt.Errorf("toss stock-%s: %w", kind, err)
 	}
 	return printJSON(result)
 }
