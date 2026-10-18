@@ -95,3 +95,76 @@ func TestGetWithRetryFullHTTP400(t *testing.T) {
 		t.Fatal("expected error on HTTP 400")
 	}
 }
+
+// rateLimitServer fails the first `failures` resource calls with EGW00201
+// (per-second request limit exceeded), then answers okBody.
+func rateLimitServer(t *testing.T, failures int, okBody string) (*httptest.Server, *int) {
+	t.Helper()
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls <= failures {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"rt_cd":"1","msg_cd":"EGW00201","msg1":"초당 거래건수를 초과하였습니다."}`)
+			return
+		}
+		fmt.Fprint(w, okBody)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &calls
+}
+
+func shortenRateLimitBackoff(t *testing.T) {
+	t.Helper()
+	orig := rateLimitBackoff
+	rateLimitBackoff = time.Millisecond
+	t.Cleanup(func() { rateLimitBackoff = orig })
+}
+
+func TestGetWithRetryRateLimitRecovers(t *testing.T) {
+	shortenRateLimitBackoff(t)
+	srv, calls := rateLimitServer(t, 2, `{"result":"ok"}`)
+	body, err := GetWithRetry(srv.Client(), srv.URL+"/price", nil,
+		BuildHeaders("tok", "k", "s", "TRID", "P"),
+		nil, "k", "s", "TRID", "P")
+	if err != nil {
+		t.Fatalf("GetWithRetry after rate limit: %v", err)
+	}
+	if !strings.Contains(string(body), "ok") {
+		t.Errorf("body = %q, want 'ok'", body)
+	}
+	if *calls != 3 {
+		t.Errorf("calls = %d, want 3", *calls)
+	}
+}
+
+func TestGetWithRetryFullRateLimitRecovers(t *testing.T) {
+	shortenRateLimitBackoff(t)
+	srv, calls := rateLimitServer(t, 1, `{"result":"ok"}`)
+	_, hdrs, err := GetWithRetryFull(srv.Client(), srv.URL+"/balance", nil,
+		BuildHeaders("tok", "k", "s", "TRID", "P"),
+		nil, "k", "s", "TRID", "P")
+	if err != nil {
+		t.Fatalf("GetWithRetryFull after rate limit: %v", err)
+	}
+	if hdrs == nil {
+		t.Error("expected non-nil response headers")
+	}
+	if *calls != 2 {
+		t.Errorf("calls = %d, want 2", *calls)
+	}
+}
+
+func TestGetWithRetryRateLimitGivesUp(t *testing.T) {
+	shortenRateLimitBackoff(t)
+	srv, calls := rateLimitServer(t, 100, `{"result":"ok"}`)
+	_, err := GetWithRetry(srv.Client(), srv.URL+"/price", nil,
+		BuildHeaders("tok", "k", "s", "TRID", "P"),
+		nil, "k", "s", "TRID", "P")
+	if err == nil || !strings.Contains(err.Error(), "EGW00201") {
+		t.Fatalf("err = %v, want EGW00201 error after retries exhausted", err)
+	}
+	if want := rateLimitMaxRetries + 1; *calls != want {
+		t.Errorf("calls = %d, want %d", *calls, want)
+	}
+}

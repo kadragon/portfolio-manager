@@ -75,6 +75,24 @@ func TestIsTokenExpiredError(t *testing.T) {
 	}
 }
 
+func TestIsRateLimitError(t *testing.T) {
+	cases := []struct {
+		status int
+		body   string
+		want   bool
+	}{
+		{500, `{"rt_cd":"1","msg_cd":"EGW00201","msg1":"초당 거래건수를 초과하였습니다."}`, true},
+		{500, `{"msg_cd":"EGW00123"}`, false},
+		{200, `{"msg_cd":"EGW00201"}`, false}, // must be 500
+		{500, `not json`, false},
+	}
+	for _, tc := range cases {
+		if got := IsRateLimitError(tc.status, []byte(tc.body)); got != tc.want {
+			t.Errorf("IsRateLimitError(%d, %q) = %v, want %v", tc.status, tc.body, got, tc.want)
+		}
+	}
+}
+
 func TestParseKoreaPrice(t *testing.T) {
 	data := []byte(`{
 		"output": {
