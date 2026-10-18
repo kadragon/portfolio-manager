@@ -1,5 +1,6 @@
 ## Unreleased
 
+- [done] Add Toss stocks-all universe and five KR per-stock trend series to pm toss (2026-10-18)
 - [done] Batch clustered benchmark deposit-date history into one GetHistoricalRange call per 90-day window (2026-09-08)
 - [done] Distinguish KIS fetch failures from market closures in benchmark walk-back (2026-09-08)
 - [done] Populate benchmark price history at deposit dates (2026-09-08)

@@ -207,3 +207,54 @@ func TestGetStockWarningsHTTPError(t *testing.T) {
 		t.Fatalf("expected stock-not-found error, got %v", err)
 	}
 }
+
+func TestListStocksSendsFiltersAndDecodes(t *testing.T) {
+	var gotPath, gotQuery string
+	srv := tokenOnlyServer(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		writeJSON(t, w, map[string]any{"result": []map[string]any{
+			{"symbol": "069500", "name": "KODEX 200", "securityType": "ETF", "isCommonShare": true, "isinCode": "KR7069500007"},
+		}})
+	})
+	t.Cleanup(srv.Close)
+
+	commonShare := false
+	client := NewClient(srv.Client(), srv.URL, "cid", "secret")
+	got, err := client.ListStocks(context.Background(), ListStocksParams{
+		Market:       "KOSPI",
+		Status:       "ACTIVE",
+		SecurityType: "ETF",
+		CommonShare:  &commonShare,
+	})
+	if err != nil {
+		t.Fatalf("ListStocks: %v", err)
+	}
+	if gotPath != "/api/v1/stocks/all" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	q := mustParseQuery(t, gotQuery)
+	if q.Get("market") != "KOSPI" || q.Get("status") != "ACTIVE" || q.Get("securityType") != "ETF" || q.Get("commonShare") != "false" {
+		t.Fatalf("query = %q", gotQuery)
+	}
+	if len(got) != 1 || got[0].Symbol != "069500" || got[0].SecurityType != "ETF" || !got[0].IsCommonShare || got[0].IsinCode != "KR7069500007" {
+		t.Fatalf("got = %+v", got)
+	}
+}
+
+func TestListStocksOmitsUnsetFilters(t *testing.T) {
+	var gotQuery string
+	srv := tokenOnlyServer(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		writeJSON(t, w, map[string]any{"result": []map[string]any{}})
+	})
+	t.Cleanup(srv.Close)
+
+	client := NewClient(srv.Client(), srv.URL, "cid", "secret")
+	if _, err := client.ListStocks(context.Background(), ListStocksParams{Market: "NASDAQ"}); err != nil {
+		t.Fatalf("ListStocks: %v", err)
+	}
+	if gotQuery != "market=NASDAQ" {
+		t.Fatalf("query = %q, want only market", gotQuery)
+	}
+}

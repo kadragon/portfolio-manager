@@ -148,3 +148,76 @@ func TestTossUnknownVerb(t *testing.T) {
 		t.Fatal("expected error for unknown verb")
 	}
 }
+
+func TestTossStocksAll(t *testing.T) {
+	ctx := context.Background()
+	c := newTossContainer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/stocks/all" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		q := r.URL.Query()
+		if q.Get("market") != "KOSPI" || q.Get("securityType") != "ETF" || q.Get("commonShare") != "true" || q.Has("status") {
+			t.Fatalf("query = %q", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"result":[]}`))
+	})
+
+	if err := runToss(ctx, c, []string{"stocks-all", "-market", "KOSPI", "-security-type", "ETF", "-common-share", "true"}); err != nil {
+		t.Fatalf("toss stocks-all: %v", err)
+	}
+}
+
+func TestTossStocksAllValidation(t *testing.T) {
+	ctx := context.Background()
+	c := newTossContainer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected request: %s", r.URL.Path)
+	})
+	cases := map[string][]string{
+		"-market is required": {"stocks-all"},
+		"-common-share":       {"stocks-all", "-market", "KOSPI", "-common-share", "maybe"},
+	}
+	for want, args := range cases {
+		err := runToss(ctx, c, args)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("%v: expected %q error, got %v", args, want, err)
+		}
+	}
+}
+
+func TestTossStockFlowSeries(t *testing.T) {
+	ctx := context.Background()
+	for _, kind := range []string{"investor-trading", "program-trades", "short-selling", "credit-trades", "securities-lending"} {
+		c := newTossContainer(t, func(w http.ResponseWriter, r *http.Request) {
+			if want := "/api/v1/stocks/005930/" + kind; r.URL.Path != want {
+				t.Fatalf("path = %s, want %s", r.URL.Path, want)
+			}
+			q := r.URL.Query()
+			if q.Get("count") != "20" || q.Get("until") != "2026-10-16" {
+				t.Fatalf("%s query = %q", kind, r.URL.RawQuery)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"nextUntil":null,"records":[]}}`))
+		})
+		if err := runToss(ctx, c, []string{"stock-" + kind, "-symbol", "005930", "-count", "20", "-until", "2026-10-16"}); err != nil {
+			t.Fatalf("toss stock-%s: %v", kind, err)
+		}
+	}
+}
+
+func TestTossStockFlowValidation(t *testing.T) {
+	ctx := context.Background()
+	c := newTossContainer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected request: %s", r.URL.Path)
+	})
+	cases := map[string][]string{
+		"-symbol is required": {"stock-short-selling"},
+		"-until":              {"stock-credit-trades", "-symbol", "005930", "-until", "2026/10/16"},
+	}
+	for want, args := range cases {
+		err := runToss(ctx, c, args)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("%v: expected %q error, got %v", args, want, err)
+		}
+	}
+}
