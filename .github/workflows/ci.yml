@@ -16,6 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Test rebalance plan scripts
+        run: python3 -m unittest discover -s .claude/skills/rebalance-plan/scripts -p 'test_*.py'
+
+      - name: Test order cash availability scripts
+        run: python3 -m unittest discover -s .claude/skills/execute-rebalance-plan/scripts -p 'test_*.py'
+
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
