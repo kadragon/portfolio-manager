@@ -130,7 +130,8 @@ func (c *Client) CancelOrder(ctx context.Context, accountSeq, orderID string) (O
 	return doPost[OrderOperationResponse](ctx, c, "toss order cancel", path, struct{}{}, headers)
 }
 
-// PlaceOrder creates a market quantity order for the given Toss accountSeq.
+// PlaceOrder creates a quantity order for the given Toss accountSeq: LIMIT
+// when intent.LimitPrice is set, MARKET otherwise.
 // Kept for source/behavior compatibility with existing callers
 // (services.TossOrderClient, cmd/rebalance-order); new code should call
 // CreateOrder directly for LIMIT/amount-based orders.
@@ -147,12 +148,17 @@ func (c *Client) PlaceOrder(ctx context.Context, accountSeq string, intent model
 		return nil, err
 	}
 
-	resp, err := c.CreateOrder(ctx, accountSeq, OrderCreateRequest{
+	req := OrderCreateRequest{
 		Symbol:    strings.ToUpper(strings.TrimSpace(intent.Ticker)),
 		Side:      side,
 		OrderType: "MARKET",
 		Quantity:  fmt.Sprintf("%d", intent.Quantity),
-	})
+	}
+	if p := strings.TrimSpace(intent.LimitPrice); p != "" {
+		req.OrderType = "LIMIT"
+		req.Price = p
+	}
+	resp, err := c.CreateOrder(ctx, accountSeq, req)
 	if err != nil {
 		return nil, err
 	}

@@ -19,7 +19,7 @@ type KISOrderClient interface {
 	PlaceOrder(ctx context.Context, ticker, side string, quantity int, exchange, price string) (map[string]any, error)
 }
 
-// TossOrderClient places a single market order through Toss.
+// TossOrderClient places a single market or limit order through Toss.
 type TossOrderClient interface {
 	PlaceOrder(ctx context.Context, accountSeq string, intent models.OrderIntent) (map[string]any, error)
 }
@@ -133,13 +133,10 @@ func (s *OrderExecutionService) PlaceOrder(
 		if s.toss == nil {
 			return models.OrderExecutionRecord{}, fmt.Errorf("account %q is Toss-linked but no Toss client is configured", account.Name)
 		}
-		if strings.TrimSpace(price) != "" {
-			return models.OrderExecutionRecord{}, fmt.Errorf("limit orders (-price) are not supported for Toss accounts via rebalance-order yet; omit -price for a market order")
-		}
 		seq := strconv.FormatInt(*account.TossAccountSeq, 10)
 		raw, placeErr = s.toss.PlaceOrder(ctx, seq, models.OrderIntent{
 			Ticker: ticker, Side: side, Quantity: quantity, Currency: currency,
-			AccountID: account.ID, AccountName: account.Name,
+			AccountID: account.ID, AccountName: account.Name, LimitPrice: price,
 		})
 
 	case account.KisAccountNo != nil && strings.TrimSpace(*account.KisAccountNo) != "":

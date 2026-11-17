@@ -223,7 +223,7 @@ Toss buys wait on their own settlement/FX and `kis order-cash` doesn't apply.
    KIS-routed ticker — most ISA holdings are KR-listed ETFs and TOSS orders don't need it, Toss
    doesn't take an exchange parameter at all.) Omit `-price` for a market order; add it to place
    a KIS limit order (see the Defaults note — used when a market buy won't fit orderable cash).
-   `-price` is KIS-only; it is rejected for Toss accounts. The dry-run preview prints
+   `-price` works for both KIS and Toss (Toss sends `orderType: LIMIT`). The dry-run preview prints
    `type=market` or `type=limit @ <price>` so you can confirm which was resolved.
 2. Show the user exactly what will be sent: account, ticker, side, quantity, order type
    (market, or limit @ price), and the KIS_ENV banner. For a market order remind them there's no

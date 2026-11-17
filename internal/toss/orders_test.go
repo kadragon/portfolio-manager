@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/kadragon/portfolio-manager/internal/models"
 )
 
 func TestCreateOrderValidatesBothQuantityAndOrderAmountSet(t *testing.T) {
@@ -316,5 +318,33 @@ func TestCancelOrderUnprocessableError(t *testing.T) {
 	_, err := client.CancelOrder(context.Background(), "7", "ord-1")
 	if err == nil || !strings.Contains(err.Error(), "modify-restricted") {
 		t.Fatalf("expected modify-restricted error, got %v", err)
+	}
+}
+
+func TestPlaceOrderUsesLimitWhenLimitPriceSet(t *testing.T) {
+	var orderBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth2/token":
+			writeJSON(t, w, map[string]any{"access_token": "tok", "token_type": "Bearer", "expires_in": 3600})
+		case "/api/v1/orders":
+			if err := json.NewDecoder(r.Body).Decode(&orderBody); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			writeJSON(t, w, map[string]any{"result": map[string]any{"orderId": "ord-1", "clientOrderId": nil}})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	client := NewClient(srv.Client(), srv.URL, "cid", "secret")
+	if _, err := client.PlaceOrder(context.Background(), "7", models.OrderIntent{
+		Ticker: "310970", Side: "buy", Quantity: 3, LimitPrice: "34760",
+	}); err != nil {
+		t.Fatalf("PlaceOrder: %v", err)
+	}
+	if orderBody["orderType"] != "LIMIT" || orderBody["price"] != "34760" || orderBody["quantity"] != "3" {
+		t.Fatalf("order body = %v, want LIMIT 3 @ 34760", orderBody)
 	}
 }
