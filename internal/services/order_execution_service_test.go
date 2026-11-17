@@ -352,21 +352,6 @@ func TestOrderExecutionService_PlaceOrder_InvalidLimitPriceRejected(t *testing.T
 	}
 }
 
-func TestOrderExecutionService_PlaceOrder_LimitPriceRejectedForToss(t *testing.T) {
-	acct := tossAccount("TOSS", 42)
-	accounts := &fakeAccountLister{accounts: []models.Account{acct}}
-	toss := &fakeTossOrderClient{resp: map[string]any{"result": map[string]any{"orderId": "abc"}}}
-
-	svc := NewOrderExecutionService(accounts, &fakeExecutionRecorder{}, nil, toss)
-	_, err := svc.PlaceOrder(context.Background(), "TOSS", "AAPL", "buy", 1, "", "USD", "150.00")
-	if err == nil {
-		t.Fatal("expected error for limit order on Toss account, got nil")
-	}
-	if toss.calledSeq != "" {
-		t.Errorf("Toss client should not have been called for a rejected limit order, got seq %q", toss.calledSeq)
-	}
-}
-
 func TestNormalizeKisAccountNo(t *testing.T) {
 	cases := []struct {
 		in, wantCano, wantAcntPrdtCd string
@@ -390,5 +375,24 @@ func TestNormalizeKisAccountNo(t *testing.T) {
 		if cano != tc.wantCano || acntPrdtCd != tc.wantAcntPrdtCd {
 			t.Errorf("normalizeKisAccountNo(%q) = %q/%q, want %q/%q", tc.in, cano, acntPrdtCd, tc.wantCano, tc.wantAcntPrdtCd)
 		}
+	}
+}
+
+func TestOrderExecutionService_PlaceOrder_TossPassesLimitPrice(t *testing.T) {
+	acct := tossAccount("TOSS", 42)
+	accounts := &fakeAccountLister{accounts: []models.Account{acct}}
+	executions := &fakeExecutionRecorder{}
+	toss := &fakeTossOrderClient{resp: map[string]any{"result": map[string]any{"orderId": "abc"}}}
+
+	svc := NewOrderExecutionService(accounts, executions, nil, toss)
+	record, err := svc.PlaceOrder(context.Background(), "TOSS", "310970", "buy", 3, "", "KRW", "34760")
+	if err != nil {
+		t.Fatalf("PlaceOrder returned error: %v", err)
+	}
+	if toss.calledIntent.LimitPrice != "34760" {
+		t.Errorf("toss intent LimitPrice = %q, want 34760", toss.calledIntent.LimitPrice)
+	}
+	if record.OrderType != "limit" {
+		t.Errorf("record.OrderType = %q, want limit", record.OrderType)
 	}
 }

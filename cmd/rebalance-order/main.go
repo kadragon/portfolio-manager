@@ -24,10 +24,10 @@ func main() {
 	account := flag.String("account", "", "account name, exact or unique substring match (e.g. ISA, TOSS)")
 	ticker := flag.String("ticker", "", "ticker symbol")
 	side := flag.String("side", "", "buy or sell")
-	qty := flag.Int("qty", 0, "share quantity (market order, no price)")
+	qty := flag.Int("qty", 0, "share quantity")
 	exchange := flag.String("exchange", "", "overseas exchange order-code (NASD/NYSE/AMEX); leave empty for domestic")
 	currency := flag.String("currency", "KRW", "currency recorded on the execution log (KRW/USD)")
-	price := flag.String("price", "", "limit price; empty places a market order. A limit buy reserves exactly price×qty, unlike a market buy which reserves at the daily upper limit (KIS only; not supported for Toss)")
+	price := flag.String("price", "", "limit price; empty places a market order. A limit buy reserves exactly price×qty, unlike a market buy which reserves at the daily upper limit")
 	yes := flag.Bool("yes", false, "actually place the order; without this flag, only prints a dry-run preview")
 	flag.Parse()
 
@@ -51,13 +51,6 @@ func main() {
 	if !*yes {
 		fmt.Printf("[DRY RUN] account=%s ticker=%s side=%s qty=%d exchange=%s currency=%s type=%s\n(rerun with -yes to actually place this order)\n",
 			*account, *ticker, *side, *qty, *exchange, *currency, orderType)
-		if strings.TrimSpace(*price) != "" {
-			// The dry-run runs before account resolution, so it can't tell KIS
-			// from Toss; warn that a limit price is KIS-only and -yes will reject
-			// it for a Toss account, rather than letting the limit preview imply
-			// the real run would go through.
-			fmt.Println("(note: -price is KIS-only; a Toss-linked account will reject this on -yes)")
-		}
 		return
 	}
 

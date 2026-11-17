@@ -32,6 +32,8 @@ type OrderIntent struct {
 	AccountID   uuidx.UUID
 	AccountName string
 	Amount      numeric.Decimal
+	// LimitPrice is the limit price for a limit order; empty means market.
+	LimitPrice string
 }
 
 // OrderExecutionRecord is the persisted form of a KIS order execution.
